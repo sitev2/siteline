@@ -1,0 +1,52 @@
+// Rebindable keyboard controls. Each action maps to one key code (KeyboardEvent.code).
+// Saved in settings.keys; anything missing falls back to the defaults below.
+
+export const ACTIONS = [
+  ['moveF', 'Move forward'], ['moveB', 'Move back'], ['moveL', 'Move left'], ['moveR', 'Move right'],
+  ['jump', 'Jump'], ['walk', 'Walk (quiet)'], ['crouch', 'Crouch'],
+  ['reload', 'Reload'], ['alt', 'Scope / burst mode'], ['use', 'Plant / defuse / pick up'],
+  ['buy', 'Buy menu'], ['inspect', 'Inspect weapon'], ['flashlight', 'Flashlight'], ['drop', 'Drop weapon'],
+  ['chatAll', 'All chat'], ['chatTeam', 'Team chat'],
+  ['w1', 'Main gun'], ['w2', 'Pistol'], ['w5', 'Bomb'],
+  ['score', 'Scoreboard'], ['menu', 'Menu'],
+];
+
+export const DEFAULT_KEYS = {
+  moveF: 'KeyW', moveB: 'KeyS', moveL: 'KeyA', moveR: 'KeyD',
+  jump: 'Space', walk: 'ShiftLeft', crouch: 'KeyC',
+  reload: 'KeyR', alt: 'KeyQ', use: 'KeyE',
+  buy: 'KeyB', inspect: 'KeyF', flashlight: 'KeyL', drop: 'KeyG',
+  chatAll: 'KeyY', chatTeam: 'KeyU',
+  w1: 'Digit1', w2: 'Digit2', w5: 'Digit5',
+  score: 'Tab', menu: 'Escape',
+};
+
+export function keyMap(keys) { return { ...DEFAULT_KEYS, ...(keys || {}) }; }
+
+// code → action (both Shift keys walk, both Ctrl keys crouch if Ctrl is chosen, and so on)
+export function reverseMap(keys) {
+  const k = keyMap(keys), out = {};
+  for (const [act, code] of Object.entries(k)) {
+    out[code] = act;
+    const twin = code.replace(/Left$/, 'Right');
+    if (twin !== code) out[twin] = out[twin] || act;
+  }
+  return out;
+}
+
+const NAMES = {
+  Space: 'Space', Tab: 'Tab', Escape: 'Esc', Enter: 'Enter', Backspace: 'Backspace',
+  ShiftLeft: 'Shift', ShiftRight: 'Right Shift', ControlLeft: 'Ctrl', ControlRight: 'Right Ctrl',
+  AltLeft: 'Alt', AltRight: 'Right Alt', CapsLock: 'Caps Lock',
+  ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
+  Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'",
+  Comma: ',', Period: '.', Slash: '/', Backslash: '\\',
+};
+export function keyLabel(code) {
+  if (!code) return '—';
+  if (NAMES[code]) return NAMES[code];
+  if (/^Key[A-Z]$/.test(code)) return code.slice(3);
+  if (/^Digit\d$/.test(code)) return code.slice(5);
+  if (/^Numpad/.test(code)) return 'Num ' + code.slice(6);
+  return code;
+}

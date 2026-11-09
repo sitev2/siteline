@@ -1,0 +1,381 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="description" content="SITELINE — a free browser multiplayer tactical shooter. Buy rifles, snipers and armour, then plant or defuse the bomb. Plays on phone, tablet and PC.">
+  <meta name="theme-color" content="#121316">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="SITELINE">
+  <title>SITELINE</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">{ "imports": { "three": "./three.module.js" } }</script>
+</head>
+<body>
+  <div id="stage"></div>
+
+  <!-- ================= HUD ================= -->
+  <div id="hud" class="hidden">
+    <div id="scope" class="hidden"><i class="h"></i><i class="v"></i></div>
+    <div id="topbar">
+      <div class="tscore atk"><span class="tname" id="tname-atk">ATK</span><b id="score-atk">0</b><small id="alive-atk"></small></div>
+      <div id="clock"><div id="timer">0:00</div><div id="round-no">Round 1</div></div>
+      <div class="tscore def"><b id="score-def">0</b><span class="tname" id="tname-def">DEF</span><small id="alive-def"></small></div>
+    </div>
+    <div id="radar-wrap"><canvas id="radar"></canvas><div id="team-label"></div></div>
+    <div id="killfeed"></div>
+    <canvas id="crosshair" class="hidden"></canvas>
+    <div id="hitmarker"></div>
+    <div id="dmg-pop"></div>
+    <div id="hurt"></div>
+    <div id="flash"></div>
+    <div id="center" class="hidden"><div id="center-msg"></div><div id="center-sub"></div></div>
+    <div id="progress" class="hidden"><div id="progress-label"></div><div class="bar"><div id="progress-fill"></div></div></div>
+    <div id="hint" class="hidden"></div>
+    <div id="death" class="hidden"><span id="death-text"></span></div>
+    <div id="econ"><div id="income"></div><div id="money">$800</div></div>
+    <div id="blast-warn" class="hidden"></div>
+    <div id="vitals">
+      <div class="vit-left">
+        <div id="hp"><span class="plus">✚</span><b id="hp-value">100</b><div class="hpbar"><div id="hp-bar"></div><div id="hp-ghost"></div></div></div>
+        <div id="armor" class="none"><span class="shield">⛉</span><b id="armor-value">0</b><span id="helmet-icon" class="hidden" title="Helmet">⛑</span></div>
+      </div>
+      <div class="vit-mid">
+        <div id="bomb-icon" class="hidden">💣 BOMB</div>
+        <div id="kit-icon" class="hidden">🔧 KIT</div>
+      </div>
+      <div id="ammo"><span id="weapon-name">Pistol</span><span id="fire-mode"></span><b id="ammo-mag">20</b><span id="ammo-res">/ 60</span></div>
+    </div>
+    <div id="buy-chip" class="hidden"><kbd>B</kbd> buy menu</div>
+
+    <div id="scoreboard" class="hidden"></div>
+    <div id="chat-feed"></div>
+    <form id="chat-box" class="hidden" autocomplete="off">
+      <button type="button" id="chat-mode" class="chat-mode">ALL</button>
+      <input id="chat-input" maxlength="100" placeholder="Say something… (Enter to send, Esc to cancel)" enterkeyhint="send">
+      <button type="submit" class="chat-send">Send</button>
+    </form>
+  </div>
+
+  <!-- ================= TOUCH CONTROLS ================= -->
+  <div id="touch">
+    <div id="joy-hint"></div>
+    <div id="joy"><div id="joy-knob"></div></div>
+    <button data-act="fire" id="btn-fire" aria-label="Fire"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v6M12 16v6M2 12h6M16 12h6" stroke="currentColor" stroke-width="2"/></svg></button>
+    <button data-act="fire" id="btn-fire-left" aria-label="Fire"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></button>
+    <button data-act="jump" id="btn-jump" aria-label="Jump">⤒</button>
+    <button data-act="reload" id="btn-reload" aria-label="Reload">↻</button>
+    <button data-act="alt" id="btn-alt" class="hidden" aria-label="Scope or burst mode">◎</button>
+    <button data-act="swap" id="btn-swap" aria-label="Switch weapon">⇄</button>
+    <button data-act="crouch" id="btn-crouch" aria-label="Crouch">⤓</button>
+    <button data-act="drop" id="btn-drop" aria-label="Drop weapon">⇩</button>
+    <button data-act="inspect" id="btn-inspect" aria-label="Inspect weapon">🔍</button>
+    <button data-act="chatAll" id="btn-chat" aria-label="Chat">💬</button>
+    <button data-act="flashlight" id="btn-light" class="hidden" aria-label="Flashlight">🔦</button>
+    <button data-act="use" id="btn-use" class="hidden" aria-label="Plant or defuse">✋</button>
+    <button data-act="buy" id="btn-buy" class="hidden" aria-label="Buy menu">🛒</button>
+    <button data-act="score" id="btn-score" aria-label="Scoreboard">☰</button>
+    <button data-act="menu" id="btn-menu" aria-label="Menu">❚❚</button>
+  </div>
+
+  <div id="layout-editor" class="hidden">
+    <div class="le-panel">
+      <b id="le-title">Tap a button to change it, drag to move it</b>
+      <label class="field"><span>Size <output id="le-size-out"></output></span><input type="range" id="le-size" min="0.6" max="1.8" step="0.05" disabled></label>
+      <label class="field"><span>Opacity <output id="le-op-out"></output></span><input type="range" id="le-op" min="0.15" max="1" step="0.05" disabled></label>
+      <div class="le-row"><button id="le-reset-one" class="ghost" disabled>Reset button</button><button id="le-reset-all" class="ghost">Reset all</button><button id="le-done" class="primary">Done</button></div>
+    </div>
+  </div>
+
+  <div id="buy" class="hidden">
+    <div class="buy-panel">
+      <div class="buy-head"><h2>Buy</h2><b id="buy-money" class="buy-money"></b><span id="buy-time" class="buy-time"></span><button id="buy-close" class="ghost" aria-label="Close">✕</button></div>
+      <p id="buy-note"></p>
+      <div id="buy-groups"></div>
+    </div>
+  </div>
+
+  <!-- ================= SCREENS ================= -->
+  <div id="screens">
+    <section id="menu" class="screen">
+      <div class="menu-inner">
+        <div class="brand">
+          <div class="logo"><span>SITE</span><span class="accent">LINE</span></div>
+          <p class="tag">2v2 tactical wingman in your browser. Plant it. Defuse it. No install.</p>
+        </div>
+        <div id="invite" class="invite hidden">You've been invited to room <b id="invite-code"></b></div>
+        <label class="field">
+          <span>Your name</span>
+          <input id="name" maxlength="16" autocomplete="nickname" spellcheck="false" placeholder="Player">
+        </label>
+        <div class="menu-actions">
+          <button id="btn-host" class="primary">Host a game</button>
+          <div class="join-row">
+            <input id="code" maxlength="8" placeholder="ROOM CODE" autocomplete="off" spellcheck="false" autocapitalize="characters">
+            <button id="btn-join" class="secondary">Join</button>
+          </div>
+          <button id="btn-practice" class="ghost">Practice &amp; bots</button>
+        </div>
+        <div class="menu-links">
+          <button id="btn-account" class="link">Account</button>
+          <button id="btn-settings" class="link">Settings</button>
+          <button id="btn-howto" class="link">How to play</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="lobby" class="screen hidden">
+      <div class="lobby-inner">
+        <div class="lobby-head">
+          <div>
+            <div class="eyebrow">Room code</div>
+            <div id="room-code" class="room-code">-----</div>
+          </div>
+          <div class="lobby-share">
+            <button id="btn-share" class="secondary">Copy invite link</button>
+            <button id="btn-leave-lobby" class="ghost">Leave</button>
+          </div>
+        </div>
+        <div class="mode-pick">
+          <button class="mode-btn" data-mode="wingman"><b>2v2 Bomb</b><small>Plant or defuse, first to 9 rounds</small></button>
+          <button class="mode-btn" data-mode="dm"><b>Deathmatch</b><small>2–4 players, everyone for themselves</small></button>
+        </div>
+        <div class="ffa-list team"><h3>Players <small>free-for-all</small></h3><ul id="list-ffa"></ul></div>
+        <div class="teams">
+          <div class="team atk"><h3>Attackers <small>plant the bomb</small></h3><ul id="list-atk"></ul><button data-team="atk" class="team-join">Join Attackers</button></div>
+          <div class="team def"><h3>Defenders <small>protect the site</small></h3><ul id="list-def"></ul><button data-team="def" class="team-join">Join Defenders</button></div>
+        </div>
+        <div class="lobby-settings">
+          <div class="eyebrow">Map</div>
+          <div id="map-cards" class="map-cards"></div>
+          <div class="lobby-row">
+            <div class="match-rules" id="match-rules"><b>2v2</b> · first to <b>9</b> · sides swap after round <b>8</b> · 8–8 is a draw</div>
+            <label class="check night-toggle"><input type="checkbox" id="lobby-night"> 🌙 Night mode</label>
+            <button id="btn-shuffle" class="ghost host-only">Shuffle teams</button>
+            <button id="btn-start" class="primary host-only">Start match</button>
+          </div>
+          <p id="lobby-note" class="note"></p>
+        </div>
+      </div>
+    </section>
+
+    <section id="practice" class="screen hidden">
+      <div class="panel">
+        <h2>Practice</h2>
+        <div class="mode-pick three">
+          <button class="pmode-btn mode-btn" data-pmode="range"><b>Practice range</b><small>Try guns on bot targets</small></button>
+          <button class="pmode-btn mode-btn" data-pmode="match"><b>Bot match</b><small>2v2 bomb: you + a bot vs 2 bots</small></button>
+          <button class="pmode-btn mode-btn" data-pmode="dm"><b>Bot deathmatch</b><small>Everyone for themselves</small></button>
+        </div>
+        <label class="field"><span>Map</span><select id="p-map"></select></label>
+        <label class="check p-range"><input type="checkbox" id="p-bots"> Bots on the range</label>
+        <label class="field p-count"><span>Number of bots <output id="p-count-out"></output></span><input type="range" id="p-count" min="1" max="8" step="1"></label>
+        <label class="field p-behavior"><span>What the bots do</span>
+          <select id="p-behavior"><option value="still">Stand still (targets)</option><option value="move">Move around</option><option value="shoot">Move and shoot back</option></select>
+        </label>
+        <label class="field p-match"><span>Your side</span>
+          <select id="p-side"><option value="atk">Attackers (plant the bomb)</option><option value="def">Defenders (stop the plant)</option><option value="random">Random</option></select>
+        </label>
+        <label class="field p-botopt"><span>Bot difficulty</span>
+          <select id="p-level"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select>
+        </label>
+        <label class="check"><input type="checkbox" id="p-night"> 🌙 Night mode (dark map, flashlights)</label>
+        <p class="note" id="p-note">Friends can join with the room code or invite link from the pause menu. They take a bot's place.</p>
+        <button id="p-start" class="primary">Start</button>
+        <button class="ghost back">Back</button>
+      </div>
+    </section>
+
+    <section id="settings" class="screen hidden">
+      <div class="panel wide">
+        <h2>Settings</h2>
+        <div class="tabs" role="tablist">
+          <button class="tab selected" data-tab="general">General</button>
+          <button class="tab" data-tab="controls">Controls</button>
+          <button class="tab" data-tab="crosshair">Crosshair</button>
+          <button class="tab" data-tab="layout">Phone layout</button>
+          <button class="tab" data-tab="graphics">Graphics</button>
+        </div>
+
+        <div class="tab-page" data-page="general">
+          <label class="field"><span>Look sensitivity <output id="sens-out"></output></span><input type="range" id="set-sens" min="0.2" max="3" step="0.05"></label>
+          <label class="field"><span>Volume <output id="vol-out"></output></span><input type="range" id="set-vol" min="0" max="1" step="0.05"></label>
+          <label class="field"><span>Background sound <output id="amb-out"></output></span><input type="range" id="set-amb" min="0" max="1" step="0.05"></label>
+          <label class="field"><span>Controls</span>
+            <select id="set-touch"><option value="auto">Auto-detect</option><option value="on">Touch controls</option><option value="off">Keyboard &amp; mouse</option></select>
+          </label>
+          <label class="check"><input type="checkbox" id="set-invert"> Invert look up/down</label>
+          <label class="check"><input type="checkbox" id="set-chat" checked> Show chat</label>
+        </div>
+
+        <div class="tab-page hidden" data-page="controls">
+          <p class="note">Click an action, then press the key you want. Esc cancels. The mouse wheel switches guns and the right mouse button scopes as well.</p>
+          <div id="keybinds" class="keybinds"></div>
+          <p id="ctrl-warning" class="warn hidden">⚠ You picked Ctrl. In most browsers Ctrl+W closes the tab — so don't crouch and walk forward at the same time with Ctrl, or pick another key.</p>
+          <button id="btn-keys-reset" class="ghost">Reset to defaults</button>
+        </div>
+
+        <div class="tab-page hidden" data-page="crosshair">
+          <div class="xh-wrap">
+            <div class="xh-preview"><canvas id="xh-preview"></canvas><label class="check"><input type="checkbox" id="xh-demo"> Preview moving / shooting</label></div>
+            <div class="xh-controls">
+              <label class="field inline"><span>Colour</span><input type="color" id="xh-color"></label>
+              <label class="field"><span>Length <output id="xh-length-out"></output></span><input type="range" id="xh-length" min="0" max="30" step="1"></label>
+              <label class="field"><span>Thickness <output id="xh-thickness-out"></output></span><input type="range" id="xh-thickness" min="1" max="8" step="1"></label>
+              <label class="field"><span>Gap <output id="xh-gap-out"></output></span><input type="range" id="xh-gap" min="-5" max="20" step="1"></label>
+              <label class="field"><span>Opacity <output id="xh-opacity-out"></output></span><input type="range" id="xh-opacity" min="0.1" max="1" step="0.05"></label>
+              <label class="check"><input type="checkbox" id="xh-outline"> Outline</label>
+              <label class="check"><input type="checkbox" id="xh-dot"> Centre dot</label>
+              <label class="check"><input type="checkbox" id="xh-dynamic"> Dynamic (spreads when moving / shooting)</label>
+              <label class="check"><input type="checkbox" id="xh-recoil"> Follow recoil (moves to where your next bullet goes)</label>
+            </div>
+          </div>
+          <div class="xh-share">
+            <input id="xh-code" readonly aria-label="Crosshair code">
+            <button id="btn-xh-copy" class="secondary">Copy code</button>
+          </div>
+          <div class="xh-share">
+            <input id="xh-import" placeholder="Paste a friend's crosshair code" aria-label="Import crosshair code">
+            <button id="btn-xh-import" class="secondary">Import</button>
+          </div>
+          <button id="btn-xh-reset" class="ghost">Reset crosshair</button>
+        </div>
+
+        <div class="tab-page hidden" data-page="layout">
+          <p class="note">Move, resize and fade every touch button. Opens a full-screen editor: drag buttons where you want them, tap one to change its size and opacity.</p>
+          <button id="btn-layout-edit" class="secondary">Edit phone layout</button>
+          <button id="btn-layout-reset" class="ghost">Reset phone layout</button>
+        </div>
+
+        <div class="tab-page hidden" data-page="graphics">
+          <label class="field"><span>Preset</span>
+            <select id="set-preset"><option value="auto">Auto</option><option value="low">Low — older phones</option><option value="medium">Medium</option><option value="high">High</option><option value="ultra">Ultra</option><option value="custom">Custom</option></select>
+          </label>
+          <div id="gfx-custom" class="gfx-grid"></div>
+          <label class="field"><span>Field of view <output id="fov-out"></output></span><input type="range" id="set-fov" min="60" max="100" step="1"></label>
+        </div>
+
+        <p class="note">Graphics and control changes apply from the next match.</p>
+        <button class="primary back">Done</button>
+      </div>
+    </section>
+
+    <section id="account" class="screen hidden">
+      <div class="panel">
+        <h2>Account</h2>
+        <div id="acct-off" class="hidden"><p class="note">Accounts aren't switched on for this copy of the game yet (the owner adds a free Supabase project — see SUPABASE.md). You can play as a guest.</p></div>
+        <div id="acct-out" class="hidden">
+          <div class="tabs"><button class="tab selected" data-acct="login">Log in</button><button class="tab" data-acct="signup">Sign up</button></div>
+          <label class="field acct-signup hidden"><span>Username</span><input id="acct-user" maxlength="16" autocomplete="username" placeholder="3–16 letters, numbers or _"></label>
+          <label class="field"><span>Email</span><input id="acct-email" type="email" autocomplete="email"></label>
+          <label class="field"><span>Password</span><input id="acct-pass" type="password" autocomplete="current-password" placeholder="at least 6 characters"></label>
+          <p id="acct-msg" class="note"></p>
+          <button id="btn-acct-go" class="primary">Log in</button>
+          <p class="note">Playing as a guest works too — an account just keeps your stats and settings.</p>
+        </div>
+        <div id="acct-in" class="hidden">
+          <div class="acct-head"><b id="acct-name"></b><span id="acct-balance" class="balance"></span></div>
+          <div id="acct-stats" class="stat-grid"></div>
+          <button id="btn-acct-logout" class="ghost">Log out</button>
+        </div>
+        <button class="ghost back">Back</button>
+      </div>
+    </section>
+
+    <section id="howto" class="screen hidden">
+      <div class="panel wide">
+        <h2>How to play</h2>
+        <div class="howto-grid">
+          <div>
+            <h3>The round</h3>
+            <p><b class="c-atk">Attackers</b> carry a bomb. Plant it on the bomb site, then protect it until it explodes.</p>
+            <p><b class="c-def">Defenders</b> stop the plant, or defuse the bomb once it's down. Wipe out the other team to win the round too.</p>
+            <p><b>Practice &amp; bots</b>: a practice range with bot targets, a 2v2 bot match and bot deathmatch, on easy, normal or hard. Friends can join from the invite in the pause menu and take a bot's place.</p>
+            <p><b>Deathmatch</b> (2–4 players): everyone for themselves, first to 30 kills or 10 minutes. You respawn after a second with full armour; press B / 🛒 any time to pick any gun for free.</p>
+            <p>Teams of two. No respawns during a round. First to 9 rounds wins, the teams swap sides after round 8, and 8–8 is a draw. Rounds last 1:55; once the bomb is planted it explodes after 40 seconds. Defusing takes 10 seconds, or 5 with a defuse kit — keep looking at the bomb.</p>
+            <h3>Money &amp; buying</h3>
+            <p>Everyone starts each half with $800. You earn money for winning rounds, for kills (cheaper guns pay more) and a growing loss bonus when your team loses. Buy guns, armour and kits in your spawn area during the first 20 seconds of each round. Survivors keep their gear.</p>
+            <h3>Shooting</h3>
+            <p>Stand still to be accurate: guns only shoot straight once you've slowed to about a third of your speed — tap the opposite key to stop instantly. Automatic guns kick in a fixed pattern you can learn. Armour stops part of the damage and stops your aim being knocked around. Bullets pass through boxes, crates and barrels with reduced damage; solid walls stop everything.</p>
+            <h3>Crouching &amp; teamwork</h3>
+            <p>Crouch to be quieter, smaller and recover your aim faster; crouch in mid-air to jump higher. Jump onto a teammate's head to reach high spots — they can walk around with you on top. The dead drop their gun (and kit) for anyone to pick up.</p>
+          </div>
+          <div>
+            <h3>Keyboard &amp; mouse</h3>
+            <table class="keys">
+              <tr><td><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></td><td>Move</td></tr>
+              <tr><td><kbd>Mouse</kbd></td><td>Aim · left click to shoot</td></tr>
+              <tr><td><kbd>Right click</kbd> / <kbd>Q</kbd></td><td>Scope · burst mode</td></tr>
+              <tr><td><kbd>Space</kbd></td><td>Jump</td></tr>
+              <tr><td><kbd>Shift</kbd></td><td>Walk quietly</td></tr>
+              <tr><td><kbd>C</kbd> (hold)</td><td>Crouch (silent, smaller)</td></tr>
+              <tr><td><kbd>R</kbd></td><td>Reload</td></tr>
+              <tr><td><kbd>E</kbd> (hold)</td><td>Plant / defuse · tap to pick up the gun you're looking at</td></tr>
+              <tr><td><kbd>G</kbd></td><td>Drop your gun (or the bomb)</td></tr>
+              <tr><td><kbd>B</kbd></td><td>Buy menu (click something you just bought to refund it)</td></tr>
+              <tr><td><kbd>1</kbd> / <kbd>2</kbd> / <kbd>5</kbd> / <kbd>Wheel</kbd></td><td>Main gun / pistol / bomb / switch</td></tr>
+              <tr><td><kbd>F</kbd></td><td>Inspect your gun</td></tr>
+              <tr><td><kbd>L</kbd></td><td>Flashlight (night mode)</td></tr>
+              <tr><td><kbd>Y</kbd> / <kbd>U</kbd></td><td>All chat / team chat</td></tr>
+              <tr><td><kbd>Tab</kbd></td><td>Scoreboard &amp; ping</td></tr>
+              <tr><td><kbd>Esc</kbd></td><td>Menu</td></tr>
+            </table>
+          </div>
+          <div>
+            <h3>Phone &amp; tablet</h3>
+            <p>Turn your device sideways. Put your left thumb anywhere on the left side to move. Drag on the right side to aim.</p>
+            <p>Hold the big fire button to shoot — you can keep dragging it to aim while firing. ⇄ switches guns (and the bomb, if you carry it), ◎ scopes (or switches burst mode), ⤓ crouches (tap again to stand), ⇩ drops your gun, 🛒 opens the buy menu. ✋ appears when you can plant, defuse or pick up a gun.</p>
+            <p>🔍 inspects your gun, 💬 opens chat and 🔦 switches your flashlight on at night. You can move, resize and fade every button in Settings → Phone layout.</p>
+            <p>On iPhone, tap Share → <i>Add to Home Screen</i> and launch from there for full screen.</p>
+          </div>
+        </div>
+        <button class="primary back">Got it</button>
+      </div>
+    </section>
+
+    <section id="pause" class="overlay hidden">
+      <div class="panel small">
+        <h2 id="pause-title">Paused</h2>
+        <p id="pause-sub" class="note">The match keeps running while you're in this menu.</p>
+        <div id="pause-invite" class="pause-invite hidden">
+          <div><span class="eyebrow">Invite friends</span><b id="pause-code">-----</b></div>
+          <button id="btn-pause-invite" class="secondary">Copy invite link</button>
+        </div>
+        <button id="btn-resume" class="primary">Resume</button>
+        <button id="btn-fullscreen" class="secondary">Full screen</button>
+        <button id="btn-pause-settings" class="ghost">Settings</button>
+        <button id="btn-pause-howto" class="ghost">How to play</button>
+        <button id="btn-leave" class="danger">Leave match</button>
+      </div>
+    </section>
+
+    <section id="over" class="overlay hidden">
+      <div class="panel">
+        <div class="eyebrow">Match over</div>
+        <h2 id="over-title"></h2>
+        <div id="over-score" class="over-score"></div>
+        <div id="over-stats"></div>
+        <button id="btn-to-lobby" class="primary host-only">Back to lobby</button>
+        <p id="over-wait" class="note">Waiting for the host…</p>
+        <button id="btn-over-leave" class="ghost">Leave</button>
+      </div>
+    </section>
+
+    <div id="loading" class="overlay hidden"><div class="spinner"></div><p id="loading-text">Connecting…</p><button id="btn-cancel-load" class="ghost">Cancel</button></div>
+    <div id="rotate"><div class="rot-icon">⟳</div><p>Turn your device sideways to play</p></div>
+    <div id="toasts"></div>
+  </div>
+
+  <noscript>SITELINE needs JavaScript to run.</noscript>
+  <script src="peerjs.min.js"></script>
+  <script type="module" src="main.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "name": "siteline-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Dedicated game server for SITELINE (uses the game files one folder up)",
+  "type": "module",
+  "main": "server.mjs",
+  "scripts": { "start": "node server.mjs" },
+  "dependencies": { "ws": "8.18.3" },
+  "engines": { "node": ">=18" }
+}
