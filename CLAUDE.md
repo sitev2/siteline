@@ -42,7 +42,7 @@ The only folder is `server/` (the optional home game server).
   `b.deco('canalbridge'|'arch'|'paving', ...)`. Materials starting with `_` are invisible collision (bridge parapets).
 - `flame` = "Flame (beta)": built from the owner's own drawn plan (1 px = 12.5 cm, lines straightened), shapes only so far;
   `tuscan` theme (own Tuscan hill-town look, no copied assets/signs; no grass tufts): flaking 'oldplaster' + stone, 'ply' crates on pallets,
-  wooden barrels, small blue pickup (`truck.mini`), dirt patches, drainpipes/aerials (`theme.pipes/antennas`),
+  wooden barrels, small blue pickup (`truck.mini`), drainpipes/aerials (`theme.pipes/antennas`),
   deco 'shopfront' (stone arcade built 0.5 m out, own sign "CANTINA FIAMMA"; its piers + stone above the arches are
   '_stone' collision in the map), 'railing', 'corbels', 'painta', 'gate', 'bucket', 'stairarch', 'curb', 'shrubs', 'pot', 'arcade' (long roofed arcade
   along the site's west side, pillars incl. the old 1 m block at 39.5–40.5 × 29.5–30.5; walls/pillars/roof are '_stone'/'_roof' collision in the map),
@@ -60,7 +60,7 @@ The only folder is `server/` (the optional home game server).
 - Originals only: no maps, characters, logos or assets copied from existing games
   (for example, no recreations of CS maps).
 - All art and sound is generated in code; there are no image or audio asset files.
-- No vines/ivy anywhere and no dry-grass tufts on Flame (the owner removed them).
+- No vines/ivy anywhere, and no dry-grass tufts or dirt patches on Flame (the owner removed them).
 
 ## Home server (`server/`)
 Node + `ws`. `server/server.mjs` imports the root `server.js` and `config.js`, so changes

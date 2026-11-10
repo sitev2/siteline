@@ -12,10 +12,10 @@ import { dressHouses, villageDeco } from './houses.js';
 
 // what each theme adds
 const DRESS = {
-  // Tuscan hill town (Flame): dusty cobbles with dirt patches, hills and mountains around
+  // Tuscan hill town (Flame): stone setts, hills and mountains around
   tuscan: {
     windowOn: [], frame: '#e6dac2', glass: '#20262c', door: '#6b4a30',
-    items: [], decals: ['dirt', 'dirt', 'crack', 'stain'],
+    items: [], decals: ['crack', 'stain'],
     backdrop: 'tuscan',
   },
   // houses dress themselves (houses.js); keep the streets clean
@@ -209,17 +209,6 @@ const DECAL = {
     gr.addColorStop(0, 'rgba(70,90,110,0.75)'); gr.addColorStop(0.75, 'rgba(70,90,110,0.55)'); gr.addColorStop(1, 'rgba(70,90,110,0)');
     g.fillStyle = gr; g.beginPath(); g.ellipse(n / 2, n / 2, n * 0.46, n * 0.32, 0, 0, Math.PI * 2); g.fill();
     g.fillStyle = 'rgba(220,235,255,0.25)'; g.beginPath(); g.ellipse(n * 0.42, n * 0.44, n * 0.16, n * 0.05, 0.2, 0, Math.PI * 2); g.fill();
-  },
-  // a patch of bare, sandy earth between the cobbles
-  dirt: (g, n) => {
-    const r = rng(23);
-    for (let i = 0; i < 22; i++) {
-      const x = n / 2 + (r() - 0.5) * n * 0.55, y = n / 2 + (r() - 0.5) * n * 0.55, rad = n * (0.1 + r() * 0.16);
-      const gr = g.createRadialGradient(x, y, 0, x, y, rad);
-      gr.addColorStop(0, 'rgba(196,170,120,0.85)'); gr.addColorStop(0.7, 'rgba(190,165,115,0.5)'); gr.addColorStop(1, 'rgba(190,165,115,0)');
-      g.fillStyle = gr; g.fillRect(0, 0, n, n);
-    }
-    for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(${r() < 0.5 ? '120,100,70' : '230,215,180'},${0.25 + r() * 0.3})`; g.fillRect(n * 0.2 + r() * n * 0.6, n * 0.2 + r() * n * 0.6, 1.5, 1.5); }
   },
   // a soft band (sand or snow blown against a wall): bright at the bottom edge, fading out
   drift: (g, n) => {
