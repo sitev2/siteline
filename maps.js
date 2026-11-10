@@ -707,7 +707,7 @@ export const MAPS = {
       b.wall(39.5, 29.5, 40.5, 30.5, 1.2, 'low');      // the small solid block beside it (a stone planter)
       b.crate(44, 34, 46, 36);
       b.crate(37.5, 34.5, 39.5, 36.5);
-      b.wall(37.5, 36.5, 40.5, 37, 1.0, 'low');        // low stone wall between that crate and the street, running 1 m past it
+      b.wall(37.5, 36.5, 40.5, 37, 1.5, 'low');        // shoulder-high stone wall between that crate and the street, running 1 m past it
       b.barrel(42.5, 34);
       b.barrel(33, 37.2);                              // truck yard, below the L-shaped block
       b.barrel(52.2, 23); b.barrel(52.2, 24.1);        // defender lane
