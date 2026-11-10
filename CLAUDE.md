@@ -68,6 +68,14 @@ The only folder is `server/` (the optional home game server).
 - Deathmatch rules: `RULES.dm` in `config.js`; server phase `'dm'`, everyone on team `'ffa'` during the match
 - `check_map.mjs` — `node check_map.mjs outpost` / `node check_map.mjs quarry large` checks every area and spawn is reachable
 
+- Rejoin: the last room joined as a guest is kept in localStorage for 30 min (`siteline-lastroom`); the menu shows
+  "Rejoin your last game (CODE)". The host remembers leavers by name (`rememberLeaver` / `restoreLeaver` in `server.js`): team,
+  score and money come back. If a whole team leaves a 2v2, the clocks stop for `REJOIN_WAIT` (60 s, `this.hold`) and the round is
+  replayed when they are back; after that it is a forfeit. A host who leaves a peer-to-peer room closes it (no rejoin).
+- Phones: the canvas always fills the page by CSS; `renderer.setSize(w, h, false)` only (never let three.js write a pixel size
+  on the canvas, that caused half-black screens after turning the phone). `Game.loop` re-checks the window size 3×/s.
+  `stopPageZoom()` in `main.js` blocks pinch / double-tap zoom.
+
 ## Must keep working
 - Phone, iPad and PC: every feature needs a touch control as well as a keyboard/mouse one.
 - `config.js` holds the owner's Metered relay settings (`turnApp`, `turnApiKey`) and,

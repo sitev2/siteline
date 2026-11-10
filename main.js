@@ -121,6 +121,7 @@ function deliver(msg) {
   if (!msg || typeof msg !== 'object') return;
   switch (msg.t) {
     case 'welcome':
+      if (app.mode === 'client') rememberRoom();
       app.myId = msg.id;
       app.roster = msg.roster;
       app.lobby = msg.settings;
@@ -151,6 +152,7 @@ function deliver(msg) {
       return;
     case 'room':
       app.code = msg.code;
+      if (app.mode === 'client') rememberRoom();
       return;
     case 'ping':
       sendToServer({ t: 'pong', ts: msg.ts });
@@ -336,6 +338,7 @@ async function joinGame(rawCode) {
     if (app.clientNet !== net) return;   // left or started something else meanwhile
     loading(null);
     cleanup();
+    forgetRoom(code);                    // that room can't be reached any more: stop offering it
     showNetError(e.message || String(e));
   }
 }
@@ -451,12 +454,40 @@ function cleanup() {
   updatePauseInvite();
 }
 
+// ---------- rejoin ----------
+// The last room you were in as a guest is remembered on this device for half an hour, so after
+// leaving (or losing the connection) the menu offers to go straight back in.
+const LAST_ROOM = 'siteline-lastroom';
+function rememberRoom() {
+  if (!app.code) return;
+  try { localStorage.setItem(LAST_ROOM, JSON.stringify({ code: app.code, t: Date.now() })); } catch (e) { /* storage unavailable */ }
+}
+function forgetRoom(code) {
+  try {
+    const r = JSON.parse(localStorage.getItem(LAST_ROOM) || 'null');
+    if (!code || (r && r.code === code)) localStorage.removeItem(LAST_ROOM);
+  } catch (e) { /* ignore */ }
+  updateRejoin();
+}
+function lastRoom() {
+  try {
+    const r = JSON.parse(localStorage.getItem(LAST_ROOM) || 'null');
+    return r && r.code && Date.now() - r.t < 30 * 60 * 1000 ? r.code : null;
+  } catch (e) { return null; }
+}
+function updateRejoin() {
+  const code = lastRoom(), btn = $('btn-rejoin');
+  btn.classList.toggle('hidden', !code);
+  if (code) btn.textContent = `Rejoin your last game (${code})`;
+}
+
 function leaveToMenu() {
   cleanup();
   $('pause').classList.add('hidden');
   $('over').classList.add('hidden');
   loading(null);
   show('menu');
+  updateRejoin();
 }
 
 // ---------- lobby ----------
@@ -965,6 +996,37 @@ function closeSub() {
   else show(app.returnTo === 'lobby' ? 'lobby' : 'menu');
 }
 
+// Phones: no pinch or double-tap zooming of the page (the game can't be un-zoomed with its own
+// controls), and if the page does end up zoomed in, snap it back.
+function stopPageZoom() {
+  const typing = (e) => e.target && e.target.closest && e.target.closest('input, select, textarea');
+  for (const type of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(type, e => e.preventDefault(), { passive: false });
+  document.addEventListener('dblclick', e => { if (!typing(e)) e.preventDefault(); }, { passive: false });
+  let lastTap = 0;
+  document.addEventListener('touchend', e => {
+    const now = Date.now(), quick = now - lastTap < 350;
+    lastTap = now;
+    // a second tap straight after the first would zoom: cancel that, but still press whatever was tapped
+    if (quick && !typing(e) && e.cancelable && e.touches.length === 0) {
+      e.preventDefault();
+      const b = e.target.closest && e.target.closest('button, a, label, summary');
+      if (b && !b.closest('#touch')) b.click();
+    }
+  }, { passive: false });
+  document.addEventListener('touchmove', e => { if (e.touches.length > 1 && e.cancelable) e.preventDefault(); }, { passive: false });
+  const vv = window.visualViewport, meta = document.querySelector('meta[name="viewport"]');
+  if (vv && meta) {
+    const base = meta.getAttribute('content');
+    vv.addEventListener('resize', () => {
+      if (vv.scale > 1.02) {
+        // re-stating the page scale makes the browser zoom back out
+        meta.setAttribute('content', base + ', minimum-scale=1');
+        setTimeout(() => meta.setAttribute('content', base), 300);
+      }
+    });
+  }
+}
+
 // ---------- wire up ----------
 function init() {
   $('name').value = settings.name || '';
@@ -979,6 +1041,9 @@ function init() {
   }
 
   $('btn-host').addEventListener('click', hostGame);
+  $('btn-rejoin').addEventListener('click', () => { const code = lastRoom(); if (code) joinGame(code); else updateRejoin(); });
+  updateRejoin();
+  stopPageZoom();
   $('btn-join').addEventListener('click', () => joinGame($('code').value));
   $('code').addEventListener('keydown', e => { if (e.key === 'Enter') joinGame($('code').value); });
   $('code').addEventListener('input', e => { e.target.value = normaliseCode(e.target.value); });
