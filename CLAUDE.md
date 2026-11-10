@@ -43,7 +43,9 @@ The only folder is `server/` (the optional home game server).
 - `flame` = "Flame (beta)": built from the owner's own drawn plan (1 px = 12.5 cm, lines straightened), shapes only so far;
   `tuscan` theme (own Tuscan hill-town look, no copied assets/signs): flaking 'oldplaster' + stone, 'ply' crates on pallets,
   wooden barrels, small blue pickup (`truck.mini`), dirt + dry-grass tufts, drainpipes/aerials (`theme.pipes/antennas`),
-  deco 'shopfront' (own sign "CANTINA FIAMMA"), 'railing', 'corbels', 'painta', 'gate', 'bucket', 'stairarch', paving 'terracotta'.
+  deco 'shopfront' (stone arcade built 0.5 m out, own sign "CANTINA FIAMMA"; its piers + stone above the arches are
+  '_stone' collision in the map), 'railing', 'corbels', 'painta', 'gate', 'bucket', 'stairarch', 'curb', 'ivy', 'shrubs', 'pot',
+  paving 'terracotta'; ground texture 'setts'. Wood barrels (`theme.woodBarrels`) are closed lathe bodies + lid + 4 hoops.
   Upstairs floor H 3.2 m; barrel → truck (bed 1.3, cab 2.4) → balcony jump route (tested in game).
 - Maps: 2v2 `outpost`, `foundry`, `frostline`, `canal`, `flame` (one bomb site each, plus `dm` spawns for 3-player deathmatch);
   deathmatch `quarry`, `railyard` (`mode: 'dm'`, small/large variants via `build(b, size)`; `resolveMap()` in `maps.js`)

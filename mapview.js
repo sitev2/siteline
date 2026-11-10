@@ -91,7 +91,7 @@ export const THEMES = {
   tuscan: {
     skyTop: '#6fa3d6', skyHorizon: '#f1e6d2', fog: '#ece2cf', fogNear: 50, fogFar: 180,
     sun: '#fff1da', sunIntensity: 2.8, hemiSky: '#dbe9ff', hemiGround: '#cdb592', hemiIntensity: 1.3,
-    floor: ['cobble', '#c3b79f'], floorTile: 2.4,
+    floor: ['setts', '#c7bca6'], floorTile: 2.6,
     mats: {
       stucco: ['oldplaster', '#ffffff'], stone: ['blocks', '#ffffff'], brick: ['brick', '#ffffff'],
       mass: ['oldplaster', '#e3a35a'], wall: ['blocks', '#d6cfc3'], building: ['oldplaster', '#e9c27a'],
@@ -506,10 +506,10 @@ export function buildMapScene(world, renderer, gfx = {}, night = false) {
     }
   }
   const barrels = world.props.filter(p => p.type === 'barrel');
-  if (barrels.length) {
-    const wood = !!theme.woodBarrels;
-    const geo = wood ? new THREE.LatheGeometry(Array.from({ length: 9 }, (_, k) => new THREE.Vector2(0.38 + 0.07 * Math.sin(Math.PI * k / 8), k / 8 - 0.5)), 18) : new THREE.CylinderGeometry(0.42, 0.42, 1.0, 16);
-    const ringGeo = wood ? new THREE.CylinderGeometry(0.43, 0.43, 0.05, 18) : new THREE.CylinderGeometry(0.44, 0.44, 0.06, 16);
+  if (barrels.length && theme.woodBarrels) group.add(...woodBarrels(barrels, theme, shadows));
+  else if (barrels.length) {
+    const geo = new THREE.CylinderGeometry(0.42, 0.42, 1.0, 16);
+    const ringGeo = new THREE.CylinderGeometry(0.44, 0.44, 0.06, 16);
     const inst = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: '#ffffff' }), barrels.length);
     const rings = new THREE.InstancedMesh(ringGeo, lam('#2a2a2a'), barrels.length * 2);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1);
@@ -518,7 +518,7 @@ export function buildMapScene(world, renderer, gfx = {}, night = false) {
       m4.compose(new THREE.Vector3(cx, 0.5, cz), q, one);
       inst.setMatrixAt(i, m4);
       inst.setColorAt(i, new THREE.Color(theme.barrels[i % theme.barrels.length]));
-      for (const [k, y] of wood ? [[0, 0.16], [1, 0.84]] : [[0, 0.3], [1, 0.7]]) { m4.compose(new THREE.Vector3(cx, y, cz), q, one); rings.setMatrixAt(i * 2 + k, m4); }
+      for (const [k, y] of [[0, 0.3], [1, 0.7]]) { m4.compose(new THREE.Vector3(cx, y, cz), q, one); rings.setMatrixAt(i * 2 + k, m4); }
     });
     inst.castShadow = shadows; inst.receiveShadow = shadows; rings.castShadow = shadows;
     group.add(inst, rings);
@@ -583,6 +583,57 @@ export function buildMapScene(world, renderer, gfx = {}, night = false) {
   const fog = night ? new THREE.Fog('#070a12', 6, Math.min(far, 70))
     : new THREE.Fog(theme.fog, Math.min(theme.fogNear, far * 0.3), Math.min(theme.fogFar * Math.max(1, far / 200), far));
   return { group, theme, fog, sky, sun, far };
+}
+
+// wooden barrels: a closed, bulging body of staves with a lid sunk inside a rim, and four iron hoops
+const BARREL_R = (y) => 0.37 + 0.07 * Math.sin(Math.PI * y);     // radius at height y (0 = bottom, 1 = top)
+function woodBarrels(barrels, theme, shadows) {
+  // join a few pieces into one geometry (positions, normals, uvs)
+  const join = (parts) => {
+    const pos = [], nor = [], uv = [];
+    for (const g0 of parts) {
+      const g = g0.index ? g0.toNonIndexed() : g0;
+      pos.push(...g.attributes.position.array); nor.push(...g.attributes.normal.array); uv.push(...g.attributes.uv.array);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    return g;
+  };
+  const seg = 20, lid = 0.345, top = BARREL_R(1);
+  const body = new THREE.LatheGeometry(Array.from({ length: 11 }, (_, k) => new THREE.Vector2(BARREL_R(k / 10), k / 10)), seg);
+  const chime = new THREE.LatheGeometry([new THREE.Vector2(lid, 1), new THREE.Vector2(lid, 0.965)], seg);      // inside of the rim (faces in)
+  const rim = new THREE.RingGeometry(lid, top, seg).rotateX(-Math.PI / 2).translate(0, 1, 0);
+  const head = new THREE.CircleGeometry(lid, seg).rotateX(-Math.PI / 2).translate(0, 0.965, 0);
+  const bottom = new THREE.CircleGeometry(top, seg).rotateX(Math.PI / 2);
+  const geo = join([body, chime, rim, head, bottom]);
+  // pale stave texture (tinted per barrel by the instance colour)
+  const c = document.createElement('canvas'); c.width = 256; c.height = 64;
+  const g = c.getContext('2d');
+  const staves = 16, sw = c.width / staves;
+  for (let k = 0; k < staves; k++) {
+    const v = 0.8 + hash2(k, 5) * 0.2;
+    g.fillStyle = `rgb(${Math.round(255 * v)},${Math.round(245 * v)},${Math.round(230 * v)})`; g.fillRect(k * sw, 0, sw, 64);
+    for (let i = 0; i < 6; i++) { g.fillStyle = `rgba(90,60,30,${0.05 + hash2(k, i) * 0.08})`; g.fillRect(k * sw + hash2(i, k + 9) * sw, 0, 1, 64); }
+    g.fillStyle = 'rgba(40,25,10,0.55)'; g.fillRect(k * sw, 0, 1.5, 64);
+  }
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const inst = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ map: tex }), barrels.length);
+  // hoops follow the bulge (open-ended, so no discs inside the barrel)
+  const hoopAt = [0.07, 0.24, 0.76, 0.93];
+  const hoopGeo = join(hoopAt.map(y => new THREE.CylinderGeometry(BARREL_R(y + 0.025) + 0.008, BARREL_R(y - 0.025) + 0.008, 0.05, seg, 1, true).translate(0, y, 0)));
+  const hoops = new THREE.InstancedMesh(hoopGeo, lam('#34302c'), barrels.length);
+  const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1), up = new THREE.Vector3(0, 1, 0);
+  barrels.forEach((p, i) => {
+    const cx = (p.x0 + p.x1) / 2, cz = (p.z0 + p.z1) / 2;
+    q.setFromAxisAngle(up, hash2(i, 17) * Math.PI * 2);
+    m4.compose(new THREE.Vector3(cx, 0, cz), q, one);
+    inst.setMatrixAt(i, m4); hoops.setMatrixAt(i, m4);
+    inst.setColorAt(i, new THREE.Color(theme.barrels[i % theme.barrels.length]));
+  });
+  inst.castShadow = shadows; inst.receiveShadow = shadows; hoops.castShadow = shadows;
+  return [inst, hoops];
 }
 
 // a dome of faint stars for night mode

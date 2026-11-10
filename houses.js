@@ -82,25 +82,68 @@ function flagstones() {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
 }
-// red brick paving laid in rows, a little worn
+// terracotta brick paving laid in rows: muted reds and browns, worn and dusty
 function brickPaving() {
   const n = 256, c = document.createElement('canvas');
   c.width = c.height = n;
   const g = c.getContext('2d');
-  g.fillStyle = '#b8806a'; g.fillRect(0, 0, n, n);
+  g.fillStyle = '#8c7a68'; g.fillRect(0, 0, n, n);
   let s = 11;
   const r = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
   const bh = 16, bw = 48;
+  const tones = [[150, 80, 62], [142, 74, 58], [158, 90, 70], [128, 70, 56], [164, 104, 84], [138, 66, 52]];
   for (let row = 0; row < n / bh; row++) for (let col = -1; col < n / bw + 1; col++) {
-    const x = col * bw + (row % 2) * bw / 2, v = 0.88 + r() * 0.2;
-    g.fillStyle = `rgb(${Math.round(222 * v)},${Math.round(112 * v)},${Math.round(92 * v)})`;
+    const x = col * bw + (row % 2) * bw / 2, v = 0.86 + r() * 0.2, t = tones[Math.floor(r() * tones.length)];
+    g.fillStyle = `rgb(${Math.round(t[0] * v)},${Math.round(t[1] * v)},${Math.round(t[2] * v)})`;
     g.fillRect(x + 1.5, row * bh + 1.5, bw - 3, bh - 3);
+    g.fillStyle = 'rgba(255,235,210,0.10)'; g.fillRect(x + 1.5, row * bh + 1.5, bw - 3, 2);        // worn top edge
+    g.fillStyle = 'rgba(40,20,10,0.12)'; g.fillRect(x + 1.5, row * bh + bh - 3.5, bw - 3, 2);
+    if (r() < 0.15) { g.fillStyle = 'rgba(70,50,40,0.25)'; g.fillRect(x + 4 + r() * (bw - 14), row * bh + 3 + r() * 6, 3 + r() * 6, 2 + r() * 3); }   // a chip
   }
   for (let i = 0; i < 3000; i++) { g.fillStyle = `rgba(${r() < 0.5 ? '0,0,0' : '255,240,220'},${r() * 0.08})`; g.fillRect(r() * n, r() * n, 2, 2); }
+  // dust in the joints and pale patches where feet wear it
+  for (let i = 0; i < 6; i++) {
+    const x = r() * n, y = r() * n, rad = 30 + r() * 50;
+    for (const dx of [-n, 0, n]) for (const dy of [-n, 0, n]) {
+      const gr = g.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, rad);
+      gr.addColorStop(0, 'rgba(214,190,160,0.22)'); gr.addColorStop(1, 'rgba(214,190,160,0)');
+      g.fillStyle = gr; g.fillRect(x + dx - rad, y + dy - rad, rad * 2, rad * 2);
+    }
+  }
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
+}
+// a clump of ivy (transparent outside the leaves), for climbing up walls
+let ivyTex = null;
+function ivyTexture() {
+  if (ivyTex) return ivyTex;
+  const n = 256, c = document.createElement('canvas');
+  c.width = c.height = n;
+  const g = c.getContext('2d');
+  let s = 5;
+  const r = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const greens = ['#3f6a2e', '#4d7a34', '#5b8a3c', '#36592a', '#6a9645', '#47702f'];
+  // stems climbing from the bottom, leaves thicker low down and thinning out at the top and sides
+  for (let k = 0; k < 9; k++) {
+    let x = n * (0.15 + r() * 0.7), y = n;
+    g.strokeStyle = 'rgba(80,60,40,0.9)'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(x, y);
+    const pts = [];
+    while (y > n * (0.05 + r() * 0.3)) { x += (r() - 0.5) * 22; y -= 10 + r() * 10; x = Math.max(10, Math.min(n - 10, x)); g.lineTo(x, y); pts.push([x, y]); }
+    g.stroke();
+    for (const [px, py] of pts) for (let i = 0; i < 9; i++) {
+      const lx = px + (r() - 0.5) * 34, ly = py + (r() - 0.5) * 22, sz = 5 + r() * 6;
+      g.fillStyle = greens[Math.floor(r() * greens.length)];
+      g.save(); g.translate(lx, ly); g.rotate(r() * Math.PI * 2);
+      g.beginPath(); g.moveTo(0, -sz); g.quadraticCurveTo(sz, -sz * 0.2, 0, sz); g.quadraticCurveTo(-sz, -sz * 0.2, 0, -sz); g.fill();
+      g.restore();
+    }
+  }
+  ivyTex = new THREE.CanvasTexture(c);
+  ivyTex.colorSpace = THREE.SRGBColorSpace;
+  return ivyTex;
 }
 // square terracotta floor tiles (for rooms)
 function floorTiles() {
@@ -604,33 +647,110 @@ export function villageDeco(world, d, I, group, { night = false, shadows = false
       }
     }
   } else if (d.type === 'shopfront') {
-    // [x0, x1, z (wall face), dir (+1 faces +z), name]: a two-arch shopfront on a plain wall, with a sign
-    const [x0, x1, z, dir, name] = a, len = x1 - x0, n = 2, aw = len / n;
-    const zf = z + dir * 0.02, depth = 0.08;
-    const stone = '#e4dccd', dark = '#3a2c22', wood = '#7a5a3c';
-    for (let k = 0; k < n; k++) {
-      const cx = x0 + aw * (k + 0.5), r = aw * 0.38, spring = 2.3;
-      box.add(cx, spring / 2, zf + dir * 0.02, r * 2, spring, 0.04, '#4a3a2e');                  // shadowed opening
-      half.add(cx, spring, zf + dir * 0.02, r, r, 0.04, '#4a3a2e', 0);
-      box.add(cx, 1.2, zf + dir * 0.05, r * 1.25, 2.4, 0.05, wood);                              // big wooden doors
-      for (let b = -2; b <= 2; b++) box.add(cx + b * r * 0.25, 1.2, zf + dir * 0.08, 0.04, 2.3, 0.02, '#5c4430');
-      box.add(cx, 2.42, zf + dir * 0.08, r * 1.3, 0.08, 0.04, '#5c4430');
-      half.add(cx, spring, zf + dir * 0.04, r + 0.28, r + 0.28, 0.05, stone, 0);                 // stone arch ring
-      half.add(cx, spring, zf + dir * 0.05, r, r, 0.05, '#4a3a2e', 0);
-      for (const s of [-1, 1]) box.add(cx + s * (r + 0.14), spring / 2, zf + dir * depth / 2, 0.28, spring, depth, stone);   // piers
-      box.add(cx, 0.12, zf + dir * 0.25, r * 2, 0.24, 0.5, '#cfc6b6');                           // worn step
+    // [x0, x1, z (wall face), dir (+1 faces +z), name, depth]: a stone arcade built out in front of a plain wall —
+    // two deep round arches with wooden cellar doors, piers, a cornice and a framed sign. Collision for the piers is
+    // added in the map (the openings stay walkable, a little way in).
+    const [x0, x1, z, dir, name, D = 0.5] = a, len = x1 - x0;
+    const pw = 0.5, n = 2, r = (len - pw * (n + 1)) / n / 2, sp = 2.2, H = sp + r + 1.5;
+    const cxs = Array.from({ length: n }, (_, k) => x0 + pw + r + k * (2 * r + pw));
+    const front = z + dir * D, stone = '#ddd4c4', stoneDk = '#c9bfae', iron = '#2b2a28', wood = '#6e4e34';
+    // the stone front itself: one slab with the arch openings cut out of it, pushed out from the wall
+    const pts = [new THREE.Vector2(0, 0)];
+    for (const cx of cxs) {
+      const lx = cx - x0;
+      pts.push(new THREE.Vector2(lx - r, 0), new THREE.Vector2(lx - r, sp));
+      for (let k = 1; k < 16; k++) { const t = Math.PI - (k / 16) * Math.PI; pts.push(new THREE.Vector2(lx + Math.cos(t) * r, sp + Math.sin(t) * r)); }
+      pts.push(new THREE.Vector2(lx + r, sp), new THREE.Vector2(lx + r, 0));
     }
-    // sign board, a cornice, and lamps on iron arms
-    const signY = 2.3 + aw * 0.38 + 0.75;
-    const sign = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(len * 0.6, 5), 0.85), new THREE.MeshLambertMaterial({ map: shopSign(name || 'CANTINA FIAMMA') }));
-    sign.position.set((x0 + x1) / 2, signY, z + dir * 0.06); if (dir < 0) sign.rotation.y = Math.PI;
+    pts.push(new THREE.Vector2(len, 0), new THREE.Vector2(len, H), new THREE.Vector2(0, H));
+    const tex = makeTexture('blocks', '#e2dacb', null, 41).clone();
+    tex.needsUpdate = true; tex.repeat.set(1 / 3, 1 / 3);
+    const slab = new THREE.Mesh(new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth: D, bevelEnabled: false, curveSegments: 1 }), new THREE.MeshLambertMaterial({ map: tex }));
+    if (dir > 0) slab.position.set(x0, 0, z); else { slab.position.set(x1, 0, z); slab.rotation.y = Math.PI; }
+    slab.castShadow = shadows; slab.receiveShadow = shadows;
+    group.add(slab);
+    for (const cx of cxs) {
+      // inside the arch: shade, a pair of plank doors, a fanlight grille, iron straps and rings
+      box.add(cx, sp / 2, z + dir * 0.02, 2 * r, sp, 0.04, '#3a2f27');
+      half.add(cx, sp, z + dir * 0.02, r, r, 0.04, '#2c241e', 0);
+      box.add(cx, (sp - 0.1) / 2, z + dir * 0.06, 2 * r - 0.12, sp - 0.1, 0.06, wood);
+      for (let b = 1; b < 12; b++) box.add(cx - r + b * (2 * r / 12), (sp - 0.1) / 2, z + dir * 0.095, 0.025, sp - 0.14, 0.02, '#4d3624');
+      box.add(cx, (sp - 0.1) / 2, z + dir * 0.1, 0.05, sp - 0.1, 0.03, '#3a2a1c');
+      for (const y of [0.45, 1.75]) box.add(cx, y, z + dir * 0.11, 2 * r - 0.3, 0.07, 0.02, iron);
+      for (const sx of [-0.18, 0.18]) cyl.add(cx + sx, 1.15, z + dir * 0.12, 0.06, 0.02, 0.06, '#8a7a5a', 0, Math.PI / 2);
+      box.add(cx, sp - 0.05, z + dir * 0.08, 2 * r, 0.1, 0.08, '#4d3624');                                  // transom
+      for (let b = -3; b <= 3; b++) {
+        const bx = b * r / 4, hgt = Math.sqrt(r * r - bx * bx) - 0.05;
+        box.add(cx + bx, sp + hgt / 2, z + dir * 0.06, 0.03, hgt, 0.03, iron);
+      }
+      // a ring of wedge stones round the arch, and a keystone
+      const nv = 13;
+      for (let k = 0; k < nv; k++) {
+        const t = Math.PI * (k + 0.5) / nv, rr = r + 0.16;
+        box.add(cx + Math.cos(t) * rr, sp + Math.sin(t) * rr, front + dir * 0.02, 0.32, Math.PI * rr / nv - 0.03, 0.04, k % 2 ? '#e4dccd' : '#d8cfbf', 0, 0, t);
+      }
+      box.add(cx, sp + r + 0.2, front + dir * 0.05, 0.36, 0.5, 0.1, '#e6dfd2');
+      // a worn stone step in front of each doorway
+      box.add(cx, 0.06, z + dir * (D - 0.2), 2 * r - 0.1, 0.12, 0.4, '#cfc6b6');
+    }
+    // impost blocks on the piers, a plinth along the bottom, a cornice along the top
+    for (let k = 0; k <= n; k++) {
+      const px = x0 + pw / 2 + k * (2 * r + pw);
+      box.add(px, sp - 0.07, front + dir * 0.03, pw + 0.12, 0.16, 0.06, '#e6dfd2');
+      box.add(px, 0.22, front + dir * 0.03, pw + 0.08, 0.44, 0.06, stoneDk);
+    }
+    box.add((x0 + x1) / 2, H + 0.09, z + dir * (D + 0.1) / 2, len + 0.3, 0.18, D + 0.1, '#e6dfd2');
+    box.add((x0 + x1) / 2, H + 0.24, z + dir * (D + 0.2) / 2, len + 0.4, 0.12, D + 0.2, stone);
+    box.add((x0 + x1) / 2, H - 0.12, front + dir * 0.02, len, 0.08, 0.04, stoneDk);
+    // the sign, set in a stone frame between the arches and the cornice
+    const sw = Math.min(len * 0.55, 4.6), sy = sp + r + (H - sp - r) / 2 + 0.05;
+    box.add((x0 + x1) / 2, sy, front + dir * 0.03, sw + 0.3, 1.05, 0.06, '#e6dfd2');
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(sw, 0.78), new THREE.MeshLambertMaterial({ map: shopSign(name || 'CANTINA FIAMMA') }));
+    sign.position.set((x0 + x1) / 2, sy, front + dir * 0.065); if (dir < 0) sign.rotation.y = Math.PI;
     group.add(sign);
-    box.add((x0 + x1) / 2, signY + 0.6, zf + dir * 0.08, len, 0.14, 0.16, stone);
-    for (const lx of [x0 + 0.5, (x0 + x1) / 2, x1 - 0.5]) {
-      box.add(lx, signY - 0.2, zf + dir * 0.22, 0.04, 0.04, 0.44, '#2a2a2a');
-      box.add(lx, signY - 0.42, zf + dir * 0.42, 0.18, 0.26, 0.18, '#2e2c28');
-      glow.add(lx, signY - 0.44, zf + dir * 0.42, 0.13, 0.18, 0.13, night ? '#ffe3a0' : '#efe2bc');
+    // iron lanterns on the outer piers
+    for (const lx of [x0 + pw / 2, x1 - pw / 2]) {
+      box.add(lx, 3.0, front + dir * 0.2, 0.04, 0.04, 0.4, '#2a2a2a');
+      box.add(lx, 2.92, front + dir * 0.38, 0.24, 0.05, 0.24, '#2a2a2a');
+      glow.add(lx, 2.74, front + dir * 0.38, 0.16, 0.3, 0.16, night ? '#ffe3a0' : '#efe2bc');
+      box.add(lx, 2.57, front + dir * 0.38, 0.2, 0.04, 0.2, '#2a2a2a');
     }
+  } else if (d.type === 'curb') {
+    // [x0, z0, x1, z1]: a low stone kerb round a paved area
+    const [x0, z0, x1, z1] = a;
+    box.add((x0 + x1) / 2, 0.03, (z0 + z1) / 2, x1 - x0, 0.06, z1 - z0, '#d6cebf');
+    box.add((x0 + x1) / 2, 0.062, (z0 + z1) / 2, x1 - x0 - 0.04, 0.008, z1 - z0 - 0.04, '#e2dbcd');
+  } else if (d.type === 'ivy') {
+    // [x, z, ry (which way the wall faces), width, height]: ivy climbing a wall
+    const [x, z, ry, w, hgt] = a;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, hgt), new THREE.MeshLambertMaterial({ map: ivyTexture(), alphaTest: 0.5, side: THREE.DoubleSide }));
+    m.position.set(x + Math.sin(ry) * 0.04, hgt / 2, z + Math.cos(ry) * 0.04); m.rotation.y = ry;
+    group.add(m);
+  } else if (d.type === 'shrubs') {
+    // [x0, z0, x1, z1, y]: a bed of low shrubs and a few flowers on top of a planter
+    const [x0, z0, x1, z1, y] = a;
+    const leaves = new THREE.IcosahedronGeometry(1, 0);
+    let s = Math.floor(x0 * 13 + z0 * 7);
+    const r = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+    box.add((x0 + x1) / 2, y + 0.01, (z0 + z1) / 2, x1 - x0 - 0.16, 0.03, z1 - z0 - 0.16, '#5a4632');
+    const greens = ['#4f7a36', '#5d8a3e', '#466e30', '#6b9446'];
+    for (let i = 0; i < 7; i++) {
+      const m = new THREE.Mesh(leaves, new THREE.MeshLambertMaterial({ color: greens[i % greens.length], flatShading: true }));
+      const sz = 0.16 + r() * 0.12;
+      m.position.set(x0 + 0.2 + r() * (x1 - x0 - 0.4), y + sz * 0.6, z0 + 0.2 + r() * (z1 - z0 - 0.4));
+      m.scale.set(sz, sz * 0.8, sz); m.rotation.set(r() * 3, r() * 3, 0);
+      m.castShadow = shadows; group.add(m);
+      // a couple of small flowers sitting on top of each shrub
+      for (let f = 0; f < 2; f++) { const a2 = r() * Math.PI * 2; box.add(m.position.x + Math.cos(a2) * sz * 0.35, m.position.y + sz * 0.68, m.position.z + Math.sin(a2) * sz * 0.35, 0.035, 0.02, 0.035, ['#d8323a', '#f2c84a', '#ffffff'][(i + f) % 3]); }
+    }
+  } else if (d.type === 'pot') {
+    // [x, z]: a big terracotta pot with a small bush
+    const [x, z] = a;
+    cyl.add(x, 0.3, z, 0.24, 0.6, 0.24, '#b5653f');
+    cyl.add(x, 0.58, z, 0.28, 0.06, 0.28, '#a85a38');
+    const m = new THREE.Mesh(new THREE.IcosahedronGeometry(0.32, 0), new THREE.MeshLambertMaterial({ color: '#557f3a', flatShading: true }));
+    m.position.set(x, 0.85, z); m.scale.set(1, 0.85, 1); m.castShadow = shadows;
+    group.add(m);
   } else if (d.type === 'railing') {
     // [x0, z0, x1, z1, y]: an iron railing (thin bars) along a balcony edge; collision is invisible ('_rail')
     const [x0, z0, x1, z1, y] = a, alongX = x1 - x0 >= z1 - z0;
@@ -674,7 +794,7 @@ export function villageDeco(world, d, I, group, { night = false, shadows = false
   } else if (d.type === 'paving') {
     // [x0, z0, x1, z1, 'flags' (big stone slabs) | 'tiles' (terracotta, for rooms) | 'terracotta' (red brick paving)]
     const [x0, z0, x1, z1, kind = 'flags'] = a;
-    const tile = kind === 'tiles' ? 1.4 : kind === 'terracotta' ? 2.4 : 6;
+    const tile = kind === 'tiles' ? 1.4 : kind === 'terracotta' ? 1.8 : 6;
     const geo = new THREE.PlaneGeometry(x1 - x0, z1 - z0);
     const uv = geo.attributes.uv;
     for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (x1 - x0) / tile, uv.getY(i) * (z1 - z0) / tile);

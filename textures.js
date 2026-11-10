@@ -98,6 +98,50 @@ export function makeTexture(kind, base, renderer, seed = 1) {
       }
     }
     speckle(ctx, size, base, 0.12, 2500, r);
+  } else if (kind === 'setts') {
+    // worn stone setts: uneven rounded blocks in rows, grey to warm beige, dusty joints
+    ctx.fillStyle = shade(base, -0.24); ctx.fillRect(0, 0, size, size);
+    speckle(ctx, size, shade(base, -0.18), 0.12, 1500, r);
+    const rows = 12, rh = size / rows;
+    const stone = (x, y, w, hgt, fill) => {
+      const rad = Math.min(w, hgt) * (0.3 + r() * 0.2), j = () => (r() - 0.5) * 2.2;
+      for (const dx of [-size, 0, size]) {
+        const x0 = x + dx + 1.2 + j() * 0.4, y0 = y + 1.2 + j() * 0.4, x1 = x + dx + w - 1.2 + j() * 0.4, y1 = y + hgt - 1.2 + j() * 0.4;
+        ctx.beginPath();
+        ctx.moveTo(x0 + rad, y0 + j()); ctx.lineTo(x1 - rad, y0 + j()); ctx.quadraticCurveTo(x1, y0, x1 + j(), y0 + rad);
+        ctx.lineTo(x1 + j(), y1 - rad); ctx.quadraticCurveTo(x1, y1, x1 - rad, y1 + j());
+        ctx.lineTo(x0 + rad, y1 + j()); ctx.quadraticCurveTo(x0, y1, x0 + j(), y1 - rad);
+        ctx.lineTo(x0 + j(), y0 + rad); ctx.quadraticCurveTo(x0, y0, x0 + rad, y0 + j());
+        const gr = ctx.createLinearGradient(0, y0, 0, y1);
+        gr.addColorStop(0, shade(fill, 0.06)); gr.addColorStop(0.5, fill); gr.addColorStop(1, shade(fill, -0.07));
+        ctx.fillStyle = gr; ctx.fill();
+      }
+    };
+    const tones = ['#c9c2b4', '#d2c6ae', '#bdb6aa', '#d8cdb6', '#c4b8a0', '#cfc9bd', '#b9ae98'];
+    for (let row = 0; row < rows; row++) {
+      // widths that add up to exactly one tile, so the texture repeats without a seam
+      const ws = []; let tot = 0;
+      while (tot < size) { const w = rh * (0.9 + r() * 0.9); ws.push(w); tot += w; }
+      const k = size / tot;
+      let x = r() * rh;
+      for (const w0 of ws) {
+        const w = w0 * k;
+        const t = tones[Math.floor(r() * tones.length)];
+        const fill = new THREE.Color(t).lerp(new THREE.Color(base), 0.35);
+        stone(x, row * rh, w, rh, shade(`#${fill.getHexString()}`, (r() - 0.5) * 0.08));
+        x += w;
+      }
+    }
+    speckle(ctx, size, base, 0.14, 2200, r);
+    // dust settled in patches
+    for (let i = 0; i < 5; i++) {
+      const x = r() * size, y = r() * size, rad = 25 + r() * 40;
+      for (const dx of [-size, 0, size]) for (const dy of [-size, 0, size]) {
+        const gr = ctx.createRadialGradient(x + dx, y + dy, 0, x + dx, y + dy, rad);
+        gr.addColorStop(0, 'rgba(200,180,140,0.22)'); gr.addColorStop(1, 'rgba(200,180,140,0)');
+        ctx.fillStyle = gr; ctx.fillRect(x + dx - rad, y + dy - rad, rad * 2, rad * 2);
+      }
+    }
   } else if (kind === 'oldplaster') {
     // sun-faded plaster, flaking off in places to show the grey stone underneath
     speckle(ctx, size, base, 0.1, 8000, r);
@@ -139,11 +183,19 @@ export function makeTexture(kind, base, renderer, seed = 1) {
     ctx.fillRect(0, 0, size, f); ctx.fillRect(0, size - f, size, f); ctx.fillRect(0, 0, f, size); ctx.fillRect(size - f, 0, f, size);
     ctx.fillStyle = shade(base, -0.4);
     for (const [x, y] of [[6, 6], [size - 6, 6], [6, size - 6], [size - 6, size - 6], [size / 2, 6], [size / 2, size - 6]]) { ctx.beginPath(); ctx.arc(x, y, 2.5, 0, 7); ctx.fill(); }
-    // our own stencil: a small flame in a ring
-    ctx.strokeStyle = 'rgba(150,40,40,0.75)'; ctx.fillStyle = 'rgba(150,40,40,0.75)'; ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.arc(size * 0.5, size * 0.55, 30, 0, 7); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(size * 0.5, size * 0.55 - 22); ctx.quadraticCurveTo(size * 0.5 + 16, size * 0.55, size * 0.5, size * 0.55 + 20);
-    ctx.quadraticCurveTo(size * 0.5 - 16, size * 0.55, size * 0.5, size * 0.55 - 22); ctx.fill();
+    // our own stencil: a word, a small flame and a lot number, sprayed on slightly unevenly
+    ctx.save();
+    ctx.translate(size / 2, size / 2); ctx.rotate((r() - 0.5) * 0.06);
+    ctx.fillStyle = 'rgba(140,42,36,0.78)'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.font = 'bold 34px "Arial Black", Impact, sans-serif';
+    ctx.fillText('FIAMMA', 0, -26);
+    ctx.fillRect(-70, -4, 140, 5);
+    ctx.font = 'bold 20px "Arial Black", Impact, sans-serif';
+    ctx.fillText('VINI · N° 7', 0, 18);
+    ctx.beginPath(); ctx.moveTo(0, 36); ctx.quadraticCurveTo(13, 52, 0, 66); ctx.quadraticCurveTo(-13, 52, 0, 36); ctx.fill();
+    ctx.restore();
+    for (let i = 0; i < 300; i++) { ctx.fillStyle = shade(base, (r() - 0.5) * 0.1); ctx.globalAlpha = 0.5; ctx.fillRect(size * 0.2 + r() * size * 0.6, size * 0.3 + r() * size * 0.45, 2, 2); }
+    ctx.globalAlpha = 1;
   } else if (kind === 'concrete') {
     speckle(ctx, size, base, 0.1, 6000, r);
     ctx.fillStyle = shade(base, -0.12);

@@ -316,7 +316,7 @@ function backdrop(world, theme, kind, night, far) {
   if (kind === 'tuscan') {
     // dry fields and vineyards, rolling hills with cypresses, a blue mountain ridge, and more of the town just outside
     M.geo(new THREE.CylinderGeometry(R * 2.2, R * 2.2, 0.2, 40), cx, -0.15, cz, 0, fade('#b9a56e', cx + R, cz, -0.2));
-    around(9, 130, 190, (x, z) => { const w = (70 + r() * 60) * S; M.geo(U_CONE(7), x, -2, z, r() * 3, fade('#7d8fa6', x, z, 0.05), w, (45 + r() * 45) * S, w * 0.8, fade('#a7b4c4', x, z, 0.05), 0.75); }, 60);
+    around(9, 85, 110, (x, z) => { const w = (70 + r() * 60) * S; M.geo(U_CONE(7), x, -2, z, r() * 3, fade('#7d8fa6', x, z, 0.05), w, (30 + r() * 30) * S, w * 0.8, fade('#a7b4c4', x, z, 0.05), 0.75); }, 45);
     around(14, 70, 130, (x, z) => { const w = (45 + r() * 45) * S; M.geo(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), x, -2, z, r() * 3, fade(['#8f925a', '#9c9560', '#7f8a52'][Math.floor(r() * 3)], x, z), w, (14 + r() * 18) * S, w * 0.7); });
     around(40, 14, 70, (x, z) => { const hgt = (8 + r() * 7) * S; M.geo(U_CONE(7), x, 0, z, 0, fade('#33482c', x, z), 0.9 * S + r() * 0.4 * S, hgt, 0.9 * S + r() * 0.4 * S); }, 1.5);
     const walls = ['#e3a35a', '#e8bf6a', '#d9cfc0', '#cfc8bc', '#e6b277', '#d8a160', '#c9c2b6'];
@@ -326,6 +326,23 @@ function backdrop(world, theme, kind, night, far) {
       M.geo(U_ROOF, x, hh, z, -a + (r() < 0.5 ? Math.PI / 2 : 0), fade('#c98a5c', x, z, -0.15), w * 1.08, w * 0.28, d * 1.08);
       if (r() < 0.4) M.geo(U_BOX, x + 1.2 * S, hh + 0.5 * S, z, -a, fade('#d9cfc0', x, z, -0.15), 0.8 * S, 1.8 * S, 0.8 * S);
     }, 8);
+    // a walled hill town on a high hill to the north, rising behind the roofs: houses packed round the top,
+    // two tall square towers and a church with a dome
+    const ta = -1.2 + (r() - 0.5) * 0.2, tx = cx + Math.cos(ta) * (D / 2 + 80 * S), tz = cz + Math.sin(ta) * (D / 2 + 80 * S), base = 34 * S;
+    M.geo(new THREE.SphereGeometry(1, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2), tx, -2, tz, 0, fade('#8f925a', tx, tz), 60 * S, base + 6 * S, 44 * S);
+    M.geo(U_BOX, tx, base - 6 * S, tz, 0.2, fade('#cfc6b4', tx, tz), 30 * S, 8 * S, 20 * S);                // the old wall round the top
+    for (let k = 0; k < 26; k++) {
+      const ox = (r() - 0.5) * 30 * S, oz = (r() - 0.5) * 18 * S, hh = (4 + r() * 6) * S, ry = 0.2 + (r() < 0.5 ? 0 : Math.PI / 2);
+      M.geo(U_BOX, tx + ox, base - 2 * S, tz + oz, ry, fade(walls[k % walls.length], tx, tz), (4 + r() * 3) * S, hh, (4 + r() * 2) * S);
+      M.geo(U_ROOF, tx + ox, base - 2 * S + hh, tz + oz, ry, fade('#c98a5c', tx, tz), (4.4 + r() * 3) * S, 1.4 * S, (4.4 + r() * 2) * S);
+    }
+    for (const [ox, oz, hh] of [[-6, 2, 24], [8, -1, 17]]) {         // two square towers with a cap
+      M.geo(U_BOX, tx + ox * S, base - 2 * S, tz + oz * S, 0.2, fade('#d6cbb6', tx, tz), 3 * S, hh * S, 3 * S);
+      M.geo(U_BOX, tx + ox * S, base + (hh - 2) * S, tz + oz * S, 0.2, fade('#cdbfa8', tx, tz), 3.6 * S, 1 * S, 3.6 * S);
+    }
+    M.geo(U_BOX, tx + 1 * S, base - 2 * S, tz + 4 * S, 0.2, fade('#e1d6c2', tx, tz), 6 * S, 11 * S, 10 * S);    // church and dome
+    M.geo(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), tx + 1 * S, base + 9 * S, tz + 4 * S, 0, fade('#c4875e', tx, tz), 3 * S, 4 * S, 3 * S);
+    around(10, 40, 80, (x, z) => { for (let k = 0; k < 4; k++) M.geo(U_CONE(7), x + (r() - 0.5) * 6 * S, 0, z + (r() - 0.5) * 6 * S, 0, fade('#33482c', x, z), 0.8 * S, (7 + r() * 5) * S, 0.8 * S); }, 4);   // rows of cypresses
   } else if (kind === 'village') {
     // farmland all round, rolling hills with cypresses and olive trees, and more of the village just outside
     M.geo(new THREE.CylinderGeometry(R * 2.2, R * 2.2, 0.2, 40), cx, -0.15, cz, 0, fade('#a39a5e', cx + R, cz, -0.2));
@@ -568,11 +585,12 @@ export function decorateMap(world, theme, group, { gfx = {}, night = false, shad
     const r = rng(world.def.name.length * 31 + 7);
     // scattered on open ground
     const scatter = kinds.filter(k => k !== 'drift' && k !== 'line');
+    const paved = (world.deco || []).filter(d => d.type === 'paving').map(d => d.args);
     const n = Math.floor(world.width * world.depth / 28);
     for (let i = 0; i < n && scatter.length; i++) {
       const x = r() * world.width, z = r() * world.depth;
       const sp = world.cellSpans(Math.floor(x / CELL), Math.floor(z / CELL));
-      if (sp.length) continue;
+      if (sp.length || paved.some(([x0, z0, x1, z1]) => x > x0 - 0.8 && x < x1 + 0.8 && z > z0 - 0.8 && z < z1 + 0.8)) continue;
       const k = scatter[Math.floor(r() * scatter.length)];
       const s = k === 'puddle' ? 1.5 + r() * 2 : k === 'oil' ? 1 + r() * 1.5 : 1.2 + r() * 2.2;
       inst[k].add(x, 0.012 + r() * 0.004, z, s, 1, s * (0.7 + r() * 0.5), '#ffffff', r() * Math.PI * 2);

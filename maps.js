@@ -585,10 +585,10 @@ export const MAPS = {
     theme: 'tuscan',
     size: [62, 62],
     massHeight: 8,
-    // sun-faded orange and ochre plaster, grey stone, one red-painted wall; pale terracotta roofs; green and brown shutters
+    // sun-faded orange and ochre plaster, grey stone; pale terracotta roofs; green and brown shutters
     village: {
       hMin: 5.5, hMax: 9,
-      palette: ['#e39a50', '#e8b65e', '#e5a85c', '#e9c77a', '#d98e4a', '#e4b26e', '#cf7b62', '#e7bd6c'],
+      palette: ['#e39a50', '#e8b65e', '#e5a85c', '#e9c77a', '#d98e4a', '#e4b26e', '#cd8a55', '#e7bd6c'],
       stone: ['#d3ccc0', '#cbc4b8', '#d9d2c6'],
       roofs: ['#cf9064', '#c9855a', '#d69a6e', '#c27c52', '#d38c60'],
       shutters: ['#6f9a52', '#7a5a3e', '#6a8f4c', '#8a6446', '#5f7a4a'],
@@ -704,7 +704,7 @@ export const MAPS = {
       b.crate(42.5, 23, 45, 25.5);                     // site
       b.box(37.5, 25, 39.5, 27.5);
       b.box(41, 30, 43, 32.5);
-      b.wall(39.5, 29.5, 40.5, 30.5, 1.2, 'low');      // the small solid block beside it
+      b.wall(39.5, 29.5, 40.5, 30.5, 1.2, 'low');      // the small solid block beside it (a stone planter)
       b.crate(44, 34, 46, 36);
       b.crate(37.5, 34.5, 39.5, 36.5);
       b.barrel(42.5, 34);
@@ -714,10 +714,19 @@ export const MAPS = {
 
       // ---------- site and spawns ----------
       b.site('A', 37.5, 20.5, 47.5, 37);
-      // ---------- look (visual only) ----------
-      b.deco('paving', 37.5, 22.5, 47, 37, 'terracotta');          // red brick paving on the site
+      // ---------- look (visual, apart from the arcade's stone and the pot) ----------
+      b.deco('paving', 37.5, 22.5, 47, 37, 'terracotta');          // brick paving on the site, with a stone kerb
       b.deco('paving', 37.5, 20, 39.5, 22.5, 'terracotta');
-      b.deco('shopfront', 39.5, 47, 22.5, 1, 'CANTINA FIAMMA');    // our own wine shop on the site's back wall
+      b.deco('curb', 37.5, 36.85, 47.15, 37.1); b.deco('curb', 46.9, 22.5, 47.15, 37.1);
+      // our own wine cellar on the site's back wall: a stone arcade built 0.5 m out (its piers and the stone above the
+      // arches are solid; the two doorways are shallow recesses)
+      b.deco('shopfront', 39.5, 47, 22.5, 1, 'CANTINA FIAMMA', 0.5);
+      for (const x of [39.5, 43, 46.5]) b.wall(x, 22.5, x + 0.5, 23, 2.2, '_stone');
+      b.wall(39.5, 22.5, 47, 23, 5.2, '_stone', 2.2);
+      b.deco('shrubs', 39.5, 29.5, 40.5, 30.5, 1.2);                // shrubs in the stone planter
+      b.wall(37.5, 20, 38, 20.5, 0.6, '_pot'); b.deco('pot', 37.75, 20.25);
+      b.deco('ivy', 37.5, 31.45, Math.PI / 2, 1.3, 5.2);               // ivy up the stone block beside the site
+      b.deco('ivy', 38.6, 20, 0, 1.8, 4.6);
       b.deco('painta', 40, 2.6, 15.45, Math.PI, 'left');            // painted site letters with arrows
       b.deco('painta', 34, 2.4, 43.95, Math.PI, 'left');
       b.deco('painta', 30.55, 2.4, 29, -Math.PI / 2, 'right');
