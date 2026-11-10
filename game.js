@@ -10,7 +10,7 @@ import { WEAPONS, SPOON, U, TOP_SPEED, ACCURATE_SPEED, STARTER_PISTOL, runSpeed,
 import { RULES } from './config.js';
 import { makePlayerModel, setModelWeapon, animateModel, modelRecoil, modelSwing, makeViewModel, makeBombModel, makeDropModel, setModelDetail, TEAM_COLORS } from './models.js';
 import { Ragdolls } from './ragdoll.js';
-import { keyMap, keyLabel } from './keys.js';
+import { keyMap, keyLabel, reverseMap } from './keys.js';
 import { radialTexture } from './textures.js';
 import { resolveGraphics } from './graphics.js';
 import { PostFX } from './post.js';
@@ -495,6 +495,8 @@ export class Game {
     const me = this.me;
     const bought = this.buyOpen && m.fresh && m.fresh.length;
     me.inv = m.inv; me.money = m.money; me.armor = m.armor; me.helmet = m.helmet; me.kit = m.kit;
+    // the first time the spoon turns up in a game, remind its owner how to pull it out
+    if (m.melee && !me.melee && !this.spoonHinted) { this.spoonHinted = true; this.spoonHintUntil = this.clock + 10; }
     me.melee = m.melee || null;
     me.refunds = m.refunds || {};
     for (const id of m.fresh || []) if (WEAPONS[id]) me.ammo[id] = { mag: WEAPONS[id].mag, res: WEAPONS[id].reserve };
@@ -2017,6 +2019,9 @@ export class Game {
     else if (pick) {
       const cur = me.inv[WEAPONS[pick.w].slot];
       hint = `${touch ? 'Tap ✋' : `Press ${this.key('use')}`} to ${cur ? `swap your ${itemName(cur)} for` : 'pick up'} the ${itemName(pick.w)}`;
+    } else if (me.alive && me.melee && me.weapon !== me.melee && this.clock < (this.spoonHintUntil || 0)) {
+      const rm = reverseMap(this.settings.keys), code = Object.keys(rm).find(c => rm[c] === 'w3');
+      hint = touch ? '🥄 Tap ⇄ for the spoon' : code ? `🥄 Press ${keyLabel(code)} for the spoon` : '🥄 Scroll the mouse wheel for the spoon';
     } else if (me.alive && this.phase === 'freeze') hint = touch ? 'Tap 🛒 to buy' : `Press ${this.key('buy')} to buy`;
     else if (me.alive && this.dm && this.clock - (this.spawnedAt || 0) < 3) hint = touch ? 'Tap 🛒 to change guns' : `Press ${this.key('buy')} to change guns`;
     hud.hint(hint);
