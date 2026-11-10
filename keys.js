@@ -27,6 +27,7 @@ export function keyMap(keys) { return { ...DEFAULT_KEYS, ...(keys || {}) }; }
 export function reverseMap(keys) {
   const k = keyMap(keys), out = {};
   for (const [act, code] of Object.entries(k)) {
+    if (!(act in DEFAULT_KEYS)) continue;      // left over from an older version of the game: ignore
     out[code] = act;
     const twin = code.replace(/Left$/, 'Right');
     if (twin !== code) out[twin] = out[twin] || act;

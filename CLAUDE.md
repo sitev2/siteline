@@ -33,6 +33,8 @@ The only folder is `server/` (the optional home game server).
   The host sets `p.spoon` from the name in `Server.addPlayer` and checks every swing in `onMelee` (`melee` message; others get `swing`).
   Key 3 / mouse wheel / touch ⇄ to hold it; fire = slash (40, then 25; 90 from behind), alt / 🥄 button = stab (65; 180 from behind).
   Keep it secret: no buy-menu entry, no How-to-play text, no entry in the key settings (`w3` is a hidden fallback in `keys.js`).
+  Only its owner sees a 10 s reminder ("🥄 Press 3 for the spoon") the first time it turns up in a game. `reverseMap` ignores
+  saved key settings for actions that no longer exist (an old one on key 3 used to block the spoon).
 - `bots.js` — bots for practice games only (range / bot match / bot deathmatch): `NavGrid` walking grid + `BotBrain`.
   Runs on the host; `Server.startBotGame(cfg)` starts them. Friends who join take a bot's place. Never add bots to normal matches.
   Bots hear footsteps / gunfire / the bomb (`Ears`), remember and share sightings, pre-aim, counter-strafe, use cover, and read
