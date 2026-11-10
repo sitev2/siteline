@@ -96,6 +96,17 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 #code { text-transform: uppercase; letter-spacing: .25em; font: 700 1.05rem var(--display); min-width: 0; }
 .practice-row .ghost { text-align: left; }
 .menu-links { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; }
+/* game server wake-up (server mode only: free cloud hosts sleep when nobody plays) */
+.server-wake { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.04); }
+.server-wake.hidden { display: none; }
+.server-wake .text { color: var(--muted); font-size: .9rem; line-height: 1.35; min-width: 0; }
+.server-wake .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--muted); }
+.server-wake[data-state="waking"] .dot { background: #f0b05a; animation: wake-pulse 1s ease-in-out infinite; }
+.server-wake[data-state="awake"] .dot { background: #6fdc8c; }
+.server-wake[data-state="awake"] .text { color: var(--text); }
+.server-wake[data-state="failed"] .dot { background: var(--danger); }
+@keyframes wake-pulse { 50% { opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .server-wake .dot { animation: none !important; } }
 /* connection problems: a box that stays until dismissed, and the connection check screen */
 .net-error { padding: 12px 14px; border-radius: 10px; background: rgba(255,90,74,.1); border: 1px solid rgba(255,90,74,.45); display: grid; gap: 10px; }
 .net-error p { margin: 0; line-height: 1.45; }

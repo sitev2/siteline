@@ -170,8 +170,80 @@ function isLeader() {
 }
 
 // ---------- dedicated server ----------
+// Free cloud hosts (e.g. Render) put the server to sleep when nobody plays; the first
+// request wakes it, which can take a minute. wakeServer() keeps asking the server's status
+// page until it answers, and shows progress on the menu (#server-wake).
+const wake = { state: 'idle', promise: null, checkedAt: 0 };
+const WAKE_LIMIT = 150000;   // give up after 2.5 min
+
+function serverHttpUrl() {
+  return String(CONFIG.serverUrl).replace(/^ws(s?):\/\//i, 'http$1://');
+}
+function setWake(state, text) {
+  wake.state = state;
+  const box = $('server-wake');
+  box.dataset.state = state;
+  $('server-wake-text').textContent = text;
+  const btn = $('btn-wake');
+  btn.disabled = state === 'waking';
+  btn.textContent = state === 'awake' ? 'Check again' : state === 'failed' ? 'Try again' : 'Wake server';
+}
+async function pingServer(ms) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  try {
+    const res = await fetch(serverHttpUrl(), { cache: 'no-store', signal: ctrl.signal });
+    return res.ok && (await res.text()).includes('SITELINE server is running');
+  } catch (e) {
+    return false;
+  } finally { clearTimeout(timer); }
+}
+// Resolves true once the server answers, false after WAKE_LIMIT. Calls share one attempt.
+function wakeServer(onTick) {
+  if (!CONFIG.serverUrl) return Promise.resolve(true);
+  if (wake.state === 'awake' && performance.now() - wake.checkedAt < 5 * 60000) return Promise.resolve(true);
+  if (wake.promise) { if (onTick) wake.ticks.add(onTick); return wake.promise; }
+  wake.ticks = new Set(onTick ? [onTick] : []);
+  const t0 = performance.now();
+  const secs = () => Math.round((performance.now() - t0) / 1000);
+  const tick = () => {
+    const text = `Waking the game server… ${secs()} s (can take up to a minute)`;
+    setWake('waking', text);
+    for (const f of wake.ticks) f(text);
+  };
+  tick();
+  const clock = setInterval(tick, 1000);
+  wake.promise = (async () => {
+    while (performance.now() - t0 < WAKE_LIMIT) {
+      if (await pingServer(20000)) {
+        wake.checkedAt = performance.now();
+        setWake('awake', `Game server is awake ✓${secs() > 2 ? ` (took ${secs()} s)` : ''}`);
+        return true;
+      }
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    setWake('failed', 'The game server did not wake up. It may be offline, or this Wi-Fi blocks it.');
+    return false;
+  })().finally(() => { clearInterval(clock); wake.promise = null; });
+  return wake.promise;
+}
+function initServerWake() {
+  if (!CONFIG.serverUrl) return;
+  $('server-wake').classList.remove('hidden');
+  $('btn-wake').addEventListener('click', () => { wake.checkedAt = 0; wakeServer(); });
+  wakeServer();   // start waking it as soon as the menu opens
+}
+
 async function serverGame(action, code) {
   const name = playerName();
+  hideNetError();
+  loading('Waking the game server…');
+  const awake = await wakeServer(text => loading(text));
+  if (!awake) {
+    loading(null);
+    showNetError('The game server did not wake up after 2.5 minutes. It may be offline, or this Wi-Fi blocks it. Try opening the server address in a new tab to check.');
+    return;
+  }
   cleanup();
   app.mode = 'client';
   app.code = code || null;
@@ -1041,6 +1113,7 @@ function init() {
   }
 
   $('btn-host').addEventListener('click', hostGame);
+  initServerWake();
   $('btn-rejoin').addEventListener('click', () => { const code = lastRoom(); if (code) joinGame(code); else updateRejoin(); });
   updateRejoin();
   stopPageZoom();
