@@ -16,6 +16,9 @@ The only folder is `server/` (the optional home game server).
   host's browser AND on the home server
 - `net.js` — connections: PeerJS peer-to-peer, Metered relay, WebSocket server mode. Joining tries any route, then relay-only;
   it resolves once the host answers. A failed relay sign-in is retried next time (never cached). Errors stay on the menu (`#net-error`).
+- Server mode (`serverUrl` / `?server=wss://…`): the menu shows a "Wake server" row (`#server-wake`, `wakeServer()` in `main.js`) that polls the
+  server's https status page until it answers (free Render hosting sleeps; waking takes up to a minute). It starts on page load, and
+  Host/Join wait for it before connecting (the WebSocket itself only waits 12 s).
 - `netlog.js` — connection log: every host/join/server attempt saves its steps (relay sign-in, matchmaking, ICE states, routes
   offered/tried from getStats, errors, drops, page hidden/offline) in localStorage (last 20). Copy via the error box
   (“Copy details”) or Connection check (“Copy everything”). Practice invite rooms only log when a friend connects.
