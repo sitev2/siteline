@@ -708,12 +708,14 @@ export const MAPS = {
       b.crate(44, 34, 46, 36);
       b.crate(37.5, 34.5, 39.5, 36.5);
       // roofed stone porch over that crate, against the stone block: a tall wall along the street (to 1.5 m past the
-      // crate), round arches on the north and east sides, a square pillar at the corner, a tiled roof
+      // crate), one round arch on the north side and two side by side on the east side, square pillars, a tiled roof
       b.wall(37.5, 36.5, 41, 37, 6.7, '_stone');                    // the tall wall
-      b.wall(40.5, 32.5, 41, 33, 5.7, '_stone');                    // the pillar
-      b.wall(37.5, 32.5, 40.5, 33, 6.7, '_stone', 3.8);             // stone above the arches
-      b.wall(40.5, 33, 41, 36.5, 5.7, '_stone', 3.8);
-      b.roof(37.5, 32.5, 41, 37, 5.7, '_roof');
+      b.wall(40.5, 31.5, 41, 32, 5.7, '_stone');                    // the corner pillar…
+      b.wall(40.5, 34, 41, 34.5, 5.7, '_stone');                    // …and the one between the two east arches
+      b.wall(37.5, 31.5, 40.5, 32, 6.7, '_stone', 3.9);             // stone above the arches
+      b.wall(40.5, 32, 41, 34, 5.7, '_stone', 3.4);
+      b.wall(40.5, 34.5, 41, 36.5, 5.7, '_stone', 3.4);
+      b.roof(37.5, 31.5, 41, 37, 5.7, '_roof');
       b.barrel(42.5, 34);
       b.barrel(33, 37.2);                              // truck yard, below the L-shaped block
       b.barrel(52.2, 23); b.barrel(52.2, 24.1);        // defender lane
@@ -732,9 +734,9 @@ export const MAPS = {
       b.wall(39.5, 22.5, 47, 23, 5.2, '_stone', 2.2);
       b.deco('shrubs', 39.5, 29.5, 40.5, 30.5, 1.2);                // shrubs in the stone planter
       b.wall(37.5, 20, 38, 20.5, 0.6, '_pot'); b.deco('pot', 37.75, 20.25);
-      b.deco('ivy', 37.5, 31.45, Math.PI / 2, 1.3, 5.2);               // ivy up the stone block beside the site
+      b.deco('ivy', 37.5, 29.05, Math.PI / 2, 1.3, 5.2);               // ivy up the stone block beside the site
       b.deco('ivy', 38.6, 20, 0, 1.8, 4.6);
-      b.deco('loggia', 37.5, 32.5, 41, 37);
+      b.deco('loggia', 37.5, 31.5, 41, 37, 2);
       b.deco('painta', 40, 2.6, 15.45, Math.PI, 'left');            // painted site letters with arrows
       b.deco('painta', 34, 2.4, 43.95, Math.PI, 'left');
       b.deco('painta', 30.55, 2.4, 29, -Math.PI / 2, 'right');

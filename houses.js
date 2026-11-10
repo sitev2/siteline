@@ -716,10 +716,11 @@ export function villageDeco(world, d, I, group, { night = false, shadows = false
       box.add(lx, 2.57, front + dir * 0.38, 0.2, 0.04, 0.2, '#2a2a2a');
     }
   } else if (d.type === 'loggia') {
-    // [x0, z0, x1, z1]: a roofed stone porch against a building whose face is at x0. A tall wall along z1,
-    // round arches on the z0 side and the x1 side, a square pillar with a base and capital at the (x1, z0) corner,
-    // and a tiled lean-to roof on wooden rafters. Collision (walls, pillar, stone above the arches) is in the map.
-    const [x0, z0, x1, z1] = a, T = 0.5, sp = 3.0, eave = 5.6, high = 6.6;
+    // [x0, z0, x1, z1, n]: a roofed stone porch against a building whose face is at x0. A tall wall along z1,
+    // one round arch on the z0 side and n side by side on the x1 side, square pillars with a base and capital
+    // (one at the (x1, z0) corner, one between each pair of arches), and a tiled lean-to roof on wooden rafters.
+    // Collision (walls, pillars, stone above the arches, roof) is in the map.
+    const [x0, z0, x1, z1, n = 1] = a, T = 0.5, sp = 2.8, eave = 5.6, high = 6.6;
     const roofY = (x) => high - (high - eave) * (x - x0) / (x1 - x0);       // underside of the roof
     const tex = (kind, base, seed) => { const t = makeTexture(kind, base, null, seed).clone(); t.needsUpdate = true; t.repeat.set(1 / 3, 1 / 3); return t; };
     const plaster = new THREE.MeshLambertMaterial({ map: tex('oldplaster', '#e6dccb', 53) });
@@ -741,15 +742,22 @@ export function villageDeco(world, d, I, group, { night = false, shadows = false
     // arched face on the z0 side (springs straight off the building), up to the pillar at x1 - T
     const nw = L - T;
     slab([...archPts(0, nw, sp), new THREE.Vector2(nw, roofY(x0 + nw) + 0.1), new THREE.Vector2(0, high + 0.1)], plaster, x0, z0, 0);
-    // arched face on the x1 side: the pillar, then one wide arch up to the tall wall
-    const ew = z1 - T - z0;
-    slab([new THREE.Vector2(0, 0), ...archPts(T, ew, sp), new THREE.Vector2(ew, eave + 0.1), new THREE.Vector2(0, eave + 0.1)], stoneM, x1, z0, -Math.PI / 2);
-    // the pillar: a plinth, a moulded capital where both arches spring, and a cap under the roof
-    const pcx = x1 - T / 2, pcz = z0 + T / 2;
-    box.add(pcx, 0.2, pcz, T + 0.16, 0.4, T + 0.16, '#d2c9b9');
-    box.add(pcx, 0.44, pcz, T + 0.08, 0.08, T + 0.08, '#ddd5c6');
-    box.add(pcx, sp - 0.16, pcz, T + 0.06, 0.08, T + 0.06, '#e3dccf');
-    box.add(pcx, sp - 0.06, pcz, T + 0.16, 0.12, T + 0.16, '#e8e1d5');
+    // arched face on the x1 side: the corner pillar, then n arches with a pillar between each pair, up to the tall wall
+    const ew = z1 - T - z0, aw = (ew - T - (n - 1) * T) / n;
+    const eastArch = (k) => T + k * (aw + T);              // where arch k starts along this face
+    const eastPts = [new THREE.Vector2(0, 0)];
+    for (let k = 0; k < n; k++) eastPts.push(...archPts(eastArch(k), eastArch(k) + aw, sp));
+    eastPts.push(new THREE.Vector2(ew, eave + 0.1), new THREE.Vector2(0, eave + 0.1));
+    slab(eastPts, stoneM, x1, z0, -Math.PI / 2);
+    // the pillars: a plinth and a moulded capital where the arches spring
+    const pillar = (pcx, pcz) => {
+      box.add(pcx, 0.2, pcz, T + 0.16, 0.4, T + 0.16, '#d2c9b9');
+      box.add(pcx, 0.44, pcz, T + 0.08, 0.08, T + 0.08, '#ddd5c6');
+      box.add(pcx, sp - 0.16, pcz, T + 0.06, 0.08, T + 0.06, '#e3dccf');
+      box.add(pcx, sp - 0.06, pcz, T + 0.16, 0.12, T + 0.16, '#e8e1d5');
+    };
+    pillar(x1 - T / 2, z0 + T / 2);
+    for (let k = 1; k < n; k++) pillar(x1 - T / 2, z0 + eastArch(k) - T / 2);
     // the same capital moulding where the arches meet the tall wall and the building
     box.add(x1 - T / 2, sp - 0.06, z1 - T - 0.04, T + 0.16, 0.12, 0.1, '#e8e1d5');
     box.add(x0 + 0.06, sp - 0.06, z0 + T / 2, 0.12, 0.12, T + 0.16, '#e8e1d5');
@@ -763,7 +771,7 @@ export function villageDeco(world, d, I, group, { night = false, shadows = false
       }
     };
     ring(x0 + nw / 2, 0, nw / 2, true, z0 - 0.02);
-    ring(0, z0 + (T + ew) / 2, (ew - T) / 2, false, x1 + 0.02);
+    for (let k = 0; k < n; k++) ring(0, z0 + eastArch(k) + aw / 2, aw / 2, false, x1 + 0.02);
     // a cornice under the eaves along the arched sides
     box.add(x1 + 0.04, eave - 0.12, (z0 + z1) / 2, 0.14, 0.12, z1 - z0 + 0.08, '#e8e1d5');
     // a small barred window in the tall wall, on the street side
