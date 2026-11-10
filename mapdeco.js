@@ -12,6 +12,12 @@ import { dressHouses, villageDeco } from './houses.js';
 
 // what each theme adds
 const DRESS = {
+  // Tuscan hill town (Flame): dusty cobbles with dirt patches and dry grass, hills and mountains around
+  tuscan: {
+    windowOn: [], frame: '#e6dac2', glass: '#20262c', door: '#6b4a30',
+    items: [], decals: ['dirt', 'dirt', 'crack', 'stain'], tufts: true,
+    backdrop: 'tuscan',
+  },
   // houses dress themselves (houses.js); keep the streets clean
   village: {
     windowOn: [], frame: '#e6dac2', glass: '#20262c', door: '#6b4a30',
@@ -204,6 +210,17 @@ const DECAL = {
     g.fillStyle = gr; g.beginPath(); g.ellipse(n / 2, n / 2, n * 0.46, n * 0.32, 0, 0, Math.PI * 2); g.fill();
     g.fillStyle = 'rgba(220,235,255,0.25)'; g.beginPath(); g.ellipse(n * 0.42, n * 0.44, n * 0.16, n * 0.05, 0.2, 0, Math.PI * 2); g.fill();
   },
+  // a patch of bare, sandy earth between the cobbles
+  dirt: (g, n) => {
+    const r = rng(23);
+    for (let i = 0; i < 22; i++) {
+      const x = n / 2 + (r() - 0.5) * n * 0.55, y = n / 2 + (r() - 0.5) * n * 0.55, rad = n * (0.1 + r() * 0.16);
+      const gr = g.createRadialGradient(x, y, 0, x, y, rad);
+      gr.addColorStop(0, 'rgba(196,170,120,0.85)'); gr.addColorStop(0.7, 'rgba(190,165,115,0.5)'); gr.addColorStop(1, 'rgba(190,165,115,0)');
+      g.fillStyle = gr; g.fillRect(0, 0, n, n);
+    }
+    for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(${r() < 0.5 ? '120,100,70' : '230,215,180'},${0.25 + r() * 0.3})`; g.fillRect(n * 0.2 + r() * n * 0.6, n * 0.2 + r() * n * 0.6, 1.5, 1.5); }
+  },
   // a soft band (sand or snow blown against a wall): bright at the bottom edge, fading out
   drift: (g, n) => {
     const gr = g.createLinearGradient(0, n, 0, 0);
@@ -296,7 +313,20 @@ function backdrop(world, theme, kind, night, far) {
       fn(x, z, a, rr);
     }
   };
-  if (kind === 'village') {
+  if (kind === 'tuscan') {
+    // dry fields and vineyards, rolling hills with cypresses, a blue mountain ridge, and more of the town just outside
+    M.geo(new THREE.CylinderGeometry(R * 2.2, R * 2.2, 0.2, 40), cx, -0.15, cz, 0, fade('#b9a56e', cx + R, cz, -0.2));
+    around(9, 130, 190, (x, z) => { const w = (70 + r() * 60) * S; M.geo(U_CONE(7), x, -2, z, r() * 3, fade('#7d8fa6', x, z, 0.05), w, (45 + r() * 45) * S, w * 0.8, fade('#a7b4c4', x, z, 0.05), 0.75); }, 60);
+    around(14, 70, 130, (x, z) => { const w = (45 + r() * 45) * S; M.geo(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), x, -2, z, r() * 3, fade(['#8f925a', '#9c9560', '#7f8a52'][Math.floor(r() * 3)], x, z), w, (14 + r() * 18) * S, w * 0.7); });
+    around(40, 14, 70, (x, z) => { const hgt = (8 + r() * 7) * S; M.geo(U_CONE(7), x, 0, z, 0, fade('#33482c', x, z), 0.9 * S + r() * 0.4 * S, hgt, 0.9 * S + r() * 0.4 * S); }, 1.5);
+    const walls = ['#e3a35a', '#e8bf6a', '#d9cfc0', '#cfc8bc', '#e6b277', '#d8a160', '#c9c2b6'];
+    around(30, 2, 16, (x, z, a) => {
+      const w = (6 + r() * 5) * S, hh = (7 + r() * 7) * S, d = (6 + r() * 4) * S;
+      M.geo(U_BOX, x, 0, z, -a, fade(walls[Math.floor(r() * walls.length)], x, z, -0.15), w, hh, d);
+      M.geo(U_ROOF, x, hh, z, -a + (r() < 0.5 ? Math.PI / 2 : 0), fade('#c98a5c', x, z, -0.15), w * 1.08, w * 0.28, d * 1.08);
+      if (r() < 0.4) M.geo(U_BOX, x + 1.2 * S, hh + 0.5 * S, z, -a, fade('#d9cfc0', x, z, -0.15), 0.8 * S, 1.8 * S, 0.8 * S);
+    }, 8);
+  } else if (kind === 'village') {
     // farmland all round, rolling hills with cypresses and olive trees, and more of the village just outside
     M.geo(new THREE.CylinderGeometry(R * 2.2, R * 2.2, 0.2, 40), cx, -0.15, cz, 0, fade('#a39a5e', cx + R, cz, -0.2));
     around(14, 75, 140, (x, z) => { const w = (45 + r() * 45) * S; M.geo(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), x, -2, z, r() * 3, fade(['#7f8a52', '#8f8a56', '#6f7f4a'][Math.floor(r() * 3)], x, z), w, (16 + r() * 20) * S, w * 0.7); });
@@ -561,6 +591,20 @@ export function decorateMap(world, theme, group, { gfx = {}, night = false, shad
       }
     }
     for (const k of kinds) { const m = inst[k].build(group); if (m) m.renderOrder = 1; }
+    // tufts of dry grass along the foot of walls and in the corners of the streets
+    if (T.tufts) {
+      const blade = new Inst(new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0), new THREE.MeshLambertMaterial({ color: '#ffffff', side: THREE.DoubleSide }));
+      const tuft = (x, z) => {
+        const n = 4 + Math.floor(r() * 4), hgt = 0.18 + r() * 0.22;
+        for (let b = 0; b < n; b++) blade.add(x + (r() - 0.5) * 0.25, 0, z + (r() - 0.5) * 0.25, 0.05, hgt * (0.6 + r() * 0.6), 1, ['#c9a85a', '#b89848', '#d6bb72', '#a8904a'][Math.floor(r() * 4)], r() * Math.PI, (r() - 0.5) * 0.5, (r() - 0.5) * 0.5);
+      };
+      for (const f of faces) {
+        if (f.len < 2) continue;
+        const [ux, uz] = f.dir, [nx, nz] = f.n;
+        for (let s = 0.3; s < f.len; s += 0.6 + r() * 1.6) if (r() < 0.45) tuft(f.x + ux * s + nx * 0.18, f.z + uz * s + nz * 0.18);
+      }
+      blade.build(group, false);
+    }
   }
 
   // distant scenery

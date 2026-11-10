@@ -582,10 +582,17 @@ export const MAPS = {
   flame: {
     name: 'Flame (beta)',
     description: 'Wingman. Beta layout from your plan: the site sits in the corner of an L-shaped block. Go round by the north street, down the middle corridor to the truck yard, or up through the two-storey building and out onto the balcony over the truck (barrel → truck → cab roof → balcony also works).',
-    theme: 'village',
+    theme: 'tuscan',
     size: [62, 62],
     massHeight: 8,
-    village: { hMin: 5.5, hMax: 9, palette: ['#e6c9a0', '#dcae7a', '#d39b6a', '#e8d6b8', '#c98a5e', '#e3b98c', '#cf9f7a', '#efe3cc', '#d8b48a', '#e9cfa8'] },
+    // sun-faded orange and ochre plaster, grey stone, one red-painted wall; pale terracotta roofs; green and brown shutters
+    village: {
+      hMin: 5.5, hMax: 9,
+      palette: ['#e39a50', '#e8b65e', '#e5a85c', '#e9c77a', '#d98e4a', '#e4b26e', '#cf7b62', '#e7bd6c'],
+      stone: ['#d3ccc0', '#cbc4b8', '#d9d2c6'],
+      roofs: ['#cf9064', '#c9855a', '#d69a6e', '#c27c52', '#d38c60'],
+      shutters: ['#6f9a52', '#7a5a3e', '#6a8f4c', '#8a6446', '#5f7a4a'],
+    },
     checkPoints: {
       'upstairs corridor': [30, 49.2, 3.2],
       'west balcony': [14.7, 41.5, 3.2],
@@ -605,7 +612,7 @@ export const MAPS = {
       b.house(24.5, 44, 44, 51, { h: 6.8, roof: 'gable-x', balcony: false });                // its wing along the truck yard
       b.house(30.5, 15.5, 37.5, 37, { h: 7.5, mat: 'stone', roof: 'gable-z', balcony: false }); // L-shaped block round the site
       b.house(37.5, 15.5, 47, 20, { h: 7, roof: 'gable-x', balcony: false });
-      b.house(39.5, 20, 47, 22.5, { h: 6.5, roof: 'flat', balcony: false });
+      b.house(39.5, 20, 47, 22.5, { h: 7, mat: 'stone', roof: 'gable-x', balcony: false, plain: true, quoins: false });   // the cantina
 
       // ---------- ground the players walk on ----------
       b.open(1, 24, 5, 30);           // attacker spawn (west), its top-left corner set back
@@ -662,8 +669,11 @@ export const MAPS = {
       b.stairs(13.5, 32, 16, 37, '+z', 0, H);
       b.wall(13.5, 37, 16, 39.5, H, 'stairs');         // landing
       b.slab(13.5, 39.5, 16, 43.5, H);                 // west balcony (open underneath)
-      b.wall(13.5, 37, 14, 43.5, H + 1.0, 'low', H);   // railings
-      b.wall(14, 43, 16, 43.5, H + 1.0, 'low', H);
+      b.wall(13.5, 37, 14, 43.5, H + 1.0, '_rail', H);   // railings (iron bars drawn by the dressing)
+      b.wall(14, 43, 16, 43.5, H + 1.0, '_rail', H);
+      b.deco('railing', 13.5, 37, 13.6, 43.5, H); b.deco('railing', 13.5, 43.4, 16, 43.5, H);
+      b.deco('corbels', 13.4, 39.5, 13.6, 43.5, H);
+      b.deco('stairarch', 13.5, 35.8, 0.9, -1);       // dark arch under the stone stairs
       b.cut(16, 40.5, 16.5, 43, H, H + 2.4);           // door from the balcony into the room
 
       // ---------- balcony over the truck (dark blue), open underneath with a low wall (pink) ----------
@@ -671,9 +681,13 @@ export const MAPS = {
       b.wall(47.5, 48, 48, 52.5, H - 0.3, 'wall');
       b.wall(44, 52, 47.5, 52.5, H - 0.3, 'wall');
       b.slab(44, 44.5, 48, 52.5, H);
-      b.wall(47.5, 45, 48, 52.5, H + 1.0, 'low', H);   // railing on the east side…
-      b.wall(44, 52, 47.5, 52.5, H + 1.0, 'low', H);   // …and the south side; the north edge is left open for the truck jump
+      b.wall(47.5, 45, 48, 52.5, H + 1.0, '_rail', H);   // railing on the east side…
+      b.wall(44, 52, 47.5, 52.5, H + 1.0, '_rail', H);   // …and the south side; the north edge is left open for the truck jump
+      b.deco('railing', 47.9, 45, 48, 52.5, H); b.deco('railing', 44, 52.4, 48, 52.5, H);
+      b.deco('corbels', 44, 44.4, 48, 44.6, H);         // stone brackets along the edge over the truck
       b.wall(44.5, 45.5, 47.5, 46.5, 1.0, 'low');      // small wall on the ground under it
+      b.wall(44, 47, 44.5, 47.5, 0.35, '_bucket'); b.deco('bucket', 44.25, 47.25, 'bucket');
+      b.wall(44, 47.5, 44.5, 48, 0.35, '_bucket'); b.deco('bucket', 44.25, 47.75, 'can');
 
       // ---------- truck (yellow) and the barrel to climb it ----------
       b.prop('truck', 39.5, 41.5, 47.5, 44, 2.4, { facing: '+x', bed: 1.3 });   // small van: bed 1.3 m, cab roof 2.4 m
@@ -700,6 +714,14 @@ export const MAPS = {
 
       // ---------- site and spawns ----------
       b.site('A', 37.5, 20.5, 47.5, 37);
+      // ---------- look (visual only) ----------
+      b.deco('paving', 37.5, 22.5, 47, 37, 'terracotta');          // red brick paving on the site
+      b.deco('paving', 37.5, 20, 39.5, 22.5, 'terracotta');
+      b.deco('shopfront', 39.5, 47, 22.5, 1, 'CANTINA FIAMMA');    // our own wine shop on the site's back wall
+      b.deco('painta', 40, 2.6, 15.45, Math.PI, 'left');            // painted site letters with arrows
+      b.deco('painta', 34, 2.4, 43.95, Math.PI, 'left');
+      b.deco('painta', 30.55, 2.4, 29, -Math.PI / 2, 'right');
+      b.deco('gate', 36, 40, 1.15);                                 // iron gate at the end of the roofed passage
       b.spawn('atk', 6.2, 25.6, EAST);
       b.spawn('atk', 6.1, 28.2, EAST);
       b.spawn('atk', 9, 27, EAST);

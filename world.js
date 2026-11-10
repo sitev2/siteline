@@ -208,8 +208,8 @@ export class World {
     }
     // fill in each house's look (explicit choices in the map win)
     const pal = cfg.palette, stones = cfg.stone || ['#cdb894', '#d6c4a2', '#c4ad88'], bricks = cfg.brick || ['#b9785a', '#a86a4e'];
-    const shut = ['#4f6b45', '#6b4a32', '#5a7080', '#7a3b2e', '#3f5f5a'];
-    const roofs = ['#b5532f', '#a84a2a', '#c0643a', '#9c4a2e', '#b8603e', '#ad5a36'];
+    const shut = cfg.shutters || ['#4f6b45', '#6b4a32', '#5a7080', '#7a3b2e', '#3f5f5a'];
+    const roofs = cfg.roofs || ['#b5532f', '#a84a2a', '#c0643a', '#9c4a2e', '#b8603e', '#ad5a36'];
     for (const hs of this.houses) {
       const r = () => hash2(hs.id * 13 + 7, Math.floor(rnd() * 1e6));
       const w = hs.x1 - hs.x0, d = hs.z1 - hs.z0;

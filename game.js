@@ -755,7 +755,7 @@ export class Game {
   // what's underfoot at a spot: sand, snow, gravel, hard, metal, wood or water
   surfaceAt(x, y, z) {
     const theme = this.world.def.theme;
-    const ground = { desert: 'sand', industrial: 'hard', snow: 'snow', harbour: 'hard', quarry: 'gravel', railyard: 'gravel', village: 'hard' }[theme] || 'hard';
+    const ground = { desert: 'sand', industrial: 'hard', snow: 'snow', harbour: 'hard', quarry: 'gravel', railyard: 'gravel', village: 'hard', tuscan: 'hard' }[theme] || 'hard';
     if (y < 0.3 && this.world.waterAt(x, z) > 0) return 'water';
     if (y < 0.1) return ground;
     const spans = this.world.cellSpans(Math.floor(x / CELL), Math.floor(z / CELL));

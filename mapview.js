@@ -86,6 +86,26 @@ export const THEMES = {
     site: '#e06a3a',
     water: '#3e7266',
   },
+  // Tuscan hill town (Flame): sun-faded orange, ochre and grey stone, flaking plaster, pale terracotta
+  // roofs, dusty cobbles with dry grass, pale plywood crates on pallets, wooden barrels, a little blue pickup
+  tuscan: {
+    skyTop: '#6fa3d6', skyHorizon: '#f1e6d2', fog: '#ece2cf', fogNear: 50, fogFar: 180,
+    sun: '#fff1da', sunIntensity: 2.8, hemiSky: '#dbe9ff', hemiGround: '#cdb592', hemiIntensity: 1.3,
+    floor: ['cobble', '#c3b79f'], floorTile: 2.4,
+    mats: {
+      stucco: ['oldplaster', '#ffffff'], stone: ['blocks', '#ffffff'], brick: ['brick', '#ffffff'],
+      mass: ['oldplaster', '#e3a35a'], wall: ['blocks', '#d6cfc3'], building: ['oldplaster', '#e9c27a'],
+      pillar: ['blocks', '#d8d1c5'], low: ['blocks', '#d4cdc1'], slab: ['blocks', '#d9d3c8'], beams: ['crate', '#6a4a2e'],
+      roof: ['crate', '#c98a5c'], stairs: ['blocks', '#d2cbbf'], platform: ['blocks', '#cdc6ba'],
+      quay: ['blocks', '#cbc4b8'], bridge: ['blocks', '#d6cfc3'], steps: ['blocks', '#d6cfc3'],
+    },
+    crate: ['ply', '#ddcdb0'], crateStyle: 'ply', woodBarrels: true,
+    bigCrate: ['crate', '#6a5034'],
+    barrels: ['#9a6a40', '#a8764a', '#8f6038', '#a06e44'],
+    truck: { body: '#7aa6c8', cab: '#7aa6c8', glass: '#2c3a44', tyre: '#1d1d1d', mini: true },
+    site: '#e06a3a',
+    pipes: true, antennas: true,
+  },
   // stone quarry: pale limestone and dusty ground under a hot sky
   quarry: {
     skyTop: '#3f86d0', skyHorizon: '#efe2c8', fog: '#e6dcc6', fogNear: 45, fogFar: 160,
@@ -262,6 +282,40 @@ function buildTruck(p, theme, shadows) {
   // built facing +x, centred at the origin
   const body = lam(T.body), cab = lam(T.cab), glass = lam(T.glass), tyre = lam(T.tyre), dark = lam('#333');
   const bed = p.bed || 1.4;
+  if (T.mini) {
+    // a small pickup: short rounded cab with big round lamps, a low flat bed with drop sides
+    const cl = 2.0, cabH = p.h - 0.4;          // flat sides up to here, then a low rounded roof up to the cab height you can stand on
+    add(L - 0.2, 0.3, Wd - 0.3, 0, 0.42, 0, dark);                                   // chassis
+    add(L - cl, bed - 0.57, Wd, -cl / 2, 0.57 + (bed - 0.57) / 2, 0, body);          // solid body under the bed
+    add(L - cl + 0.02, 0.08, Wd + 0.02, -cl / 2, bed - 0.04, 0, lam('#5f88aa'));      // rim of the bed
+    add(L - cl - 0.2, 0.03, Wd - 0.2, -cl / 2, bed + 0.005, 0, lam('#6a5a48'));       // wooden bed floor
+    for (const sz of [1, -1]) {
+      add(L - cl, 0.32, 0.05, -cl / 2, bed + 0.16, sz * (Wd / 2 - 0.025), body);      // low drop sides
+      for (let k = 0; k <= 4; k++) add(0.05, 0.32, 0.07, -L / 2 + 0.05 + k * (L - cl - 0.1) / 4, bed + 0.16, sz * (Wd / 2 - 0.03), lam('#5f88aa'));
+    }
+    add(0.05, 0.32, Wd, -L / 2 + 0.025, bed + 0.16, 0, body);
+    for (const sz of [1, -1]) add(0.06, 0.12, 0.25, -L / 2 - 0.01, 0.95, sz * (Wd / 2 - 0.25), lam('#b8402e'));   // tail lights
+    add(cl, cabH - 0.57, Wd, L / 2 - cl / 2, 0.57 + (cabH - 0.57) / 2, 0, cab);       // cab
+    for (const sz of [1, -1]) add(0.06, 0.06, 0.32, L / 2 - cl + 0.1, cabH - 0.3, sz * (Wd / 2 + 0.15), lam('#2a2a2a'));   // mirrors
+    const roof = new THREE.Mesh(new THREE.CylinderGeometry(Wd / 2, Wd / 2, cl, 16, 1, false, 0, Math.PI).rotateZ(Math.PI / 2), cab);
+    roof.scale.set(1, 0.4 / (Wd / 2), 1); roof.position.set(L / 2 - cl / 2, cabH, 0); roof.castShadow = shadows; g.add(roof);
+    add(0.04, 0.55, Wd - 0.35, L / 2 + 0.002, cabH - 0.05, 0, glass);               // windscreen
+    for (const sz of [1, -1]) add(0.9, 0.45, 0.04, L / 2 - cl / 2 + 0.2, cabH - 0.05, sz * (Wd / 2 + 0.002), glass);
+    add(0.12, 0.22, Wd + 0.05, L / 2 + 0.04, 0.55, 0, lam('#c9ced2'));             // bumper
+    for (const sz of [1, -1]) {
+      const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.13, 0.13, 0.06, 14).rotateZ(Math.PI / 2), lam('#f4f2ea'));
+      lamp.position.set(L / 2 + 0.03, 0.95, sz * (Wd / 2 - 0.3)); g.add(lamp);
+    }
+    const wheelGeo = new THREE.CylinderGeometry(0.34, 0.34, 0.24, 14);
+    for (const wx of [L / 2 - 0.8, -L / 2 + 1.0]) for (const sz of [1, -1]) {
+      const w = new THREE.Mesh(wheelGeo, tyre);
+      w.rotation.x = Math.PI / 2; w.position.set(wx, 0.34, sz * (Wd / 2 - 0.15));
+      w.castShadow = shadows; g.add(w);
+    }
+    g.position.set((p.x0 + p.x1) / 2, 0, (p.z0 + p.z1) / 2);
+    g.rotation.y = { '+x': 0, '-x': Math.PI, '+z': -Math.PI / 2, '-z': Math.PI / 2 }[p.facing || '+x'];
+    return g;
+  }
   add(L, 0.35, Wd - 0.1, 0, 0.75, 0, dark);                       // chassis
   add(L - 2, 0.12, Wd, -1, bed - 0.06, 0, body);                  // bed floor
   add(L - 2, 0.5, 0.08, -1, bed + 0.25, Wd / 2 - 0.04, body);      // bed rails
@@ -427,20 +481,35 @@ export function buildMapScene(world, renderer, gfx = {}, night = false) {
     const cm = new THREE.MeshLambertMaterial({ map: makeTexture(theme.crate[0], theme.crate[1], renderer, 7) });
     const inst = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), cm, boxes.length);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion();
+    const ply = theme.crateStyle === 'ply', pal = ply ? 0.14 : 0;      // plywood crates stand on a pallet
     boxes.forEach((p, i) => {
       const w = p.x1 - p.x0, d = p.z1 - p.z0;
-      m4.compose(new THREE.Vector3((p.x0 + p.x1) / 2, p.h / 2, (p.z0 + p.z1) / 2), q, new THREE.Vector3(w - 0.04, p.h, d - 0.04));
+      m4.compose(new THREE.Vector3((p.x0 + p.x1) / 2, pal + (p.h - pal) / 2, (p.z0 + p.z1) / 2), q, new THREE.Vector3(w - 0.04, p.h - pal, d - 0.04));
       inst.setMatrixAt(i, m4);
-      const t = p.type === 'crate' ? 0.62 : 0.88 + hash2(i, 3) * 0.24;
-      inst.setColorAt(i, new THREE.Color(t, t * (p.type === 'crate' ? 0.85 : 1), t * (p.type === 'crate' ? 0.8 : 1)));
+      const t = ply ? 0.94 + hash2(i, 3) * 0.08 : p.type === 'crate' ? 0.62 : 0.88 + hash2(i, 3) * 0.24;
+      inst.setColorAt(i, ply ? new THREE.Color(t, t, t) : new THREE.Color(t, t * (p.type === 'crate' ? 0.85 : 1), t * (p.type === 'crate' ? 0.8 : 1)));
     });
     inst.castShadow = shadows; inst.receiveShadow = shadows;
     group.add(inst);
+    if (ply) {
+      // pallets: three runners and a deck of slats
+      const parts = [];
+      for (const p of boxes) {
+        const w = p.x1 - p.x0, d = p.z1 - p.z0, cx = (p.x0 + p.x1) / 2, cz = (p.z0 + p.z1) / 2;
+        for (const k of [-1, 0, 1]) parts.push([cx + k * (w / 2 - 0.12), 0.05, cz, 0.12, 0.1, d - 0.04]);
+        for (let s = -d / 2 + 0.1; s < d / 2 - 0.05; s += 0.22) parts.push([cx, 0.12, cz + s, w - 0.02, 0.04, 0.12]);
+      }
+      const pm = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), lam('#9c8466'), parts.length);
+      parts.forEach(([x, y, z, sx, sy, sz], i) => { m4.compose(new THREE.Vector3(x, y, z), q, new THREE.Vector3(sx, sy, sz)); pm.setMatrixAt(i, m4); });
+      pm.castShadow = shadows;
+      group.add(pm);
+    }
   }
   const barrels = world.props.filter(p => p.type === 'barrel');
   if (barrels.length) {
-    const geo = new THREE.CylinderGeometry(0.42, 0.42, 1.0, 16);
-    const ringGeo = new THREE.CylinderGeometry(0.44, 0.44, 0.06, 16);
+    const wood = !!theme.woodBarrels;
+    const geo = wood ? new THREE.LatheGeometry(Array.from({ length: 9 }, (_, k) => new THREE.Vector2(0.38 + 0.07 * Math.sin(Math.PI * k / 8), k / 8 - 0.5)), 18) : new THREE.CylinderGeometry(0.42, 0.42, 1.0, 16);
+    const ringGeo = wood ? new THREE.CylinderGeometry(0.43, 0.43, 0.05, 18) : new THREE.CylinderGeometry(0.44, 0.44, 0.06, 16);
     const inst = new THREE.InstancedMesh(geo, new THREE.MeshLambertMaterial({ color: '#ffffff' }), barrels.length);
     const rings = new THREE.InstancedMesh(ringGeo, lam('#2a2a2a'), barrels.length * 2);
     const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), one = new THREE.Vector3(1, 1, 1);
@@ -449,7 +518,7 @@ export function buildMapScene(world, renderer, gfx = {}, night = false) {
       m4.compose(new THREE.Vector3(cx, 0.5, cz), q, one);
       inst.setMatrixAt(i, m4);
       inst.setColorAt(i, new THREE.Color(theme.barrels[i % theme.barrels.length]));
-      for (const [k, y] of [[0, 0.3], [1, 0.7]]) { m4.compose(new THREE.Vector3(cx, y, cz), q, one); rings.setMatrixAt(i * 2 + k, m4); }
+      for (const [k, y] of wood ? [[0, 0.16], [1, 0.84]] : [[0, 0.3], [1, 0.7]]) { m4.compose(new THREE.Vector3(cx, y, cz), q, one); rings.setMatrixAt(i * 2 + k, m4); }
     });
     inst.castShadow = shadows; inst.receiveShadow = shadows; rings.castShadow = shadows;
     group.add(inst, rings);

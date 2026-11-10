@@ -82,6 +82,26 @@ function flagstones() {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
 }
+// red brick paving laid in rows, a little worn
+function brickPaving() {
+  const n = 256, c = document.createElement('canvas');
+  c.width = c.height = n;
+  const g = c.getContext('2d');
+  g.fillStyle = '#b8806a'; g.fillRect(0, 0, n, n);
+  let s = 11;
+  const r = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const bh = 16, bw = 48;
+  for (let row = 0; row < n / bh; row++) for (let col = -1; col < n / bw + 1; col++) {
+    const x = col * bw + (row % 2) * bw / 2, v = 0.88 + r() * 0.2;
+    g.fillStyle = `rgb(${Math.round(222 * v)},${Math.round(112 * v)},${Math.round(92 * v)})`;
+    g.fillRect(x + 1.5, row * bh + 1.5, bw - 3, bh - 3);
+  }
+  for (let i = 0; i < 3000; i++) { g.fillStyle = `rgba(${r() < 0.5 ? '0,0,0' : '255,240,220'},${r() * 0.08})`; g.fillRect(r() * n, r() * n, 2, 2); }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
 // square terracotta floor tiles (for rooms)
 function floorTiles() {
   const n = 128, c = document.createElement('canvas');
@@ -98,6 +118,36 @@ function floorTiles() {
   const t = new THREE.CanvasTexture(c);
   t.colorSpace = THREE.SRGBColorSpace;
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+// a painted shop sign: cream letters on a deep red board (our own name)
+function shopSign(text) {
+  const c = document.createElement('canvas');
+  c.width = 512; c.height = 96;
+  const g = c.getContext('2d');
+  g.fillStyle = '#8c2f2c'; g.fillRect(0, 0, 512, 96);
+  g.strokeStyle = '#efe2c8'; g.lineWidth = 5; g.strokeRect(8, 8, 496, 80);
+  g.fillStyle = '#f3e7cf'; g.font = 'bold 50px Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(text, 256, 50);
+  for (let i = 0; i < 400; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * 0.08})`; g.fillRect(Math.random() * 512, Math.random() * 96, 2, 2); }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+// a big painted site letter with an arrow underneath
+function letterArrow(letter, arrow) {
+  const c = document.createElement('canvas');
+  c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = 'rgba(214,92,60,0.88)'; g.font = 'bold 150px Georgia, serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(letter, 128, 100);
+  if (arrow) {
+    g.save(); g.translate(128, 208); if (arrow === 'right') g.scale(-1, 1);
+    g.beginPath(); g.moveTo(-70, 0); g.lineTo(-30, -26); g.lineTo(-30, -11); g.lineTo(70, -11); g.lineTo(70, 11); g.lineTo(-30, 11); g.lineTo(-30, 26); g.closePath(); g.fill();
+    g.restore();
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
 // the inn's hanging sign: a bunch of grapes and a cup on a painted board
@@ -240,7 +290,7 @@ export function dressHouses(world, theme, group, I, { night = false, lowDetail =
       }
 
       // ---------- windows and doors ----------
-      if (hs.kind === 'church' || hs.kind === 'tower') continue;
+      if (hs.kind === 'church' || hs.kind === 'tower' || hs.plain) continue;
       const sp = hs.spacing || 2.8;
       const n = len < 1.6 ? 0 : Math.floor((len - 1.4) / sp) + 1;
       for (let f = 0; f < nF; f++) {
@@ -387,6 +437,28 @@ export function dressHouses(world, theme, group, I, { night = false, lowDetail =
 
     // ---------- the roof ----------
     addRoof(hs, W, D, R, U, gables, box, hcol, lowDetail);
+
+    // ---------- drainpipes and TV aerials (themes that ask for them) ----------
+    if (theme.pipes && !lowDetail && !hs.kind) {
+      const sd = front;
+      if (sd && sd.len >= 3) {
+        const s = hh(id, 3.3) < 0.5 ? 0.25 : sd.len - 0.25;
+        if (seen(sd, Math.max(0, s - 0.3), Math.min(sd.len, s + 0.3)) < 0.3) {
+          const [ux, uz] = sd.dir, [nx, nz] = sd.n, px = sd.x + ux * s + nx * 0.1, pz = sd.z + uz * s + nz * 0.1;
+          cyl.add(px, h / 2, pz, 0.055, h, 0.055, '#8c9196');
+          for (let y = 1.2; y < h - 0.3; y += 2.2) put(sd, s, y, 0.16, 0.05, 0.14, '#6f7378');
+          put(sd, s, 0.15, 0.14, 0.3, 0.3, '#8c9196');                                // shoe at the bottom
+        }
+      }
+    }
+    if (theme.antennas && !lowDetail && !hs.kind && hs.roof !== 'flat' && hh(id, 7.7) < 0.3) {
+      const ax = (hs.x0 + hs.x1) / 2 + (hh(id, 1.1) - 0.5) * 1.5, az = (hs.z0 + hs.z1) / 2 + (hh(id, 2.2) - 0.5) * 1.5;
+      const top = h + Math.min(hs.x1 - hs.x0, hs.z1 - hs.z0) * 0.25;
+      cyl.add(ax, top + 0.8, az, 0.025, 1.8, 0.025, '#5c6064');
+      const ang = hh(id, 4.4) * Math.PI;
+      for (const [y, w] of [[top + 1.5, 1.2], [top + 1.25, 1.0], [top + 1.0, 0.8]]) box.add(ax, y, az, w, 0.025, 0.025, '#5c6064', ang);
+      for (let k = -2; k <= 2; k++) box.add(ax + Math.cos(ang) * k * 0.25, top + 1.5, az - Math.sin(ang) * k * 0.25, 0.02, 0.025, 0.4, '#5c6064', ang);
+    }
   }
 
   // build the merged meshes
@@ -486,7 +558,7 @@ function chimney(box, toW, a, b, base, ridge, hs) {
 
 // village extras from world.deco: humped bridge parapets over the canal, vaulted archways, piazza paving
 export function villageDeco(world, d, I, group, { night = false, shadows = false } = {}) {
-  const { box, half } = I;
+  const { box, half, cyl, glow } = I;
   const a = d.args;
   if (d.type === 'canalbridge') {
     // [x0, x1, z (the face over the water), dir (+1 / -1: which way the water lies), deck height]
@@ -531,14 +603,82 @@ export function villageDeco(world, d, I, group, { night = false, shadows = false
         else box.add(end ? x1 + 0.03 : x0 - 0.03, ys / 2, (z0 + z1) / 2 + sgn * (span / 2 + 0.16), 0.06, ys, 0.32, '#e6dac2');
       }
     }
+  } else if (d.type === 'shopfront') {
+    // [x0, x1, z (wall face), dir (+1 faces +z), name]: a two-arch shopfront on a plain wall, with a sign
+    const [x0, x1, z, dir, name] = a, len = x1 - x0, n = 2, aw = len / n;
+    const zf = z + dir * 0.02, depth = 0.08;
+    const stone = '#e4dccd', dark = '#3a2c22', wood = '#7a5a3c';
+    for (let k = 0; k < n; k++) {
+      const cx = x0 + aw * (k + 0.5), r = aw * 0.38, spring = 2.3;
+      box.add(cx, spring / 2, zf + dir * 0.02, r * 2, spring, 0.04, '#4a3a2e');                  // shadowed opening
+      half.add(cx, spring, zf + dir * 0.02, r, r, 0.04, '#4a3a2e', 0);
+      box.add(cx, 1.2, zf + dir * 0.05, r * 1.25, 2.4, 0.05, wood);                              // big wooden doors
+      for (let b = -2; b <= 2; b++) box.add(cx + b * r * 0.25, 1.2, zf + dir * 0.08, 0.04, 2.3, 0.02, '#5c4430');
+      box.add(cx, 2.42, zf + dir * 0.08, r * 1.3, 0.08, 0.04, '#5c4430');
+      half.add(cx, spring, zf + dir * 0.04, r + 0.28, r + 0.28, 0.05, stone, 0);                 // stone arch ring
+      half.add(cx, spring, zf + dir * 0.05, r, r, 0.05, '#4a3a2e', 0);
+      for (const s of [-1, 1]) box.add(cx + s * (r + 0.14), spring / 2, zf + dir * depth / 2, 0.28, spring, depth, stone);   // piers
+      box.add(cx, 0.12, zf + dir * 0.25, r * 2, 0.24, 0.5, '#cfc6b6');                           // worn step
+    }
+    // sign board, a cornice, and lamps on iron arms
+    const signY = 2.3 + aw * 0.38 + 0.75;
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(Math.min(len * 0.6, 5), 0.85), new THREE.MeshLambertMaterial({ map: shopSign(name || 'CANTINA FIAMMA') }));
+    sign.position.set((x0 + x1) / 2, signY, z + dir * 0.06); if (dir < 0) sign.rotation.y = Math.PI;
+    group.add(sign);
+    box.add((x0 + x1) / 2, signY + 0.6, zf + dir * 0.08, len, 0.14, 0.16, stone);
+    for (const lx of [x0 + 0.5, (x0 + x1) / 2, x1 - 0.5]) {
+      box.add(lx, signY - 0.2, zf + dir * 0.22, 0.04, 0.04, 0.44, '#2a2a2a');
+      box.add(lx, signY - 0.42, zf + dir * 0.42, 0.18, 0.26, 0.18, '#2e2c28');
+      glow.add(lx, signY - 0.44, zf + dir * 0.42, 0.13, 0.18, 0.13, night ? '#ffe3a0' : '#efe2bc');
+    }
+  } else if (d.type === 'railing') {
+    // [x0, z0, x1, z1, y]: an iron railing (thin bars) along a balcony edge; collision is invisible ('_rail')
+    const [x0, z0, x1, z1, y] = a, alongX = x1 - x0 >= z1 - z0;
+    const len = alongX ? x1 - x0 : z1 - z0, cx = (x0 + x1) / 2, cz = (z0 + z1) / 2;
+    box.add(cx, y + 1.0, cz, alongX ? len : 0.05, 0.05, alongX ? 0.05 : len, '#3a3c3e');
+    box.add(cx, y + 0.12, cz, alongX ? len : 0.04, 0.04, alongX ? 0.04 : len, '#3a3c3e');
+    for (let s = 0.06; s < len; s += 0.13) box.add(alongX ? x0 + s : cx, y + 0.56, alongX ? cz : z0 + s, 0.022, 0.9, 0.022, '#3a3c3e');
+  } else if (d.type === 'corbels') {
+    // [x0, z0, x1, z1, y]: stone brackets under a balcony's outer edge
+    const [x0, z0, x1, z1, y] = a, alongX = x1 - x0 >= z1 - z0;
+    const len = alongX ? x1 - x0 : z1 - z0;
+    for (let s = 0.4; s < len; s += 1.1) {
+      const x = alongX ? x0 + s : (x0 + x1) / 2, z = alongX ? (z0 + z1) / 2 : z0 + s;
+      box.add(x, y - 0.55, z, alongX ? 0.18 : 0.5, 0.5, alongX ? 0.5 : 0.18, '#d7cfc1');
+      box.add(x, y - 0.22, z, alongX ? 0.22 : 0.7, 0.16, alongX ? 0.7 : 0.22, '#e1dacd');
+    }
+  } else if (d.type === 'painta') {
+    // [x, y, z, ry (which way the wall faces), arrow 'left' | 'right' | '']
+    const [x, y, z, ry, arrow] = a;
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), new THREE.MeshLambertMaterial({ map: letterArrow('A', arrow), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }));
+    m.position.set(x, y, z); m.rotation.y = ry; m.renderOrder = 1;
+    group.add(m);
+  } else if (d.type === 'gate') {
+    // [x0, x1, z]: an iron gate across a passage
+    const [x0, x1, z] = a, cx = (x0 + x1) / 2, len = x1 - x0;
+    for (const s of [x0 + 0.08, x1 - 0.08]) box.add(s, 1.3, z, 0.16, 2.6, 0.16, '#3a3c3e');
+    for (const y of [0.2, 1.2, 2.3]) box.add(cx, y, z, len, 0.06, 0.06, '#3a3c3e');
+    for (let s = 0.2; s < len - 0.1; s += 0.14) box.add(x0 + s, 1.3, z, 0.025, 2.4, 0.025, '#3a3c3e');
+    for (let s = 0.2; s < len - 0.1; s += 0.14) box.add(x0 + s, 2.6, z, 0.06, 0.12, 0.06, '#3a3c3e');
+  } else if (d.type === 'bucket') {
+    // [x, z, kind 'bucket' | 'can']: a metal bucket or a watering can on the ground
+    const [x, z, kind] = a;
+    cyl.add(x, 0.17, z, 0.15, 0.34, 0.15, '#7e8388');
+    if (kind === 'can') { box.add(x + 0.2, 0.22, z, 0.3, 0.04, 0.04, '#7e8388', 0, 0, -0.6); box.add(x, 0.4, z, 0.2, 0.04, 0.04, '#6c7176'); }
+    else box.add(x, 0.36, z, 0.3, 0.02, 0.02, '#4a4d50');
+  } else if (d.type === 'stairarch') {
+    // [x (side face of a stair block), z centre, radius, dir (+1 faces +x)]: a dark arch under a stone stair
+    const [x, zc, rad, dir] = a;
+    half.add(x + dir * 0.03, 0, zc, rad, rad, 0.05, '#3c3630', Math.PI / 2);
+    half.add(x + dir * 0.02, 0, zc, rad + 0.2, rad + 0.2, 0.04, '#cfc8bc', Math.PI / 2);
   } else if (d.type === 'paving') {
-    // [x0, z0, x1, z1, 'flags' (big stone slabs) | 'tiles' (terracotta, for rooms)]
+    // [x0, z0, x1, z1, 'flags' (big stone slabs) | 'tiles' (terracotta, for rooms) | 'terracotta' (red brick paving)]
     const [x0, z0, x1, z1, kind = 'flags'] = a;
-    const tile = kind === 'tiles' ? 1.4 : 6;
+    const tile = kind === 'tiles' ? 1.4 : kind === 'terracotta' ? 2.4 : 6;
     const geo = new THREE.PlaneGeometry(x1 - x0, z1 - z0);
     const uv = geo.attributes.uv;
     for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * (x1 - x0) / tile, uv.getY(i) * (z1 - z0) / tile);
-    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: kind === 'tiles' ? floorTiles() : flagstones(), polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
+    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ map: kind === 'tiles' ? floorTiles() : kind === 'terracotta' ? brickPaving() : flagstones(), polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
     m.rotation.x = -Math.PI / 2; m.position.set((x0 + x1) / 2, 0.004, (z0 + z1) / 2);
     m.receiveShadow = shadows;
     group.add(m);

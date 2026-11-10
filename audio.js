@@ -58,6 +58,7 @@ const ROOMS = {
   quarry: { decay: 1.7, wet: 0.26, damp: 3800 },
   railyard: { decay: 1.2, wet: 0.19, damp: 3800 },
   village: { decay: 1.4, wet: 0.22, damp: 4000 },   // narrow stone streets
+  tuscan: { decay: 1.3, wet: 0.2, damp: 4200 },
 };
 let room = ROOMS.desert;
 export function setRoom(theme) {
@@ -564,6 +565,7 @@ const AMB = {
   quarry: { wind: 0.55, windTone: 450, events: ['beeper', 'clank', 'gust'] },
   railyard: { wind: 0.4, windTone: 400, events: ['horn', 'clank', 'clank', 'bird'] },
   village: { wind: 0.3, windTone: 380, water: 0.35, lap: 0.6, events: ['bird', 'bell', 'bird', 'bird', 'bell', 'gust'] },
+  tuscan: { wind: 0.35, windTone: 400, events: ['bird', 'bird', 'bell', 'gust', 'bird'] },
 };
 function ambienceBed(a, night) {
   const secs = 10;
