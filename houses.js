@@ -715,6 +715,85 @@ export function villageDeco(world, d, I, group, { night = false, shadows = false
       glow.add(lx, 2.74, front + dir * 0.38, 0.16, 0.3, 0.16, night ? '#ffe3a0' : '#efe2bc');
       box.add(lx, 2.57, front + dir * 0.38, 0.2, 0.04, 0.2, '#2a2a2a');
     }
+  } else if (d.type === 'loggia') {
+    // [x0, z0, x1, z1]: a roofed stone porch against a building whose face is at x0. A tall wall along z1,
+    // round arches on the z0 side and the x1 side, a square pillar with a base and capital at the (x1, z0) corner,
+    // and a tiled lean-to roof on wooden rafters. Collision (walls, pillar, stone above the arches) is in the map.
+    const [x0, z0, x1, z1] = a, T = 0.5, sp = 3.0, eave = 5.6, high = 6.6;
+    const roofY = (x) => high - (high - eave) * (x - x0) / (x1 - x0);       // underside of the roof
+    const tex = (kind, base, seed) => { const t = makeTexture(kind, base, null, seed).clone(); t.needsUpdate = true; t.repeat.set(1 / 3, 1 / 3); return t; };
+    const plaster = new THREE.MeshLambertMaterial({ map: tex('oldplaster', '#e6dccb', 53) });
+    const stoneM = new THREE.MeshLambertMaterial({ map: tex('blocks', '#e2dacb', 41) });
+    const slab = (pts, mat, x, z, ry) => {
+      const m = new THREE.Mesh(new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth: T, bevelEnabled: false, curveSegments: 1 }), mat);
+      m.position.set(x, 0, z); m.rotation.y = ry; m.castShadow = shadows; m.receiveShadow = shadows;
+      group.add(m);
+    };
+    const archPts = (u0, u1, y) => {           // left foot → over the top → right foot
+      const r = (u1 - u0) / 2, c = (u0 + u1) / 2, out = [new THREE.Vector2(u0, 0), new THREE.Vector2(u0, y)];
+      for (let k = 1; k < 18; k++) { const t = Math.PI - (k / 18) * Math.PI; out.push(new THREE.Vector2(c + Math.cos(t) * r, y + Math.sin(t) * r)); }
+      out.push(new THREE.Vector2(u1, y), new THREE.Vector2(u1, 0));
+      return out;
+    };
+    const L = x1 - x0;
+    // tall wall along z1, its top following the roof
+    slab([new THREE.Vector2(0, 0), new THREE.Vector2(L, 0), new THREE.Vector2(L, eave + 0.1), new THREE.Vector2(0, high + 0.1)], plaster, x0, z1 - T, 0);
+    // arched face on the z0 side (springs straight off the building), up to the pillar at x1 - T
+    const nw = L - T;
+    slab([...archPts(0, nw, sp), new THREE.Vector2(nw, roofY(x0 + nw) + 0.1), new THREE.Vector2(0, high + 0.1)], plaster, x0, z0, 0);
+    // arched face on the x1 side: the pillar, then one wide arch up to the tall wall
+    const ew = z1 - T - z0;
+    slab([new THREE.Vector2(0, 0), ...archPts(T, ew, sp), new THREE.Vector2(ew, eave + 0.1), new THREE.Vector2(0, eave + 0.1)], stoneM, x1, z0, -Math.PI / 2);
+    // the pillar: a plinth, a moulded capital where both arches spring, and a cap under the roof
+    const pcx = x1 - T / 2, pcz = z0 + T / 2;
+    box.add(pcx, 0.2, pcz, T + 0.16, 0.4, T + 0.16, '#d2c9b9');
+    box.add(pcx, 0.44, pcz, T + 0.08, 0.08, T + 0.08, '#ddd5c6');
+    box.add(pcx, sp - 0.16, pcz, T + 0.06, 0.08, T + 0.06, '#e3dccf');
+    box.add(pcx, sp - 0.06, pcz, T + 0.16, 0.12, T + 0.16, '#e8e1d5');
+    // the same capital moulding where the arches meet the tall wall and the building
+    box.add(x1 - T / 2, sp - 0.06, z1 - T - 0.04, T + 0.16, 0.12, 0.1, '#e8e1d5');
+    box.add(x0 + 0.06, sp - 0.06, z0 + T / 2, 0.12, 0.12, T + 0.16, '#e8e1d5');
+    // smooth moulded bands round both arches, on the outside faces
+    const ring = (cx, cz, r, alongX, out) => {
+      const nv = 24;
+      for (let k = 0; k < nv; k++) {
+        const t = Math.PI * (k + 0.5) / nv, rr = r + 0.1, u = Math.cos(t) * rr, y = sp + Math.sin(t) * rr;
+        if (alongX) box.add(cx + u, y, out, 0.2, Math.PI * rr / nv + 0.02, 0.05, '#e8e1d5', 0, 0, t);
+        else box.add(out, y, cz + u, 0.05, Math.PI * rr / nv + 0.02, 0.2, '#e8e1d5', 0, -t, 0);
+      }
+    };
+    ring(x0 + nw / 2, 0, nw / 2, true, z0 - 0.02);
+    ring(0, z0 + (T + ew) / 2, (ew - T) / 2, false, x1 + 0.02);
+    // a cornice under the eaves along the arched sides
+    box.add(x1 + 0.04, eave - 0.12, (z0 + z1) / 2, 0.14, 0.12, z1 - z0 + 0.08, '#e8e1d5');
+    // a small barred window in the tall wall, on the street side
+    const wx = x0 + L * 0.42;
+    box.add(wx, 2.0, z1 + 0.03, 0.9, 1.15, 0.06, '#e3dccf');
+    box.add(wx, 2.0, z1 + 0.05, 0.66, 0.9, 0.04, '#20262c');
+    for (let b = -1.5; b <= 1.5; b++) box.add(wx + b * 0.15, 2.0, z1 + 0.09, 0.025, 0.9, 0.025, '#2a2a2a');
+    box.add(wx, 1.4, z1 + 0.08, 1.0, 0.07, 0.16, '#e3dccf');
+    // the roof: clay tiles on top, boards underneath, resting on rafters, sloping away from the building
+    const over = 0.45, run = L + over, drop = (high - eave) * run / L, ang = Math.atan2(high - eave, L);
+    const slopeLen = Math.hypot(run, drop), wz = z1 - z0 + 0.6, thick = 0.12;
+    const tt = tiles().clone(); tt.needsUpdate = true; tt.repeat.set(wz / 1.6, slopeLen / 1.6);
+    const wood = new THREE.MeshLambertMaterial({ color: '#7a5a3e' }), dark = new THREE.MeshLambertMaterial({ color: '#5e4430' });
+    const roof = new THREE.Mesh(new THREE.BoxGeometry(wz, thick, slopeLen),
+      [wood, wood, new THREE.MeshLambertMaterial({ map: tt, color: '#d3936a' }), dark, wood, wood]);
+    const mx = x0 + run / 2;
+    roof.position.set(mx, roofY(mx) + 0.16 + thick / 2, (z0 + z1) / 2);
+    roof.rotation.set(ang, Math.PI / 2, 0, 'YXZ');
+    roof.castShadow = shadows; roof.receiveShadow = shadows;
+    group.add(roof);
+    for (let zz = z0 + 0.25; zz < z1; zz += 0.5) box.add(mx, roofY(mx) + 0.08, zz, slopeLen, 0.16, 0.12, '#6a4a30', 0, 0, -ang);
+    box.add(x1 - 0.1, eave + 0.1, (z0 + z1) / 2, 0.16, 0.2, z1 - z0, '#5e4430');                  // beam along the arches
+    box.add(x0 + 0.08, high + 0.12, (z0 + z1) / 2, 0.16, 0.16, z1 - z0 + 0.6, '#5e4430');           // ledger on the building
+    box.add(x0 + 0.05, high + 0.38, (z0 + z1) / 2, 0.1, 0.12, z1 - z0 + 0.6, '#bfae98');            // flashing where it meets the wall
+    // a lantern hanging in the middle
+    const lx = (x0 + x1 - T) / 2, lz = (z0 + T + z1 - T) / 2;
+    box.add(lx, (roofY(lx) + 4.05) / 2, lz, 0.02, roofY(lx) - 4.05, 0.02, '#2a2a2a');
+    box.add(lx, 4.02, lz, 0.26, 0.05, 0.26, '#2a2a2a');
+    glow.add(lx, 3.83, lz, 0.17, 0.32, 0.17, night ? '#ffe3a0' : '#efe2bc');
+    box.add(lx, 3.65, lz, 0.22, 0.04, 0.22, '#2a2a2a');
   } else if (d.type === 'curb') {
     // [x0, z0, x1, z1]: a low stone kerb round a paved area
     const [x0, z0, x1, z1] = a;
