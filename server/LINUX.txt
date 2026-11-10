@@ -1,0 +1,86 @@
+SITELINE GAME SERVER — LINUX SETUP (Ubuntu)
+==========================================
+
+The same game server as the Windows guide (README.txt), on Ubuntu Linux.
+One script sets everything up: the server starts by itself when the PC
+boots, restarts if it crashes, downloads game updates from GitHub every
+night, and gets a public https address through Tailscale Funnel.
+
+
+PART 1 — PUT UBUNTU ON THE PC (skip if Linux is already installed)
+------------------------------------------------------------------
+WARNING: installing Ubuntu the normal way ERASES EVERYTHING on the PC
+(Windows, files, games). Copy anything you want to keep to a USB drive or
+cloud storage first.
+
+You need: a USB stick of 8 GB or more (it gets wiped too) and another
+computer is handy for reading these steps.
+
+1. On the Windows PC, download "Ubuntu Desktop 24.04 LTS" from
+   https://ubuntu.com/download/desktop  (a big .iso file, about 6 GB).
+2. Download balenaEtcher from https://etcher.balena.io and open it.
+   "Flash from file" -> pick the .iso -> "Select target" -> your USB stick
+   -> "Flash!". Wait until it says it's done.
+3. Leave the USB stick in and restart the PC. While it starts, tap the
+   boot-menu key over and over (usually F12, F11, F10, F8 or Esc — it is
+   often shown on the screen for a second). Pick the USB stick.
+4. Choose "Try or Install Ubuntu", then "Install Ubuntu". Follow the
+   questions. When it asks how to install, pick "Erase disk and install
+   Ubuntu". Choose a username and password you will remember.
+5. When it says to, remove the USB stick and restart.
+6. Stop the PC from sleeping: Settings -> Power -> set "Automatic Suspend"
+   to Off (and "Screen Blank" can stay on — that's fine).
+7. Settings -> System -> Software Updates: let it install updates.
+
+
+PART 2 — INSTALL THE GAME SERVER (about 10 minutes)
+---------------------------------------------------
+1. Open the Terminal: press Ctrl + Alt + T.
+2. Copy these three lines, paste them into the Terminal (Ctrl + Shift + V)
+   and press Enter. Type your password when asked (nothing shows while
+   you type — that's normal) and press Enter.
+
+     sudo apt-get update && sudo apt-get install -y git curl
+     git clone https://github.com/sitev2/siteline.git ~/siteline
+     bash ~/siteline/server/install-linux.sh
+
+3. The script installs Node.js and the server, then Tailscale. When it
+   shows a Tailscale link ("To authenticate, visit: https://login.tailscale.com/..."):
+   Ctrl + click it (or copy it into a browser) and sign in with the same
+   Tailscale account you use anywhere else.
+4. If it shows a link asking you to enable HTTPS or Funnel: open it,
+   approve, then run the last line again:
+     bash ~/siteline/server/install-linux.sh
+5. At the end it prints your address and your game link, like:
+     Server address:  https://yourpc.tail1234.ts.net
+     Game link:       https://sitev2.github.io/siteline/?server=wss://yourpc.tail1234.ts.net
+
+Check it: on your phone, turn Wi-Fi OFF and open the server address. It
+should say "SITELINE server is running."
+
+
+EVERYDAY USE
+------------
+Nothing to do. The server starts when the PC turns on (you don't even need
+to sign in), and every night at 04:30 it downloads the newest game from
+GitHub and restarts. To update right now instead of waiting:
+
+     sudo systemctl restart siteline
+
+Other commands (paste into the Terminal):
+     systemctl status siteline        is it running?  (press q to close)
+     journalctl -u siteline -f        watch the server log (Ctrl + C to stop)
+     tailscale funnel status          show the public address again
+     sudo systemctl stop siteline     stop it (it starts again on reboot)
+     sudo systemctl disable --now siteline siteline-update.timer
+                                      stop it and don't start on boot
+
+
+IF SOMETHING GOES WRONG
+-----------------------
+- "The server didn't start": run  journalctl -u siteline -n 50  and send
+  the text to whoever is helping you.
+- Updates stopped arriving: don't edit files inside ~/siteline by hand —
+  local changes block the nightly download. To throw your changes away:
+     cd ~/siteline && git fetch && git reset --hard origin/main && sudo systemctl restart siteline
+- Moved from Windows? You don't need the old ZIP or start.bat any more.

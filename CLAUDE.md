@@ -91,7 +91,10 @@ The only folder is `server/` (the optional home game server).
 ## Home server (`server/`)
 Node + `ws`. `server/server.mjs` imports the root `server.js` and `config.js`, so changes
 to the rules, maps or weapons also need the home server updated: the owner re-downloads
-the repo ZIP and restarts `server/start.bat`. Say so whenever a change touches
+the repo ZIP and restarts `server/start.bat`. On Linux (`server/LINUX.txt`, `server/install-linux.sh`: systemd service +
+Tailscale Funnel) it updates itself: every (re)start runs `git pull`, and a timer restarts it nightly at 04:30.
+The same server can run on Render (build `cd server && npm install`, start `node server/server.mjs`; free plan sleeps,
+the menu's Wake server row handles that). Say so whenever a change touches
 `server.js`, `world.js`, `maps.js`, `weapons.js` or `config.js`.
 
 ## Testing

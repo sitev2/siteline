@@ -1,6 +1,9 @@
 SITELINE GAME SERVER — WINDOWS SETUP
 ====================================
 
+(On Ubuntu Linux? Use LINUX.txt instead: one script sets it all up,
+including starting on boot and nightly updates.)
+
 This folder is the game server. It runs on your Windows PC and hosts every
 online match. It uses the game files one folder up (server.js, maps.js, ...),
 so keep the whole repository together — don't copy this folder on its own. Your website stays on GitHub Pages; players' browsers connect
