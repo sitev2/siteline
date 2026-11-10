@@ -260,6 +260,7 @@ function gunMesh(weapon) {
   const u = g.userData = { kind: 'rifle', grip: V(0, -0.06, 0.02), gripTilt: 0.25, fore: V(0, -0.04, -0.25), foreKind: 'under', charge: V(0, 0.05, 0.02), muzzleAt: V(0, 0.02, -0.6), silencer: null };
   const B = BUILD[weapon];
   if (B) B(g, u); else P(g, rbox(0.05, 0.08, 0.5), G.steel, 0, 0, -0.1);
+  if (u.rot) g.rotation.set(u.rot.x, u.rot.y, u.rot.z);     // how a melee weapon sits in the fist
   // merge the fixed parts (moving parts — magazine, slide, bolt, pump, silencer — are groups)
   if (u.mag) {
     const bb = new THREE.Box3(), tmp = new THREE.Box3();
@@ -611,6 +612,45 @@ const BUILD = {
     u.charge = V(0.058, 0.043, 0.07);
     u.muzzleAt = V(0, 0.048, -0.68);
   },
+  // The secret spoon: a big polished serving spoon held in the fist like a knife.
+  // Built standing up (handle along y, the hollow of the bowl facing +z) and tipped forward by u.rot.
+  spoon(g, u) {
+    const steel = G.chrome;
+    // handle: a flat bar that is widest at the end and narrows to the neck
+    const handle = cached('spoonHandle', () => {
+      const s = new THREE.Shape();
+      const half = [[-0.078, 0.012], [-0.03, 0.011], [0.04, 0.0078], [0.088, 0.005], [0.112, 0.006]];
+      s.moveTo(0, -0.09);
+      s.quadraticCurveTo(0.012, -0.09, half[0][1], half[0][0]);
+      for (const [y, w] of half.slice(1)) s.lineTo(w, y);
+      for (const [y, w] of half.slice().reverse()) s.lineTo(-w, y);
+      s.quadraticCurveTo(-0.012, -0.09, 0, -0.09);
+      const geo = new THREE.ExtrudeGeometry(s, HI()
+        ? { depth: 0.0022, bevelEnabled: true, bevelThickness: 0.0009, bevelSize: 0.0009, bevelOffset: -0.0009, bevelSegments: 2, curveSegments: 8 }
+        : { depth: 0.004, bevelEnabled: false, curveSegments: 4 });
+      geo.translate(0, 0, HI() ? -0.0011 : -0.002);
+      return geo;
+    });
+    P(g, handle, steel);
+    // bowl: a thin shell (outside and inside), oval, hollow side towards +z
+    const bowl = cached('spoonBowl', () => {
+      const R = 0.031, d = 0.015, R2 = R - 0.0017, d2 = d - 0.0015, n = HI() ? 7 : 4, pts = [];
+      for (let i = 0; i <= n; i++) { const a = i / n * Math.PI / 2; pts.push(new THREE.Vector2(R * Math.sin(a) + (i ? 0 : 1e-5), -d * Math.cos(a))); }
+      pts.push(new THREE.Vector2(R - 0.0004, 0.0007), new THREE.Vector2(R2, 0.0007));
+      for (let i = n; i >= 0; i--) { const a = i / n * Math.PI / 2; pts.push(new THREE.Vector2(R2 * Math.sin(a) + (i ? 0 : 1e-5), -d2 * Math.cos(a))); }
+      const geo = new THREE.LatheGeometry(pts, HI() ? 22 : 10);
+      geo.rotateX(Math.PI / 2);
+      geo.scale(1, 1.42, 1);
+      return geo;
+    });
+    P(g, bowl, steel, 0, 0.15, 0.0005);
+    D(g, rbox(0.013, 0.004, 0.0034, 0.0012), G.grey, 0, -0.066, 0);                  // maker's stamp on the handle
+    u.kind = 'melee';
+    u.grip = V(0, -0.028, -0.004); u.gripTilt = 0;
+    u.fore = null; u.foreKind = 'cup';
+    u.muzzleAt = V(0, 0.15, 0);
+    u.rot = V(-0.95, 0.25, 0.3);
+  },
 };
 
 // AR-style upper/lower receivers, buffer tube, stock and grip
@@ -729,6 +769,7 @@ export function makeViewModel(weapon, team) {
   g.add(handR, handL, armR, armL);
   gun.traverse(o => { o.castShadow = false; });
   const u = gun.userData;
+  if (u.kind === 'melee') handL.visible = armL.visible = false;      // held in one hand
   g.userData = {
     gun, handR, handL, armR, armL, muzzle: u.muzzle, silencer: u.silencer || null, parts: u,
     elbowR: V(0.22, -0.28, 0.3), elbowL: V(-0.3, -0.5, -0.05),
@@ -922,8 +963,9 @@ export function makePlayerModel(team, name, showName) {
 // body turns sideways into a shooting stance (long guns: left shoulder forward)
 const HOLD = {
   pistol: V(0.0, -0.1, -0.44), smg: V(0.1, -0.11, -0.36), shotgun: V(0.12, -0.1, -0.36), rifle: V(0.12, -0.1, -0.36), sniper: V(0.12, -0.11, -0.34), bomb: V(0, -0.22, -0.32),
+  melee: V(0.2, -0.2, -0.36),
 };
-const BLADE = { pistol: 0, smg: -0.45, shotgun: -0.6, rifle: -0.6, sniper: -0.6, bomb: 0 };
+const BLADE = { pistol: 0, smg: -0.45, shotgun: -0.6, rifle: -0.6, sniper: -0.6, bomb: 0, melee: 0 };
 const YAXIS = new THREE.Vector3(0, 1, 0);
 export function setModelWeapon(model, weapon) {
   if (model.weapon === weapon) return;
@@ -1030,8 +1072,20 @@ export function animateModel(model, dt, state) {
   const hold = model.gunHolder.position;
   hold.copy(HOLD[kind] || HOLD.rifle);
   hold.z += model.kick * 0.04;
+  // swinging the spoon: a sweep across the body, or a jab straight out
+  let swingX = 0;
+  if (model.swingT != null) {
+    model.swingT += dt / (model.swingStab ? 0.42 : 0.34);
+    if (model.swingT >= 1 || kind !== 'melee') model.swingT = null;
+    else {
+      const s = Math.sin(Math.PI * model.swingT);      // out and back
+      if (model.swingStab) { hold.z -= 0.3 * s; hold.y += 0.1 * s; hold.x -= 0.08 * s; swingX = -0.5 * s; }
+      else { hold.x -= 0.5 * s; hold.z -= 0.14 * s; hold.y += 0.06 * s; swingX = -0.45 * s; }
+    }
+  }
   hold.applyAxisAngle(YAXIS, -model.blade);
   model.gunHolder.rotation.y = -model.blade;
+  model.gunHolder.rotation.x = swingX;
   model.gunHolder.visible = kw < 0.5;
   model.gunHolder.updateMatrix();
   const gun = model.gunHolder.children[0];
@@ -1048,7 +1102,7 @@ export function animateModel(model, dt, state) {
       if (!right && (gd.foreKind === 'under' || gd.foreKind === 'pump')) _hp.y += 0.026;
       _hp.applyMatrix4(_gm);
       _hq.copy(_gq).multiply(right ? _qa.setFromEuler(_eu.set(-(gd.gripTilt || 0), 0, 0)) : leftHoldQuat(gd, _qa));
-    } else { _hp.set(right ? 0.1 : -0.1, -0.3, -0.35); _hq.identity(); }
+    } else { _hp.set(right ? 0.1 : -0.2, -0.3, -0.26); _hq.identity(); }      // a free hand (the spoon is held in one)
     // working on the bomb: palms down, hands busy
     if (kw > 0.001) {
       _t.set(right ? 0.1 : -0.1, -0.55 + (right ? work : -work), -0.4);
@@ -1097,6 +1151,8 @@ const _hp2 = new THREE.Vector3();
 
 // someone fired: kick the arms back a little
 export function modelRecoil(model, strength = 1) { model.kick = Math.min(1.4, model.kick + strength); }
+// someone swung the spoon (stab = the slow jab)
+export function modelSwing(model, stab) { model.swingT = 0; model.swingStab = !!stab; }
 
 // ---------- the bomb ----------
 function bombInHand() {

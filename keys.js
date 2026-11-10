@@ -31,6 +31,8 @@ export function reverseMap(keys) {
     const twin = code.replace(/Left$/, 'Right');
     if (twin !== code) out[twin] = out[twin] || act;
   }
+  // slot 3 (the secret spoon) is not in the settings list; it only takes key 3 while nothing else uses it
+  if (!out.Digit3) out.Digit3 = 'w3';
   return out;
 }
 
