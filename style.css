@@ -371,6 +371,12 @@ body.touch #bomb-icon::before { content: '💣'; font-size: 1.1rem; }
 body.touch #kit-icon::before { content: '🔧'; font-size: 1.1rem; }
 body.touch .hpbar { width: 64px; }
 body.touch #hint { bottom: calc(76px + var(--sab)); }
+/* small phones: keep health / ammo clear of the crouch and jump buttons, money clear of the score, hints above the buttons */
+@media (max-width: 760px) {
+  body.touch #vitals { left: calc(8px + var(--sal)); transform: none; gap: 5px; }
+  body.touch #econ { left: calc(134px + var(--sal)); top: calc(64px + var(--sat)); }
+  body.touch #hint { bottom: calc(104px + var(--sab)); max-width: 62vw; white-space: normal; text-align: center; font-size: .85rem; }
+}
 
 @media (max-height: 500px) {
   #radar { width: 112px; height: 112px; }
