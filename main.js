@@ -2,6 +2,7 @@
 import { Server } from './server.js';
 import { HostNet, ClientNet, ServerNet, normaliseCode, relayStatus } from './net.js';
 import { STEPS as NET_STEPS, runNetTest, summarise as netVerdict, resultsText as netResultsText } from './nettest.js';
+import { logEntries, logText, entryText, clearLog } from './netlog.js';
 import { CONFIG } from './config.js';
 import { Game } from './game.js';
 import { MAPS, mapsFor, isDmMap, dmVariant, resolveMap } from './maps.js';
@@ -222,7 +223,8 @@ async function startNetTest() {
   }
   $('nettest-verdict').classList.add('hidden');
   $('nettest-text').classList.add('hidden');
-  $('nettest-run').disabled = true; $('nettest-copy').disabled = true;
+  $('nettest-run').disabled = true;
+  renderNetLog();
   const marks = { ok: '✓', fail: '✕', skip: '–', wait: '', run: '' };
   const results = await runNetTest((id, state, detail) => {
     if (run !== netTestRun || !rows[id]) return;
@@ -235,16 +237,41 @@ async function startNetTest() {
   const box = $('nettest-verdict');
   box.textContent = v.text;
   box.className = `nettest-verdict ${v.good ? 'good' : 'bad'}`;
-  $('nettest-text').value = netResultsText(results);
-  $('nettest-run').disabled = false; $('nettest-copy').disabled = false;
+  lastCheck = netResultsText(results);
+  try { localStorage.setItem('siteline-netcheck-v1', lastCheck); } catch (e) { /* storage blocked */ }
+  $('nettest-run').disabled = false;
+  renderNetLog();
 }
-async function copyNetResults() {
-  const text = $('nettest-text').value;
-  try { await navigator.clipboard.writeText(text); toast('Results copied — paste them in a message.'); }
+let lastCheck = '';
+// the saved host / join attempts (netlog.js), newest first
+function renderNetLog() {
+  const list = $('netlog-list');
+  list.innerHTML = '';
+  const entries = logEntries();
+  if (!entries.length) { list.innerHTML = '<li><span class="empty">Nothing saved yet. Host or join a game and it will appear here.</span></li>'; return; }
+  for (const e of entries) {
+    const li = document.createElement('li');
+    li.className = /failed|lost/.test(e.outcome) ? 'bad' : e.outcome === 'connected' ? 'good' : '';
+    const kind = { join: 'Joined', host: 'Hosted', invite: 'Practice invite room', server: 'Game server' }[e.kind] || e.kind;
+    const t = document.createElement('span'); t.textContent = `${new Date(e.at).toLocaleString()} · ${kind}${e.info && e.info.code ? ` ${e.info.code}` : ''} · ${e.outcome}`;
+    li.appendChild(t);
+    if (e.message) { const m = document.createElement('span'); m.className = 'msg'; m.textContent = e.message; li.appendChild(m); }
+    list.appendChild(li);
+  }
+}
+function everythingText() {
+  let check = lastCheck;
+  if (!check) { try { check = localStorage.getItem('siteline-netcheck-v1') || ''; } catch (e) { /* storage blocked */ } }
+  return [check || '(connection check not run yet)', '', '=== Saved connection attempts (newest first) ===', logText()].join('\n');
+}
+// copy text; where the clipboard isn't allowed, show it in the Connection check screen to copy by hand
+async function copyText(text, done) {
+  try { await navigator.clipboard.writeText(text); toast(done); }
   catch (e) {
-    // no clipboard access: show the text so it can be selected and copied by hand
+    if ($('nettest').classList.contains('hidden')) openSub('nettest');
+    renderNetLog();
     const ta = $('nettest-text');
-    ta.classList.remove('hidden'); ta.focus(); ta.select();
+    ta.value = text; ta.classList.remove('hidden'); ta.focus(); ta.select();
     toast('Select the text and copy it.');
   }
 }
@@ -337,6 +364,7 @@ async function openInviteRoom() {
     onMessage: (id, m) => app.server && app.server.receive(id, m),
     onLeave: (id) => app.server && app.server.removePlayer(id),
     onError: () => {},
+    logKind: 'invite',
   });
   app.hostNet = net;
   try {
@@ -961,7 +989,9 @@ function init() {
   $('btn-net-check').addEventListener('click', openNetTest);
   $('btn-net-dismiss').addEventListener('click', hideNetError);
   $('nettest-run').addEventListener('click', startNetTest);
-  $('nettest-copy').addEventListener('click', copyNetResults);
+  $('nettest-copy').addEventListener('click', () => copyText(everythingText(), 'Copied — paste it into a message.'));
+  $('btn-net-copy').addEventListener('click', () => { const last = logEntries()[0]; copyText(last ? entryText(last) : logText(), 'Details copied — paste them into a message.'); });
+  $('netlog-clear').addEventListener('click', () => { clearLog(); renderNetLog(); toast('Saved attempts cleared.'); });
   for (const b of document.querySelectorAll('.back')) b.addEventListener('click', () => { netTestRun++; closeSub(); });
 
   $('btn-share').addEventListener('click', shareInvite);

@@ -113,6 +113,13 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .nettest-verdict.good { background: rgba(90,200,120,.1); border-color: rgba(90,200,120,.4); }
 .nettest-verdict.bad { background: rgba(255,90,74,.1); border-color: rgba(255,90,74,.45); }
 .nettest-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.netlog-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-height: 260px; overflow-y: auto; }
+.netlog-list li { display: grid; grid-template-columns: 10px 1fr; gap: 2px 10px; align-items: baseline; padding: 8px 10px; border-radius: 8px; background: rgba(255,255,255,.035); font-size: .86rem; }
+.netlog-list li::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); grid-row: span 2; align-self: center; }
+.netlog-list li.bad::before { background: var(--danger); }
+.netlog-list li.good::before { background: #6fdc8c; }
+.netlog-list .msg { grid-column: 2; color: var(--muted); overflow-wrap: anywhere; }
+.netlog-list .empty { grid-column: 1 / -1; color: var(--muted); }
 .nettest-text { width: 100%; min-height: 140px; background: rgba(255,255,255,.06); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 10px; font: .8rem ui-monospace, Menlo, monospace; -webkit-user-select: text; user-select: text; }
 .invite { padding: 12px 14px; border-radius: 10px; background: rgba(240,160,64,.12); border: 1px solid rgba(240,160,64,.4); }
 

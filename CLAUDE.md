@@ -16,6 +16,9 @@ The only folder is `server/` (the optional home game server).
   host's browser AND on the home server
 - `net.js` — connections: PeerJS peer-to-peer, Metered relay, WebSocket server mode. Joining tries any route, then relay-only;
   it resolves once the host answers. A failed relay sign-in is retried next time (never cached). Errors stay on the menu (`#net-error`).
+- `netlog.js` — connection log: every host/join/server attempt saves its steps (relay sign-in, matchmaking, ICE states, routes
+  offered/tried from getStats, errors, drops, page hidden/offline) in localStorage (last 20). Copy via the error box
+  (“Copy details”) or Connection check (“Copy everything”). Practice invite rooms only log when a friend connects.
 - `nettest.js` — Menu → Connection check: tests relay sign-in, matchmaking (PeerJS), direct UDP, relay over UDP/TCP/TLS, and a
   real message through the relay; plain-language verdict + Copy results (for school/work Wi-Fi problems)
 - `world.js` (multi-level map model, collision, wall-bang penetration), `maps.js` (map

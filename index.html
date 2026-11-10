@@ -128,6 +128,7 @@
           <p id="net-error-text"></p>
           <div class="net-error-actions">
             <button id="btn-net-check" class="secondary">Check this Wi-Fi</button>
+            <button id="btn-net-copy" class="ghost">Copy details</button>
             <button id="btn-net-dismiss" class="link">Hide</button>
           </div>
         </div>
@@ -306,9 +307,13 @@
         <div id="nettest-verdict" class="nettest-verdict hidden"></div>
         <div class="nettest-actions">
           <button id="nettest-run" class="secondary">Run again</button>
-          <button id="nettest-copy" class="ghost">Copy results</button>
+          <button id="nettest-copy" class="ghost">Copy everything</button>
         </div>
-        <textarea id="nettest-text" class="nettest-text hidden" readonly aria-label="Results to copy"></textarea>
+        <h3>Saved connection attempts</h3>
+        <p class="note">Every time you host or join, each step is saved on this iPad (the last 20 tries), including what went wrong. “Copy everything” copies these together with the check above, ready to paste into a message.</p>
+        <ul id="netlog-list" class="netlog-list"></ul>
+        <div class="nettest-actions"><button id="netlog-clear" class="link">Clear saved attempts</button></div>
+        <textarea id="nettest-text" class="nettest-text hidden" readonly aria-label="Everything to copy"></textarea>
         <button class="primary back">Done</button>
       </div>
     </section>

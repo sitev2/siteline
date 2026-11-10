@@ -2,6 +2,7 @@
 // game server; other players connect to it using a short room code.
 /* global Peer */
 import { CONFIG } from './config.js';
+import { startLog, watchRtc } from './netlog.js';
 
 const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
@@ -22,31 +23,47 @@ let relayCache = null;
 let relayState = 'none';                 // 'none' (not configured) | 'ok' | 'blocked'
 export function relayConfigured() { return !!(CONFIG.turnApp && CONFIG.turnApiKey); }
 export function relayStatus() { return relayConfigured() ? relayState : 'none'; }
-export async function relayServers({ fresh = false } = {}) {
-  if (!relayConfigured()) return [];
-  if (relayCache && !fresh) return relayCache;
+// log (optional): a connection log entry (netlog.js) to note each step in
+export async function relayServers({ fresh = false, log = null } = {}) {
+  if (!relayConfigured()) { if (log) log.event('relay: none set up in config.js'); return []; }
+  if (relayCache && !fresh) { if (log) log.event(`relay: using the login from earlier (${routeList(relayCache)})`); return relayCache; }
+  const host = `${CONFIG.turnApp}.metered.live`;
   const url = `https://${encodeURIComponent(CONFIG.turnApp)}.metered.live/api/v1/turn/credentials?apiKey=${encodeURIComponent(CONFIG.turnApiKey)}`;
   for (let attempt = 0; attempt < 2; attempt++) {
+    const t0 = performance.now();
+    if (log) log.event(`relay: asking ${host} for login details (try ${attempt + 1})`);
     try {
       const ctl = new AbortController();
       const t = setTimeout(() => ctl.abort(), 6000);
       const res = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
       clearTimeout(t);
-      const list = await res.json();
+      const body = await res.text();
+      let list = null;
+      try { list = JSON.parse(body); } catch (e) { /* not JSON: a filter's block page, for example */ }
       // keep the relay routes (TURN over UDP, TCP and TLS); its extra STUN entry adds nothing
       const relay = Array.isArray(list) ? list.filter(s => s && /^turns?:/.test(String(s.urls))) : [];
-      if (relay.length) { relayCache = relay; relayState = 'ok'; return relay; }
-    } catch (e) { /* blocked or slow: try once more */ }
+      if (relay.length) {
+        relayCache = relay; relayState = 'ok';
+        if (log) log.event(`relay: OK in ${Math.round(performance.now() - t0)} ms — ${routeList(relay)}`);
+        return relay;
+      }
+      if (log) log.event(`relay: answer was not usable (HTTP ${res.status}, ${body.length} bytes: ${body.slice(0, 120).replace(/\s+/g, ' ')})`);
+    } catch (e) {
+      if (log) log.event(`relay: failed after ${Math.round(performance.now() - t0)} ms (${e && e.name === 'AbortError' ? 'no answer within 6 s' : `${e && e.name}: ${e && e.message}`})`);
+    }
   }
   relayState = 'blocked';
   console.warn('Relay login unavailable on this network — direct connections only');
   return [];
 }
+function routeList(relay) { return relay.map(s => String(s.urls)).join(' '); }
 // one STUN server (to find a direct route) plus the relay routes; more servers only slow down the search
-async function iceServers() {
-  const relay = await relayServers();
+async function iceServers(log = null) {
+  const relay = await relayServers({ log });
   return relay.length ? [CONFIG.iceServers[0], ...relay] : CONFIG.iceServers.slice();
 }
+const matchmaker = () => (CONFIG.peerServer ? `${CONFIG.peerServer.host}:${CONFIG.peerServer.port}` : '0.peerjs.com');
+const errText = (e) => `${(e && e.type) || 'error'}${e && e.message ? `: ${e.message}` : ''}`;
 
 function makePeer(id, ice, relayOnly = false) {
   if (typeof Peer === 'undefined') throw new Error('Networking library failed to load.');
@@ -66,39 +83,57 @@ function describe(err) {
 }
 
 export class HostNet {
-  constructor({ onJoin, onMessage, onLeave, onError }) {
-    Object.assign(this, { onJoin, onMessage, onLeave, onError });
+  // logKind: 'host' logs from the start; 'invite' (a practice game's quiet invite room) only starts a log
+  // when something goes wrong or a friend tries to join, so practice games don't fill the log
+  constructor({ onJoin, onMessage, onLeave, onError, logKind = 'host' }) {
+    Object.assign(this, { onJoin, onMessage, onLeave, onError, logKind });
     this.conns = new Map();
     this.peer = null;
     this.code = null;
+    this.log = logKind === 'host' ? startLog('host', { matchmaker: matchmaker(), relaySetUp: relayConfigured() }) : null;
+  }
+
+  // the log, started on first use for an invite room
+  note(text) {
+    if (!this.log) this.log = startLog(this.logKind, { matchmaker: matchmaker(), relaySetUp: relayConfigured(), code: this.code || undefined });
+    this.log.event(text);
   }
 
   async open() {
+    const ice = await iceServers(this.log);
     for (let attempt = 0; attempt < 5; attempt++) {
       const code = randomCode();
       try {
-        await this.tryOpen(code, await iceServers());
+        await this.tryOpen(code, ice);
         this.code = code;
+        if (this.log) { this.log.entry.info.code = code; this.log.end('connected', `room ${code} open`); }
         return code;
       } catch (e) {
-        if (e && e.type === 'unavailable-id') continue;
-        throw new Error(describe(e));
+        if (e && e.type === 'unavailable-id') { if (this.log) this.log.event(`matchmaking: code ${code} already taken, picking another`); continue; }
+        const msg = describe(e);
+        if (this.logKind !== 'invite') { this.note(`matchmaking: could not open room (${errText(e)})`); this.log.end('failed', msg); }
+        throw new Error(msg);
       }
     }
+    if (this.logKind !== 'invite') { this.note('matchmaking: no free room code after 5 tries'); this.log.end('failed', 'Could not create a room.'); }
     throw new Error('Could not create a room. Try again.');
   }
 
   tryOpen(code, ice) {
     return new Promise((resolve, reject) => {
+      if (this.log) this.log.event(`matchmaking: opening room ${code} on ${matchmaker()}`);
+      const t0 = performance.now();
       const peer = makePeer(CONFIG.peerPrefix + code, ice);
       const fail = (e) => { peer.destroy(); reject(e); };
-      const timer = setTimeout(() => fail({ type: 'network' }), 15000);
+      const timer = setTimeout(() => fail({ type: 'network', message: 'no answer within 15 s' }), 15000);
       peer.on('open', () => {
         clearTimeout(timer);
+        if (this.log) this.log.event(`matchmaking: room open after ${Math.round(performance.now() - t0)} ms`);
         this.peer = peer;
         peer.off('error', fail);
-        peer.on('error', (e) => this.onError && this.onError(describe(e)));
-        peer.on('disconnected', () => { if (!peer.destroyed) peer.reconnect(); });
+        peer.on('error', (e) => { this.note(`matchmaking/peer error (${errText(e)})`); if (this.onError) this.onError(describe(e)); });
+        peer.on('disconnected', () => { this.note('matchmaking: lost the server connection, reconnecting (friends can\'t join until it is back)'); if (!peer.destroyed) peer.reconnect(); });
+        peer.on('open', () => { if (this.log) this.log.event('matchmaking: connected again'); });
         peer.on('connection', (conn) => this.accept(conn));
         resolve();
       });
@@ -107,28 +142,39 @@ export class HostNet {
   }
 
   accept(conn) {
+    const who = `player ${String(conn.peer).slice(0, 8)}`;
+    this.note(`${who}: trying to connect`);
+    const report = watchRtc(this.log, conn.peerConnection, who);
+    let opened = false;
+    const check = setTimeout(() => { if (!opened) { this.note(`${who}: still not connected after 20 s`); report(); } }, 20000);
+    conn.on('open', () => { opened = true; clearTimeout(check); this.note(`${who}: connected`); report(); });
     conn.on('data', (msg) => {
       if (!msg || typeof msg !== 'object') return;
       if (msg.t === 'hello') {
         if (this.conns.size >= CONFIG.maxPlayers - 1) {
+          this.note(`${who}: room full, turned away`);
           conn.send({ t: 'full' });
           setTimeout(() => conn.close(), 300);
           return;
         }
+        this.note(`${who}: said hello, joining as "${String(msg.name || '').slice(0, 16)}"`);
         this.conns.set(conn.peer, conn);
         this.onJoin(conn.peer, msg.name);
       } else if (this.conns.has(conn.peer)) {
         this.onMessage(conn.peer, msg);
       }
     });
-    const gone = () => {
+    const gone = (why) => {
+      clearTimeout(check);
+      this.note(`${who}: ${why}`);
+      report();
       if (this.conns.get(conn.peer) === conn) {
         this.conns.delete(conn.peer);
         this.onLeave(conn.peer);
       }
     };
-    conn.on('close', gone);
-    conn.on('error', gone);
+    conn.on('close', () => gone('connection closed'));
+    conn.on('error', (e) => gone(`connection error (${errText(e)})`));
   }
 
   send(id, msg) {
@@ -139,6 +185,7 @@ export class HostNet {
   }
 
   destroy() {
+    if (this.log) this.log.end('left');
     for (const c of this.conns.values()) { try { c.close(); } catch (e) { /* ignore */ } }
     this.conns.clear();
     if (this.peer) this.peer.destroy();
@@ -160,26 +207,33 @@ export class ClientNet {
   // If that never opens and there is a relay, a second try goes through the relay only, which gets
   // through networks where a direct route looks possible but never connects.
   async connect(code, name) {
-    const ice = await iceServers();
+    const log = this.log = startLog('join', { code, matchmaker: matchmaker(), relaySetUp: relayConfigured(), relayForced: !!CONFIG.relayOnly });
+    const ice = await iceServers(log);
     const relay = ice.some(s => /^turns?:/.test(String(s.urls)));
     const tries = relay ? [[false, 12000], [true, 16000]] : [[false, 20000]];
     let last = null;
-    for (const [relayOnly, ms] of tries) {
-      if (this.closed) throw new Error('Cancelled.');
+    for (let i = 0; i < tries.length; i++) {
+      const [relayOnly, ms] = tries[i];
+      if (this.closed) { log.end('left'); throw new Error('Cancelled.'); }
       if (relayOnly) this.status('Trying the relay…');
-      try { await this.attempt(code, name, ice, relayOnly, ms); return; }
-      catch (e) { last = e; if (e.final) break; }
+      log.event(`try ${i + 1}: ${relayOnly ? 'through the relay only' : 'any route (direct or relay)'}, up to ${ms / 1000} s`);
+      try { await this.attempt(code, name, ice, relayOnly, ms, `try ${i + 1}`); log.end('connected'); return; }
+      catch (e) { last = e; log.event(`try ${i + 1} failed: ${e.message}`); if (e.final) break; }
     }
+    log.end('failed', last && last.message);
     this.destroy();
     throw new Error(last && last.message || 'Could not connect to the host.');
   }
 
-  attempt(code, name, ice, relayOnly, ms) {
+  attempt(code, name, ice, relayOnly, ms, label) {
+    const log = this.log;
     return new Promise((resolve, reject) => {
-      let settled = false, opened = false, signalled = false, peer, timer, replyTimer;
-      const fail = (message, final = false) => {
+      let settled = false, opened = false, signalled = false, peer, timer, replyTimer, report = null;
+      const t0 = performance.now();
+      const fail = async (message, final = false) => {
         if (settled) return;
         settled = true; clearTimeout(timer); clearTimeout(replyTimer);
+        if (report) await report();
         try { peer && peer.destroy(); } catch (e) { /* already gone */ }
         if (this.peer === peer) { this.peer = null; this.conn = null; }
         reject(Object.assign(new Error(message), { final }));
@@ -196,22 +250,28 @@ export class ClientNet {
       }, ms);
       try { peer = makePeer(undefined, ice, relayOnly); } catch (e) { fail(describe(e), true); return; }
       this.peer = peer;
+      log.event(`${label}: contacting the matchmaking server (${matchmaker()})`);
       peer.on('error', (e) => {
+        log.event(`${label}: error from PeerJS (${errText(e)})`);
         if (!settled) {
           const t = e && e.type;
           // a missing room or an unreachable matchmaking server won't change on a second try
           fail(describe(e), t === 'peer-unavailable' || t === 'network' || t === 'server-error' || t === 'socket-error' || t === 'socket-closed' || t === 'browser-incompatible');
-        } else if (e.type === 'peer-unavailable' || e.type === 'disconnected') this.lost();
+        } else if (e.type === 'peer-unavailable' || e.type === 'disconnected') this.lost(errText(e));
       });
       peer.on('open', () => {
         if (settled) return;
         signalled = true;
+        log.event(`${label}: matchmaking server answered after ${Math.round(performance.now() - t0)} ms; asking for room ${code}`);
         this.status('Connecting to the host…');
         const conn = peer.connect(CONFIG.peerPrefix + code, { reliable: true, serialization: 'json' });
         this.conn = conn;
+        report = watchRtc(log, conn.peerConnection, label);
         conn.on('open', () => {
           if (settled) return;
           opened = true;
+          log.event(`${label}: connected to the host after ${Math.round(performance.now() - t0)} ms; saying hello`);
+          report();
           this.status('Waiting for the host…');
           conn.send({ t: 'hello', name });
           // the host answers straight away; don't wait the whole timeout for an answer that isn't coming
@@ -220,18 +280,23 @@ export class ClientNet {
         });
         conn.on('data', (msg) => {
           if (msg && msg.t === 'full') { fail('That room is full.', true); return; }
-          if (!settled && opened) { settled = true; clearTimeout(timer); clearTimeout(replyTimer); resolve(); }
+          if (!settled && opened) { settled = true; clearTimeout(timer); clearTimeout(replyTimer); log.event(`${label}: the host answered (${msg && msg.t})`); this.report = report; resolve(); }
           if (this.conn === conn) this.onMessage(msg);
         });
-        conn.on('close', () => { if (settled) { if (this.conn === conn) this.lost(); } else if (opened) fail('The host closed the connection.'); });
-        conn.on('error', () => { if (settled) { if (this.conn === conn) this.lost(); } });
+        conn.on('close', () => { if (settled) { if (this.conn === conn) this.lost('the connection to the host closed'); } else if (opened) fail('The host closed the connection.'); });
+        conn.on('error', (e) => { log.event(`${label}: connection error (${errText(e)})`); if (settled && this.conn === conn) this.lost(`connection error (${errText(e)})`); });
       });
     });
   }
 
-  lost() {
+  lost(why = 'connection lost') {
     if (this.closed) return;
     this.closed = true;
+    if (this.log) {
+      const log = this.log;
+      log.event(`lost the host: ${why}`);
+      (this.report ? this.report() : Promise.resolve()).then(() => log.end('lost', why));
+    }
     if (this.onClose) this.onClose();
   }
 
@@ -242,6 +307,7 @@ export class ClientNet {
   }
 
   destroy() {
+    if (!this.closed && this.log) this.log.end('left');
     this.closed = true;
     if (this.peer) { try { this.peer.destroy(); } catch (e) { /* already gone */ } }
   }
@@ -259,37 +325,42 @@ export class ServerNet {
 
   // action: { t: 'create', name } or { t: 'join', code, name }
   connect(url, action) {
+    const log = this.log = startLog('server', { code: action.code || undefined, server: String(url).replace(/^wss?:\/\//, ''), action: action.t });
+    const t0 = performance.now();
     return new Promise((resolve, reject) => {
       let settled = false;
       const done = (err) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        if (err) { this.destroy(); reject(err); } else resolve();
+        if (err) { log.end('failed', err.message); this.destroy(); reject(err); } else { log.end('connected'); resolve(); }
       };
       const timer = setTimeout(() => done(new Error('The game server is not responding. It may be offline — try again later.')), 12000);
       let ws;
+      log.event('game server: connecting');
       try { ws = new WebSocket(url); } catch (e) { done(new Error('The game server address in config.js is not valid.')); return; }
       this.ws = ws;
-      ws.onopen = () => ws.send(JSON.stringify(action));
+      ws.onopen = () => { log.event(`game server: connected after ${Math.round(performance.now() - t0)} ms`); ws.send(JSON.stringify(action)); };
       ws.onmessage = (ev) => {
         let msg;
         try { msg = JSON.parse(ev.data); } catch { return; }
-        if (msg.t === 'error') { done(new Error(msg.text)); return; }
-        if (msg.t === 'room') done();
+        if (msg.t === 'error') { log.event(`game server said: ${msg.text}`); done(new Error(msg.text)); return; }
+        if (msg.t === 'room') { log.event(`game server: in room ${msg.code || ''}`); done(); }
         this.onMessage(msg);
       };
-      ws.onerror = () => done(new Error('Could not reach the game server. It may be offline, or this network blocks it.'));
-      ws.onclose = () => {
+      ws.onerror = () => { log.event('game server: connection error'); done(new Error('Could not reach the game server. It may be offline, or this network blocks it.')); };
+      ws.onclose = (ev) => {
+        log.event(`game server: connection closed (code ${ev.code}${ev.reason ? `, ${ev.reason}` : ''}${ev.wasClean ? '' : ', not cleanly'})`);
         if (!settled) done(new Error('Could not reach the game server. It may be offline, or this network blocks it.'));
-        else this.lost();
+        else this.lost(`closed with code ${ev.code}`);
       };
     });
   }
 
-  lost() {
+  lost(why = 'connection lost') {
     if (this.closed) return;
     this.closed = true;
+    if (this.log) this.log.end('lost', why);
     if (this.onClose) this.onClose();
   }
 
@@ -300,6 +371,7 @@ export class ServerNet {
   }
 
   destroy() {
+    if (!this.closed && this.log) this.log.end('left');
     this.closed = true;
     if (this.ws) { try { this.ws.close(); } catch { /* ignore */ } }
   }
