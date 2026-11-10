@@ -70,7 +70,7 @@ export class Game {
     const usePost = G.ao || G.bloom || G.aa === 'fxaa';
     this.renderer = new THREE.WebGLRenderer({ antialias: G.aa === 'msaa' && !usePost, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.max(0.5, Math.min(3, Math.min(window.devicePixelRatio || 1, 2) * (G.renderScale || 1))));
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.renderer.setSize(window.innerWidth, window.innerHeight, false);   // false: the canvas keeps filling the page (style.css)
     this.renderer.shadowMap.enabled = G.shadows !== 'off';
     this.renderer.shadowMap.type = G.shadows === 'high' || G.shadows === 'ultra' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.renderer.autoClear = false;
@@ -185,13 +185,21 @@ export class Game {
     document.getElementById('buy-close').addEventListener('click', this.closeHandler);
     this.setViewModel();
 
+    // Keep the picture the size of the screen. Phones don't always say when the screen changed
+    // (turning the phone, the address bar sliding away, going full screen), so besides listening
+    // for it the game also looks a few times a second (see loop). The canvas itself always fills
+    // the page (style.css); only the drawing size is changed here.
     this.onResize = () => {
-      const w = window.innerWidth, h = window.innerHeight;
-      this.renderer.setSize(w, h);
+      const w = Math.max(1, window.innerWidth), h = Math.max(1, window.innerHeight);
+      this.viewW = w; this.viewH = h;
+      this.renderer.setSize(w, h, false);
       this.camera.aspect = this.vmCamera.aspect = w / h;
       this.camera.updateProjectionMatrix(); this.vmCamera.updateProjectionMatrix();
     };
+    this.onResize();
     window.addEventListener('resize', this.onResize);
+    window.addEventListener('orientationchange', this.onResize);
+    if (window.visualViewport) window.visualViewport.addEventListener('resize', this.onResize);
     this.last = performance.now();
     this.loop = this.loop.bind(this);
     requestAnimationFrame(this.loop);
@@ -212,6 +220,8 @@ export class Game {
     document.getElementById('chat-mode').removeEventListener('click', this.chatHandlers.mode);
     document.getElementById('chat-feed').replaceChildren();
     window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('orientationchange', this.onResize);
+    if (window.visualViewport) window.visualViewport.removeEventListener('resize', this.onResize);
     this.input.destroy();
     document.getElementById('buy-close').removeEventListener('click', this.closeHandler);
     this.buyMenu.update({ open: false });
@@ -2134,6 +2144,9 @@ export class Game {
     const dt = Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
     this.clock += dt;
+    // the screen changed size without telling us (phones): catch up
+    this.sizeCheck = (this.sizeCheck || 0) - dt;
+    if (this.sizeCheck <= 0) { this.sizeCheck = 0.3; if (window.innerWidth !== this.viewW || window.innerHeight !== this.viewH) this.onResize(); }
     if (this.paused) { this.input.takeLook(); }
     else this.updateLocal(dt);
     this.sendState(dt);

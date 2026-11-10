@@ -17,6 +17,7 @@ const BOMB_STATES = ['none', 'carried', 'dropped', 'planted', 'defused', 'explod
 const DM_LOADOUT = { primary: 'ak47', secondary: 'deagle' };
 const PICK_AUTO = 0.9;   // walk this close to a dropped gun with a free slot to pick it up
 const PICK_USE = 2.2;    // how far away you can swap for a gun with E / ✋
+const REJOIN_WAIT = 60;   // seconds a match waits for a team that left before it is forfeited
 const eyeOf = p => p.y + EYE + (EYE_CROUCH - EYE) * (p.duck || 0);
 
 function cleanName(n) {
@@ -106,6 +107,7 @@ export class Server {
     };
     p.spoon = hasSpoon(p.name);    // the secret spoon: only for the player with that name
     this.players.set(id, p);
+    const back = this.phase !== 'lobby' && this.phase !== 'over' ? this.restoreLeaver(p) : false;
     if (this.botCfg && this.phase !== 'lobby') this.replaceBotWith(p);
     this.send(id, { t: 'welcome', id, settings: this.settings, phase: this.phase, roster: this.roster(), practice: this.practice });
     if (this.practice && this.phase === 'practice') {
@@ -116,7 +118,7 @@ export class Server {
     } else if (this.phase === 'dm') {
       // jump straight into a running deathmatch
       p.team = 'ffa';
-      p.dmLoadout = { ...DM_LOADOUT };
+      p.dmLoadout = p.rejoinLoadout || { ...DM_LOADOUT };
       p.money = 0;
       this.send(id, this.startMsg());
       this.later(0.3, () => this.respawn(p));
@@ -127,6 +129,38 @@ export class Server {
       this.send(id, this.dropsMsg());
     }
     this.broadcastRoster();
+    if (back) this.broadcast({ t: 'toast', text: `${p.name} is back in the game` }, id);
+    // the match was waiting for this team to have a player again: play the round again from the start
+    if (this.hold && this.teamCount('atk') > 0 && this.teamCount('def') > 0) {
+      this.hold = null;
+      this.later(0.6, () => {
+        if (['freeze', 'live', 'planted', 'end'].includes(this.phase) && this.teamCount('atk') > 0 && this.teamCount('def') > 0) { this.round--; this.newRound(); }
+      });
+    }
+  }
+
+  // ---------- leaving and coming back ----------
+  // Someone who leaves a running match is remembered by name, so if they rejoin they get their
+  // team, score and money back.
+  rememberLeaver(p) {
+    if (p.bot || p.dummy || this.practice || this.phase === 'lobby' || this.phase === 'over') return;
+    if (!this.gone) this.gone = new Map();
+    this.gone.set(p.name.toLowerCase(), {
+      dm: this.dm, squad: p.squad, kills: p.kills, deaths: p.deaths, hs: p.hs, dmg: p.dmg, money: p.money, dmLoadout: p.dmLoadout,
+    });
+  }
+
+  restoreLeaver(p) {
+    const rec = this.gone && this.gone.get(p.name.toLowerCase());
+    if (!rec || rec.dm !== this.dm || this.botCfg) return false;
+    this.gone.delete(p.name.toLowerCase());
+    Object.assign(p, { kills: rec.kills, deaths: rec.deaths, hs: rec.hs, dmg: rec.dmg });
+    if (this.dm) { if (rec.dmLoadout) p.rejoinLoadout = rec.dmLoadout; return true; }
+    // back on the same squad (it may have swapped sides since) if there is room
+    const team = this.sideOf(rec.squad);
+    if (this.teamCount(team) - (p.team === team ? 1 : 0) < RULES.teamSize) { p.team = team; p.squad = rec.squad; p.inv.secondary = STARTER_PISTOL[team]; p.w = STARTER_PISTOL[team]; }
+    p.money = rec.money;
+    return true;
   }
 
   removePlayer(id) {
@@ -138,6 +172,7 @@ export class Server {
       this.later(0.1, () => this.refillBot(p.team));
     }
     if (this.bomb.carrier === id && this.bomb.state === 'carried') this.dropBomb(p);
+    this.rememberLeaver(p);
     this.players.delete(id);
     if (id === this.ownerId) {
       const next = [...this.players.values()].find(q => !q.dummy && !q.bot);
@@ -153,8 +188,12 @@ export class Server {
       this.matchOver(last ? last.id : null, 'forfeit');
     } else if (!this.practice && ['freeze', 'live', 'planted', 'end'].includes(this.phase)) {
       if (this.teamCount('atk') === 0 || this.teamCount('def') === 0) {
-        const winner = this.teamCount('atk') === 0 ? 'def' : 'atk';
-        this.matchOver(winner, 'forfeit');
+        // a whole team is gone: hold the match for a minute so they can rejoin, then it's a forfeit
+        if (this.humanCount() === 0 || this.botCfg) this.matchOver(this.teamCount('atk') === 0 ? 'def' : 'atk', 'forfeit');
+        else if (!this.hold) {
+          this.hold = { until: performance.now() + REJOIN_WAIT * 1000 };
+          this.broadcast({ t: 'toast', text: `The other team left — waiting ${REJOIN_WAIT} seconds for them to rejoin` });
+        }
       } else this.checkRoundEnd();
     }
   }
@@ -1118,6 +1157,14 @@ export class Server {
     if (!this.world || this.phase === 'lobby') return;
     if (this.bots.size) for (const brain of this.bots.values()) brain.update(dt, now / 1000);
     if (this.phase !== 'over') this.autoPickup();
+    // waiting for a team that left: the clocks stand still until they are back or the minute is up
+    if (this.hold) {
+      if (!['freeze', 'live', 'planted', 'end'].includes(this.phase)) this.hold = null;
+      else if (now >= this.hold.until) {
+        this.hold = null;
+        if (this.teamCount('atk') === 0 || this.teamCount('def') === 0) { this.matchOver(this.teamCount('atk') === 0 ? 'def' : 'atk', 'forfeit'); return; }
+      } else { this.snapshot(); for (const p of this.players.values()) p.moved = 0; return; }
+    }
 
     switch (this.phase) {
       case 'freeze':
