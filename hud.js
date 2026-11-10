@@ -118,11 +118,12 @@ export class Hud {
     while (box.children.length > 6) box.firstChild.remove();
   }
 
-  // Bomb blast preview: how much damage you'd take where you stand. dmg = null hides it.
+  // Bomb blast preview: the part of your health bar the blast would take where you stand
+  // (no text; the whole bar flashes red if it would kill you). dmg = null hides it.
   blastPreview(dmg, hp) {
-    const warn = $('blast-warn'), ghost = $('hp-ghost');
+    const ghost = $('hp-ghost');
     if (dmg == null) {
-      warn.classList.add('hidden'); ghost.style.width = '0'; $('hp').classList.remove('lethal');
+      ghost.style.width = '0'; $('hp').classList.remove('lethal');
       return;
     }
     const lethal = dmg >= hp;
@@ -130,8 +131,6 @@ export class Hud {
     ghost.style.width = `${take}%`;
     ghost.style.right = `${100 - hp}%`;
     $('hp').classList.toggle('lethal', lethal);
-    warn.className = lethal ? 'lethal' : dmg > 0 ? 'hurt' : 'safe';
-    this.set('blast-warn', lethal ? '💀 The bomb would kill you here — get further away' : dmg > 0 ? `💥 The bomb would hit you here for ${dmg}` : '✓ Safe from the blast here');
   }
 
   damagePop(dmg, head) {

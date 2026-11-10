@@ -25,7 +25,9 @@ The only folder is `server/` (the optional home game server).
   build scripts), `mapview.js` (3D scene), `mapdeco.js` (visual-only dressing read from the span grid: wall caps, windows/doors, lamps, pipes, decals, distant scenery — no collision), `houses.js` (village houses: tiled roofs, windows, shutters, balconies, church/tower/inn details), `models.js` (characters with arm IK + gun models with moving parts, all built in code), `textures.js`, `audio.js` (all sound synthesised in code: 3D positional, per-map reverb, wall muffling, layered gunshots, surface footsteps, reload/bolt/pump sequences timed to `anim.js`, ambience; `__test` renders buffers for checks),
   `input.js` (keyboard/mouse + touch), `hud.js`, `weapons.js` (weapon stats)
 - `config.js` — network settings and match RULES (2v2 wingman: first to 9, sides swap after round 8, 8–8 draw,
-  1:55 rounds, 20 s buy time, bomb/defuse timers, blast size)
+  1:55 rounds, 20 s buy time, bomb/defuse timers, blast size). After a plant, the round ends at once for the attackers
+  when every defender is dead (no waiting for the explosion). The bomb preview has no text: the part of the health bar the
+  blast would take is striped (`#hp-ghost`), and the bar glows red if it would kill you.
 - `buy.js` — buy menu UI. Weapon stats, prices, money rules, spray patterns and armour maths live in `weapons.js`
 - Game rules follow the owner's design brief (CS-style numbers; 1 game unit = 0.0254 m). No grenades, taser or knife (the owner removed the knife).
 - Secret spoon (the owner asked for it): a melee weapon that works like a CS knife, only for the player whose name is `y1kes`
