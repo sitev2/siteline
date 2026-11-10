@@ -264,10 +264,6 @@ body:not(.is-host) .host-only { display: none !important; }
 #hp.lethal { box-shadow: 0 0 0 2px #ff3b2f, 0 0 18px rgba(255,59,47,.6); animation: lethal .6s ease-in-out infinite alternate; }
 @keyframes ghost { 50% { opacity: .35; } }
 @keyframes lethal { to { box-shadow: 0 0 0 2px #ff3b2f, 0 0 4px rgba(255,59,47,.2); } }
-#blast-warn { left: 50%; transform: translateX(-50%); top: calc(64px + var(--sat)); white-space: nowrap; padding: 5px 12px; border-radius: 8px; font: 700 .95rem var(--display); letter-spacing: .04em; background: rgba(10,11,13,.7); text-shadow: 0 1px 3px #000; }
-#blast-warn.lethal { color: #fff; background: rgba(200,30,20,.85); }
-#blast-warn.hurt { color: #ffb347; }
-#blast-warn.safe { color: #7ee08a; }
 #econ { left: calc(16px + var(--sal)); bottom: calc(112px + var(--sab)); display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
 #money { font: 700 1.35rem var(--display); color: #8fe39a; background: rgba(10,11,13,.6); padding: 4px 12px; border-radius: 8px; text-shadow: 0 1px 3px #000; }
 #income { display: flex; flex-direction: column; gap: 2px; }
@@ -373,7 +369,6 @@ body.touch #weapon-name, body.touch #fire-mode { display: none; }
 body.touch #bomb-icon, body.touch #kit-icon { padding: 4px 6px; font-size: 0; }
 body.touch #bomb-icon::before { content: '💣'; font-size: 1.1rem; }
 body.touch #kit-icon::before { content: '🔧'; font-size: 1.1rem; }
-body.touch #blast-warn { top: calc(58px + var(--sat)); font-size: .8rem; }
 body.touch .hpbar { width: 64px; }
 body.touch #hint { bottom: calc(76px + var(--sab)); }
 

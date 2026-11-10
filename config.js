@@ -64,8 +64,8 @@ export const RULES = {
   friendlyFire: 1 / 3, // teammates take a third of normal damage
   // bomb blast: certain death within lethalRadius, fading to nothing at maxRadius (metres of path,
   // walls block it and it bends round corners); armour halves it
-  blastLethal: 8,
-  blastMax: 25,
+  blastLethal: 11,
+  blastMax: 34,
   blastArmor: 0.5,
   // deathmatch: free-for-all for 2–4 players, first to killLimit or timeLimit seconds
   dm: { killLimit: 30, timeLimit: 600, respawn: 1, minPlayers: 2, maxPlayers: 4 },

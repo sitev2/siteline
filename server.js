@@ -1022,8 +1022,12 @@ export class Server {
 
   checkRoundEnd() {
     if (this.phase !== 'live' && this.phase !== 'planted' && this.phase !== 'freeze') return;
-    // once the bomb is down, only the explosion or a defuse ends the round
-    if (this.phase === 'planted') return;
+    // once the bomb is down, dead attackers don't end the round (it can still be defused or explode),
+    // but with every defender down nobody can defuse it: the attackers win straight away
+    if (this.phase === 'planted') {
+      if (this.teamCount('def', true) === 0) { this.bomb.state = 'defused'; this.endRound('atk', 'elim'); }   // the bomb goes quiet
+      return;
+    }
     const atkAlive = this.teamCount('atk', true), defAlive = this.teamCount('def', true);
     if (atkAlive === 0) this.endRound('def', 'elim');
     else if (defAlive === 0) this.endRound('atk', 'elim');
