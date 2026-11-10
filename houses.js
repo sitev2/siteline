@@ -647,10 +647,10 @@ export function villageDeco(world, d, I, group, { night = false, shadows = false
       }
     }
   } else if (d.type === 'shopfront') {
-    // [x0, x1, z (wall face), dir (+1 faces +z), name, depth]: a stone arcade built out in front of a plain wall —
+    // [x0, x1, z (wall face), dir (+1 faces +z), name, depth, lanterns 'both' | 'east' | 'west']: a stone arcade built out in front of a plain wall —
     // two deep round arches with wooden cellar doors, piers, a cornice and a framed sign. Collision for the piers is
     // added in the map (the openings stay walkable, a little way in).
-    const [x0, x1, z, dir, name, D = 0.5] = a, len = x1 - x0;
+    const [x0, x1, z, dir, name, D = 0.5, lanterns = 'both'] = a, len = x1 - x0;
     const pw = 0.5, n = 2, r = (len - pw * (n + 1)) / n / 2, sp = 2.2, H = sp + r + 1.5;
     const cxs = Array.from({ length: n }, (_, k) => x0 + pw + r + k * (2 * r + pw));
     const front = z + dir * D, stone = '#ddd4c4', stoneDk = '#c9bfae', iron = '#2b2a28', wood = '#6e4e34';
@@ -709,99 +709,120 @@ export function villageDeco(world, d, I, group, { night = false, shadows = false
     sign.position.set((x0 + x1) / 2, sy, front + dir * 0.065); if (dir < 0) sign.rotation.y = Math.PI;
     group.add(sign);
     // iron lanterns on the outer piers
-    for (const lx of [x0 + pw / 2, x1 - pw / 2]) {
+    for (const lx of lanterns === 'east' ? [x1 - pw / 2] : lanterns === 'west' ? [x0 + pw / 2] : [x0 + pw / 2, x1 - pw / 2]) {
       box.add(lx, 3.0, front + dir * 0.2, 0.04, 0.04, 0.4, '#2a2a2a');
       box.add(lx, 2.92, front + dir * 0.38, 0.24, 0.05, 0.24, '#2a2a2a');
       glow.add(lx, 2.74, front + dir * 0.38, 0.16, 0.3, 0.16, night ? '#ffe3a0' : '#efe2bc');
       box.add(lx, 2.57, front + dir * 0.38, 0.2, 0.04, 0.2, '#2a2a2a');
     }
-  } else if (d.type === 'loggia') {
-    // [x0, z0, x1, z1, n]: a roofed stone porch against a building whose face is at x0. A tall wall along z1,
-    // one round arch on the z0 side and n side by side on the x1 side, square pillars with a base and capital
-    // (one at the (x1, z0) corner, one between each pair of arches), and a tiled lean-to roof on wooden rafters.
-    // Collision (walls, pillars, stone above the arches, roof) is in the map.
-    const [x0, z0, x1, z1, n = 1] = a, T = 0.5, sp = 2.8, eave = 5.6, high = 6.6;
-    const roofY = (x) => high - (high - eave) * (x - x0) / (x1 - x0);       // underside of the roof
-    const tex = (kind, base, seed) => { const t = makeTexture(kind, base, null, seed).clone(); t.needsUpdate = true; t.repeat.set(1 / 3, 1 / 3); return t; };
-    const plaster = new THREE.MeshLambertMaterial({ map: tex('oldplaster', '#e6dccb', 53) });
-    const stoneM = new THREE.MeshLambertMaterial({ map: tex('blocks', '#e2dacb', 41) });
-    const slab = (pts, mat, x, z, ry) => {
-      const m = new THREE.Mesh(new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth: T, bevelEnabled: false, curveSegments: 1 }), mat);
+  } else if (d.type === 'arcade') {
+    // [x0, z0, x1, z1, pillars]: a long roofed arcade against a building whose face is at x0, running from z0 to z1.
+    // Its front (x1 - 1 … x1) is a row of square stone pillars, given as [[za, zb], …] along z, with wide round
+    // arches between them; a smaller arch closes the z0 end, a tall wall with a window closes the z1 end, and a tiled
+    // lean-to roof on wooden rafters covers it all. Collision (pillars, walls, stone above the arches, roof) is in the map.
+    const [x0, z0, x1, z1, pillars] = a, T = 1.0, sp = 2.6, archB = 2.0, eave = 5.6, high = 6.6;
+    const roofY = (x) => high - (high - eave) * (x - x0) / (x1 - x0);       // underside of the rafters
+    const scaledTex = (kind, base, seed) => { const t = makeTexture(kind, base, null, seed).clone(); t.needsUpdate = true; t.repeat.set(1 / 3, 1 / 3); return t; };
+    const plaster = new THREE.MeshLambertMaterial({ map: scaledTex('oldplaster', '#e6dccb', 53) });
+    const stoneTex = makeTexture('blocks', '#ddd5c6', null, 41).clone(); stoneTex.needsUpdate = true;
+    const stoneM = new THREE.MeshLambertMaterial({ map: stoneTex });
+    const trim = '#e8e1d5';
+    const slab = (pts, mat, x, z, ry, depth) => {
+      const m = new THREE.Mesh(new THREE.ExtrudeGeometry(new THREE.Shape(pts), { depth, bevelEnabled: false, curveSegments: 1 }), mat);
       m.position.set(x, 0, z); m.rotation.y = ry; m.castShadow = shadows; m.receiveShadow = shadows;
       group.add(m);
     };
-    const archPts = (u0, u1, y) => {           // left foot → over the top → right foot
-      const r = (u1 - u0) / 2, c = (u0 + u1) / 2, out = [new THREE.Vector2(u0, 0), new THREE.Vector2(u0, y)];
-      for (let k = 1; k < 18; k++) { const t = Math.PI - (k / 18) * Math.PI; out.push(new THREE.Vector2(c + Math.cos(t) * r, y + Math.sin(t) * r)); }
-      out.push(new THREE.Vector2(u1, y), new THREE.Vector2(u1, 0));
+    // a box whose texture keeps a 3 m tile whatever its size
+    const stoneBox = (w, h, dd, x, y, z) => {
+      const g = new THREE.BoxGeometry(w, h, dd), uv = g.attributes.uv;
+      const faces = [[dd, h], [dd, h], [w, dd], [w, dd], [w, h], [w, h]];
+      for (let f = 0; f < 6; f++) for (let i = 0; i < 4; i++) { const k = f * 4 + i; uv.setXY(k, uv.getX(k) * faces[f][0] / 3, uv.getY(k) * faces[f][1] / 3); }
+      const m = new THREE.Mesh(g, stoneM);
+      m.position.set(x, y, z); m.castShadow = shadows; m.receiveShadow = shadows;
+      group.add(m);
+    };
+    const V2 = (u, y) => new THREE.Vector2(u, y);
+    // points along an arch from its left foot over the top to its right foot (rise b; a semicircle when b = half the width)
+    const arch = (u0, u1, b, n = 24) => {
+      const r = (u1 - u0) / 2, c = (u0 + u1) / 2, out = [];
+      for (let k = 0; k <= n; k++) { const t = Math.PI - (k / n) * Math.PI; out.push(V2(c + Math.cos(t) * r, sp + Math.sin(t) * b)); }
       return out;
     };
-    const L = x1 - x0;
-    // tall wall along z1, its top following the roof
-    slab([new THREE.Vector2(0, 0), new THREE.Vector2(L, 0), new THREE.Vector2(L, eave + 0.1), new THREE.Vector2(0, high + 0.1)], plaster, x0, z1 - T, 0);
-    // arched face on the z0 side (springs straight off the building), up to the pillar at x1 - T
-    const nw = L - T;
-    slab([...archPts(0, nw, sp), new THREE.Vector2(nw, roofY(x0 + nw) + 0.1), new THREE.Vector2(0, high + 0.1)], plaster, x0, z0, 0);
-    // arched face on the x1 side: the corner pillar, then n arches with a pillar between each pair, up to the tall wall
-    const ew = z1 - T - z0, aw = (ew - T - (n - 1) * T) / n;
-    const eastArch = (k) => T + k * (aw + T);              // where arch k starts along this face
-    const eastPts = [new THREE.Vector2(0, 0)];
-    for (let k = 0; k < n; k++) eastPts.push(...archPts(eastArch(k), eastArch(k) + aw, sp));
-    eastPts.push(new THREE.Vector2(ew, eave + 0.1), new THREE.Vector2(0, eave + 0.1));
-    slab(eastPts, stoneM, x1, z0, -Math.PI / 2);
-    // the pillars: a plinth and a moulded capital where the arches spring
-    const pillar = (pcx, pcz) => {
-      box.add(pcx, 0.2, pcz, T + 0.16, 0.4, T + 0.16, '#d2c9b9');
-      box.add(pcx, 0.44, pcz, T + 0.08, 0.08, T + 0.08, '#ddd5c6');
-      box.add(pcx, sp - 0.16, pcz, T + 0.06, 0.08, T + 0.06, '#e3dccf');
-      box.add(pcx, sp - 0.06, pcz, T + 0.16, 0.12, T + 0.16, '#e8e1d5');
-    };
-    pillar(x1 - T / 2, z0 + T / 2);
-    for (let k = 1; k < n; k++) pillar(x1 - T / 2, z0 + eastArch(k) - T / 2);
-    // the same capital moulding where the arches meet the tall wall and the building
-    box.add(x1 - T / 2, sp - 0.06, z1 - T - 0.04, T + 0.16, 0.12, 0.1, '#e8e1d5');
-    box.add(x0 + 0.06, sp - 0.06, z0 + T / 2, 0.12, 0.12, T + 0.16, '#e8e1d5');
-    // smooth moulded bands round both arches, on the outside faces
-    const ring = (cx, cz, r, alongX, out) => {
-      const nv = 24;
-      for (let k = 0; k < nv; k++) {
-        const t = Math.PI * (k + 0.5) / nv, rr = r + 0.1, u = Math.cos(t) * rr, y = sp + Math.sin(t) * rr;
-        if (alongX) box.add(cx + u, y, out, 0.2, Math.PI * rr / nv + 0.02, 0.05, '#e8e1d5', 0, 0, t);
-        else box.add(out, y, cz + u, 0.05, Math.PI * rr / nv + 0.02, 0.2, '#e8e1d5', 0, -t, 0);
+    // a smooth moulded band just outside an arch, on a face; toWorld(u, y) gives the world point
+    const band = (u0, u1, b, toWorld, alongX) => {
+      const pts = arch(u0 - 0.12, u1 + 0.12, b + 0.12, 28);
+      for (let k = 0; k < pts.length - 1; k++) {
+        const p = pts[k], q = pts[k + 1], du = q.x - p.x, dy = q.y - p.y, len = Math.hypot(du, dy) + 0.02;
+        const [x, y, z] = toWorld((p.x + q.x) / 2, (p.y + q.y) / 2);
+        if (alongX) box.add(x, y, z, len, 0.2, 0.05, trim, 0, 0, Math.atan2(dy, du));
+        else box.add(x, y, z, 0.05, 0.2, len, trim, 0, Math.atan2(-dy, du), 0);
       }
     };
-    ring(x0 + nw / 2, 0, nw / 2, true, z0 - 0.02);
-    for (let k = 0; k < n; k++) ring(0, z0 + eastArch(k) + aw / 2, aw / 2, false, x1 + 0.02);
-    // a cornice under the eaves along the arched sides
-    box.add(x1 + 0.04, eave - 0.12, (z0 + z1) / 2, 0.14, 0.12, z1 - z0 + 0.08, '#e8e1d5');
-    // a small barred window in the tall wall, on the street side
+    const L = x1 - x0, fi = x1 - T;              // fi: inner face of the arcade front
+    const zEnd = z1 - 0.5;                       // the front runs up to the tall end wall
+    // the front above the pillars: one slab with the arches cut out of its bottom edge
+    const front = [V2(0, sp)];
+    for (let k = 0; k < pillars.length - 1; k++) front.push(...arch(pillars[k][1] - z0, pillars[k + 1][0] - z0, archB));
+    front.push(V2(zEnd - z0, sp), V2(zEnd - z0, eave + 0.1), V2(0, eave + 0.1));
+    slab(front, plaster, x1, z0, -Math.PI / 2, T);
+    // the pillars: a stone shaft on a plinth, with a moulded capital where the arches spring
+    for (const [za, zb] of pillars) {
+      const zc = (za + zb) / 2, w = zb - za, xc = x1 - T / 2;
+      stoneBox(T, sp, w, xc, sp / 2, zc);
+      box.add(xc, 0.22, zc, T + 0.14, 0.44, w + 0.14, '#d2c9b9');
+      box.add(xc, 0.47, zc, T + 0.08, 0.06, w + 0.08, '#ddd5c6');
+      box.add(xc, sp - 0.17, zc, T + 0.06, 0.08, w + 0.06, '#e3dccf');
+      box.add(xc, sp - 0.06, zc, T + 0.18, 0.14, w + 0.18, trim);
+    }
+    for (let k = 0; k < pillars.length - 1; k++) band(pillars[k][1] - z0, pillars[k + 1][0] - z0, archB, (u, y) => [x1 + 0.025, y, z0 + u], false);
+    // iron lanterns on brackets over the pillars, on the outside
+    for (const [za, zb] of pillars.slice(0, -1)) {
+      const zc = (za + zb) / 2;
+      box.add(x1 + 0.22, 3.55, zc, 0.44, 0.04, 0.04, '#2a2a2a');
+      box.add(x1 + 0.12, 3.4, zc, 0.03, 0.3, 0.03, '#2a2a2a', 0, 0, 0.6);
+      box.add(x1 + 0.42, 3.48, zc, 0.24, 0.05, 0.24, '#2a2a2a');
+      glow.add(x1 + 0.42, 3.3, zc, 0.16, 0.3, 0.16, night ? '#ffe3a0' : '#efe2bc');
+      box.add(x1 + 0.42, 3.13, zc, 0.2, 0.04, 0.2, '#2a2a2a');
+    }
+    // the z0 end: a round arch from the building to the first pillar, the wall above it following the roof
+    const nw = fi - x0;
+    slab([...arch(0, nw, nw / 2), V2(nw, roofY(fi) + 0.1), V2(0, high + 0.1)], plaster, x0, z0, 0, 0.5);
+    band(0, nw, nw / 2, (u, y) => [x0 + u, y, z0 - 0.025], true);
+    box.add(x0 + 0.06, sp - 0.06, z0 + 0.25, 0.12, 0.14, 0.68, trim);
+    // the z1 end: a tall wall along the street, its top following the roof, with a small barred window
+    slab([V2(0, 0), V2(L, 0), V2(L, eave + 0.1), V2(0, high + 0.1)], plaster, x0, z1 - 0.5, 0, 0.5);
     const wx = x0 + L * 0.42;
     box.add(wx, 2.0, z1 + 0.03, 0.9, 1.15, 0.06, '#e3dccf');
     box.add(wx, 2.0, z1 + 0.05, 0.66, 0.9, 0.04, '#20262c');
     for (let b = -1.5; b <= 1.5; b++) box.add(wx + b * 0.15, 2.0, z1 + 0.09, 0.025, 0.9, 0.025, '#2a2a2a');
     box.add(wx, 1.4, z1 + 0.08, 1.0, 0.07, 0.16, '#e3dccf');
-    // the roof: clay tiles on top, boards underneath, resting on rafters, sloping away from the building
+    // cornice under the eaves along the front, and a timber plate on its inner top edge under the rafters
+    box.add(x1 + 0.05, eave - 0.1, (z0 + zEnd) / 2, 0.16, 0.14, zEnd - z0 + 0.1, trim);
+    box.add(fi + 0.12, (eave + 0.1 + roofY(fi) + 0.02) / 2, (z0 + z1) / 2, 0.24, roofY(fi) + 0.02 - eave - 0.1, z1 - z0, '#5e4430');
+    // the roof: clay tiles on top, boards underneath, on rafters, sloping down from the building to the front
     const over = 0.45, run = L + over, drop = (high - eave) * run / L, ang = Math.atan2(high - eave, L);
-    const slopeLen = Math.hypot(run, drop), wz = z1 - z0 + 0.6, thick = 0.12;
+    const slopeLen = Math.hypot(run, drop), wz = z1 - z0 + 0.4, thick = 0.12;
     const tt = tiles().clone(); tt.needsUpdate = true; tt.repeat.set(wz / 1.6, slopeLen / 1.6);
     const wood = new THREE.MeshLambertMaterial({ color: '#7a5a3e' }), dark = new THREE.MeshLambertMaterial({ color: '#5e4430' });
     const roof = new THREE.Mesh(new THREE.BoxGeometry(wz, thick, slopeLen),
       [wood, wood, new THREE.MeshLambertMaterial({ map: tt, color: '#d3936a' }), dark, wood, wood]);
     const mx = x0 + run / 2;
-    roof.position.set(mx, roofY(mx) + 0.16 + thick / 2, (z0 + z1) / 2);
+    roof.position.set(mx, roofY(mx) + 0.16 + thick / 2, (z0 + z1) / 2 + 0.1);
     roof.rotation.set(ang, Math.PI / 2, 0, 'YXZ');
     roof.castShadow = shadows; roof.receiveShadow = shadows;
     group.add(roof);
-    for (let zz = z0 + 0.25; zz < z1; zz += 0.5) box.add(mx, roofY(mx) + 0.08, zz, slopeLen, 0.16, 0.12, '#6a4a30', 0, 0, -ang);
-    box.add(x1 - 0.1, eave + 0.1, (z0 + z1) / 2, 0.16, 0.2, z1 - z0, '#5e4430');                  // beam along the arches
-    box.add(x0 + 0.08, high + 0.12, (z0 + z1) / 2, 0.16, 0.16, z1 - z0 + 0.6, '#5e4430');           // ledger on the building
-    box.add(x0 + 0.05, high + 0.38, (z0 + z1) / 2, 0.1, 0.12, z1 - z0 + 0.6, '#bfae98');            // flashing where it meets the wall
-    // a lantern hanging in the middle
-    const lx = (x0 + x1 - T) / 2, lz = (z0 + T + z1 - T) / 2;
-    box.add(lx, (roofY(lx) + 4.05) / 2, lz, 0.02, roofY(lx) - 4.05, 0.02, '#2a2a2a');
-    box.add(lx, 4.02, lz, 0.26, 0.05, 0.26, '#2a2a2a');
-    glow.add(lx, 3.83, lz, 0.17, 0.32, 0.17, night ? '#ffe3a0' : '#efe2bc');
-    box.add(lx, 3.65, lz, 0.22, 0.04, 0.22, '#2a2a2a');
+    for (let zz = z0 + 0.3; zz < z1 - 0.2; zz += 0.55) box.add(mx, roofY(mx) + 0.08, zz, slopeLen, 0.16, 0.12, '#6a4a30', 0, 0, -ang);
+    box.add(x0 + 0.08, high + 0.12, (z0 + z1) / 2, 0.16, 0.16, z1 - z0 + 0.4, '#5e4430');           // ledger on the building
+    box.add(x0 + 0.05, high + 0.38, (z0 + z1) / 2, 0.1, 0.12, z1 - z0 + 0.4, '#bfae98');            // flashing where it meets the wall
+    // a lantern hanging in the middle of each bay
+    const lx = (x0 + fi) / 2;
+    for (let k = 0; k < pillars.length - 1; k++) {
+      const lz = (pillars[k][1] + pillars[k + 1][0]) / 2;
+      box.add(lx, (roofY(lx) + 4.05) / 2, lz, 0.02, roofY(lx) - 4.05, 0.02, '#2a2a2a');
+      box.add(lx, 4.02, lz, 0.26, 0.05, 0.26, '#2a2a2a');
+      glow.add(lx, 3.83, lz, 0.17, 0.32, 0.17, night ? '#ffe3a0' : '#efe2bc');
+      box.add(lx, 3.65, lz, 0.22, 0.04, 0.22, '#2a2a2a');
+    }
   } else if (d.type === 'curb') {
     // [x0, z0, x1, z1]: a low stone kerb round a paved area
     const [x0, z0, x1, z1] = a;

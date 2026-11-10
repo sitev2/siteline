@@ -704,18 +704,20 @@ export const MAPS = {
       b.crate(42.5, 23, 45, 25.5);                     // site
       b.box(37.5, 25, 39.5, 27.5);
       b.box(41, 30, 43, 32.5);
-      b.wall(39.5, 29.5, 40.5, 30.5, 1.2, 'low');      // the small solid block beside it (a stone planter)
+      // (the small solid block beside it, 39.5–40.5 × 29.5–30.5, is the middle pillar of the arcade below)
       b.crate(44, 34, 46, 36);
       b.crate(37.5, 34.5, 39.5, 36.5);
-      // roofed stone porch over that crate, against the stone block: a tall wall along the street (to 1.5 m past the
-      // crate), one round arch on the north side and two side by side on the east side, square pillars, a tiled roof
-      b.wall(37.5, 36.5, 41, 37, 6.7, '_stone');                    // the tall wall
-      b.wall(40.5, 31.5, 41, 32, 5.7, '_stone');                    // the corner pillar…
-      b.wall(40.5, 34, 41, 34.5, 5.7, '_stone');                    // …and the one between the two east arches
-      b.wall(37.5, 31.5, 40.5, 32, 6.7, '_stone', 3.9);             // stone above the arches
-      b.wall(40.5, 32, 41, 34, 5.7, '_stone', 3.4);
-      b.wall(40.5, 34.5, 41, 36.5, 5.7, '_stone', 3.4);
-      b.roof(37.5, 31.5, 41, 37, 5.7, '_roof');
+      // ---------- roofed arcade along the west side of the site, against the stone block ----------
+      // from the cellar to the street: square pillars at x 39.5–40.5 (the middle one where the small block was),
+      // two wide arches facing the site, a smaller arch at the north end, a tall wall on the street, one roof over it all
+      b.wall(39.5, 23, 40.5, 24, 5.7, '_stone');                    // north pillar
+      b.wall(39.5, 29.5, 40.5, 30.5, 5.7, '_stone');                // middle pillar
+      b.wall(39.5, 36, 40.5, 36.5, 5.7, '_stone');                  // south pillar, against the end wall
+      b.wall(39.5, 24, 40.5, 29.5, 5.7, '_stone', 3.6);             // stone above the two big arches
+      b.wall(39.5, 30.5, 40.5, 36, 5.7, '_stone', 3.6);
+      b.wall(37.5, 23, 39.5, 23.5, 6.7, '_stone', 3.3);             // stone above the north end arch
+      b.wall(37.5, 36.5, 40.5, 37, 6.7, '_stone');                  // tall wall on the street
+      b.roof(37.5, 23, 40.5, 37, 5.6, '_roof');
       b.barrel(42.5, 34);
       b.barrel(33, 37.2);                              // truck yard, below the L-shaped block
       b.barrel(52.2, 23); b.barrel(52.2, 24.1);        // defender lane
@@ -726,17 +728,16 @@ export const MAPS = {
       // ---------- look (visual, apart from the arcade's stone and the pot) ----------
       b.deco('paving', 37.5, 22.5, 47, 37, 'terracotta');          // brick paving on the site, with a stone kerb
       b.deco('paving', 37.5, 20, 39.5, 22.5, 'terracotta');
-      b.deco('curb', 41, 36.85, 47.15, 37.1); b.deco('curb', 46.9, 22.5, 47.15, 37.1);
+      b.deco('curb', 40.5, 36.85, 47.15, 37.1); b.deco('curb', 46.9, 22.5, 47.15, 37.1);
       // our own wine cellar on the site's back wall: a stone arcade built 0.5 m out (its piers and the stone above the
       // arches are solid; the two doorways are shallow recesses)
-      b.deco('shopfront', 39.5, 47, 22.5, 1, 'CANTINA FIAMMA', 0.5);
+      b.deco('shopfront', 39.5, 47, 22.5, 1, 'CANTINA FIAMMA', 0.5, 'east');   // (the arcade's north pillar stands against its west end)
       for (const x of [39.5, 43, 46.5]) b.wall(x, 22.5, x + 0.5, 23, 2.2, '_stone');
       b.wall(39.5, 22.5, 47, 23, 5.2, '_stone', 2.2);
-      b.deco('shrubs', 39.5, 29.5, 40.5, 30.5, 1.2);                // shrubs in the stone planter
       b.wall(37.5, 20, 38, 20.5, 0.6, '_pot'); b.deco('pot', 37.75, 20.25);
-      b.deco('ivy', 37.5, 29.05, Math.PI / 2, 1.3, 5.2);               // ivy up the stone block beside the site
+      b.deco('ivy', 39.95, 37, 0, 0.9, 4.2);                         // ivy up the arcade's street wall
       b.deco('ivy', 38.6, 20, 0, 1.8, 4.6);
-      b.deco('loggia', 37.5, 31.5, 41, 37, 2);
+      b.deco('arcade', 37.5, 23, 40.5, 37, [[23, 24], [29.5, 30.5], [36, 36.5]]);
       b.deco('painta', 40, 2.6, 15.45, Math.PI, 'left');            // painted site letters with arrows
       b.deco('painta', 34, 2.4, 43.95, Math.PI, 'left');
       b.deco('painta', 30.55, 2.4, 29, -Math.PI / 2, 'right');
