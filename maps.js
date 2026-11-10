@@ -707,6 +707,7 @@ export const MAPS = {
       b.wall(39.5, 29.5, 40.5, 30.5, 1.2, 'low');      // the small solid block beside it (a stone planter)
       b.crate(44, 34, 46, 36);
       b.crate(37.5, 34.5, 39.5, 36.5);
+      b.wall(37.5, 36.5, 40.5, 37, 1.0, 'low');        // low stone wall between that crate and the street, running 1 m past it
       b.barrel(42.5, 34);
       b.barrel(33, 37.2);                              // truck yard, below the L-shaped block
       b.barrel(52.2, 23); b.barrel(52.2, 24.1);        // defender lane
@@ -717,7 +718,7 @@ export const MAPS = {
       // ---------- look (visual, apart from the arcade's stone and the pot) ----------
       b.deco('paving', 37.5, 22.5, 47, 37, 'terracotta');          // brick paving on the site, with a stone kerb
       b.deco('paving', 37.5, 20, 39.5, 22.5, 'terracotta');
-      b.deco('curb', 37.5, 36.85, 47.15, 37.1); b.deco('curb', 46.9, 22.5, 47.15, 37.1);
+      b.deco('curb', 40.5, 36.85, 47.15, 37.1); b.deco('curb', 46.9, 22.5, 47.15, 37.1);
       // our own wine cellar on the site's back wall: a stone arcade built 0.5 m out (its piers and the stone above the
       // arches are solid; the two doorways are shallow recesses)
       b.deco('shopfront', 39.5, 47, 22.5, 1, 'CANTINA FIAMMA', 0.5);
