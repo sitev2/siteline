@@ -6,15 +6,15 @@ import {
 } from './world.js';
 import { resolveMap } from './maps.js';
 import { buildMapScene, THEMES } from './mapview.js';
-import { WEAPONS, U, TOP_SPEED, ACCURATE_SPEED, STARTER_PISTOL, runSpeed, penMetres, patternAt, itemDef, itemName } from './weapons.js';
+import { WEAPONS, SPOON, U, TOP_SPEED, ACCURATE_SPEED, STARTER_PISTOL, runSpeed, penMetres, patternAt, itemDef, itemName } from './weapons.js';
 import { RULES } from './config.js';
-import { makePlayerModel, setModelWeapon, animateModel, modelRecoil, makeViewModel, makeBombModel, makeDropModel, setModelDetail, TEAM_COLORS } from './models.js';
+import { makePlayerModel, setModelWeapon, animateModel, modelRecoil, modelSwing, makeViewModel, makeBombModel, makeDropModel, setModelDetail, TEAM_COLORS } from './models.js';
 import { Ragdolls } from './ragdoll.js';
 import { keyMap, keyLabel } from './keys.js';
 import { radialTexture } from './textures.js';
 import { resolveGraphics } from './graphics.js';
 import { PostFX } from './post.js';
-import { inspectPose, drawPose, poseViewModel, inspectDuration } from './anim.js';
+import { inspectPose, drawPose, swingPose, poseViewModel, inspectDuration } from './anim.js';
 import * as sfx from './audio.js';
 import { Input } from './input.js';
 import { Hud, TEAM_NAMES } from './hud.js';
@@ -141,6 +141,7 @@ export class Game {
       pos: { x: 0, y: 0, z: 0 }, vel: { x: 0, y: 0, z: 0 }, yaw: 0, pitch: 0, onGround: true,
       alive: false, hp: 100, armor: 0, helmet: false, kit: false, money: 800, team: 'atk',
       inv: { primary: null, secondary: STARTER_PISTOL.atk }, weapon: STARTER_PISTOL.atk,
+      melee: null, swingAt: -10, swingStab: false, swingDir: 1,     // the secret spoon (only if the host gives you one)
       ammo: {}, reloading: 0, nextShot: 0, deployUntil: 0, autoReloadAt: 0,
       zoom: 0, rezoom: 0, rezoomAt: 0,
       recoilIdx: 0, recP: 0, recY: 0, fireInacc: 0, lastFire: -10,
@@ -236,7 +237,7 @@ export class Game {
   owns(id) {
     const me = this.me;
     if (id === 'c4') return this.bomb.state === 'carried' && this.bomb.carrier === this.myId;
-    return !!id && (id === me.inv.primary || id === me.inv.secondary);
+    return !!id && (id === me.inv.primary || id === me.inv.secondary || id === me.melee);
   }
 
   setViewModel() {
@@ -370,6 +371,7 @@ export class Game {
         }
         return;
       case 'shot': return this.onRemoteShot(m);
+      case 'swing': return this.onRemoteSwing(m);
       case 'drops': return this.onDrops(m);
       case 'hit':
         this.hud.hitmarker(m.head, m.kill);
@@ -493,6 +495,7 @@ export class Game {
     const me = this.me;
     const bought = this.buyOpen && m.fresh && m.fresh.length;
     me.inv = m.inv; me.money = m.money; me.armor = m.armor; me.helmet = m.helmet; me.kit = m.kit;
+    me.melee = m.melee || null;
     me.refunds = m.refunds || {};
     for (const id of m.fresh || []) if (WEAPONS[id]) me.ammo[id] = { mag: WEAPONS[id].mag, res: WEAPONS[id].reserve };
     // a picked-up gun keeps the ammo that was left in it
@@ -508,7 +511,7 @@ export class Game {
     Object.assign(this.me, {
       alive: true, hp: 100, yaw, pitch: 0, spectate: null, zoom: 0, rezoom: 0, recoilIdx: 0, recP: 0, recY: 0,
       fireInacc: 0, hurtP: 0, hurtY: 0, tag: 0, landPen: 0, landSlow: 0, using: false, burstLeft: 0, reloading: 0,
-      onGround: true, jumpAt: -1, duck: 0, eyeOff: EYE, standingOn: null, mateLast: null,
+      onGround: true, jumpAt: -1, duck: 0, eyeOff: EYE, standingOn: null, mateLast: null, swingAt: -10,
     });
     this.input.crouchToggle = false;
     this.ragdolls.remove(this.myId);
@@ -631,6 +634,19 @@ export class Game {
     }
   }
 
+  // another player swung the spoon. m: { id, stab, hit: 0 air / 1 wall / 2 somebody }
+  onRemoteSwing(m) {
+    const r = this.remotes.get(m.id);
+    if (!r || !r.buf.length) return;
+    if (r.model) modelSwing(r.model, !!m.stab);
+    const eye = r.rp.y + EYE + (EYE_CROUCH - EYE) * (r.duck || 0) - 0.2;
+    const pos = { x: r.rp.x - Math.sin(r.rp.yaw) * 0.6, y: eye, z: r.rp.z - Math.cos(r.rp.yaw) * 0.6 };
+    const o = { pos, occ: this.occlusion(pos.x, pos.y, pos.z) };
+    sfx.playSwing(o);
+    if (m.hit === 2) sfx.playSpoonHit(o);
+    else if (m.hit === 1) sfx.playSpoonWall(o);
+  }
+
   // where another player's gun barrel ends, in the world
   remoteMuzzle(r) {
     const gun = r.model.gunHolder.children[0];
@@ -741,6 +757,7 @@ export class Game {
     if (!me.alive || me.using) return;
     const id = me.weapon;
     if (id === 'c4') { this.transport.send({ t: 'drop', w: 'c4' }); return; }
+    if (id === me.melee) { this.hud.center('', 'The spoon stays with you', '#fff', 1); sfx.playDeny(); return; }
     if (!WEAPONS[id]) return;
     const slot = WEAPONS[id].slot;
     if (!me.inv[slot === 'primary' ? 'secondary' : 'primary']) { this.hud.center('', 'You can\'t drop your last weapon', '#fff', 1); sfx.playDeny(); return; }
@@ -1177,7 +1194,7 @@ export class Game {
     const me = this.me;
     if (id === me.weapon && !quiet) return;
     me.weapon = id;
-    Object.assign(me, { reloading: 0, zoom: 0, rezoom: 0, recoilIdx: 0, recP: 0, recY: 0, burstLeft: 0, fireInacc: 0, autoReloadAt: 0, inspectAt: -1 });
+    Object.assign(me, { reloading: 0, zoom: 0, rezoom: 0, recoilIdx: 0, recP: 0, recY: 0, burstLeft: 0, fireInacc: 0, autoReloadAt: 0, inspectAt: -1, swingAt: -10 });
     me.deployUntil = this.clock + w.deploy;
     this.ammoOf(id);
     this.setViewModel();
@@ -1186,9 +1203,9 @@ export class Game {
     sfx.playEquip(id);
   }
 
-  // mouse wheel / touch ⇄: primary → pistol → bomb → …
+  // mouse wheel / touch ⇄: primary → pistol → (spoon) → bomb → …
   cycleWeapon(dir) {
-    const order = [this.me.inv.primary, this.me.inv.secondary, 'c4'].filter(id => this.owns(id));
+    const order = [this.me.inv.primary, this.me.inv.secondary, this.me.melee, 'c4'].filter(id => this.owns(id));
     const i = order.indexOf(this.me.weapon);
     return order[(i + dir + order.length) % order.length];
   }
@@ -1232,7 +1249,7 @@ export class Game {
     if (!me.alive) {
       // spectating: click/tap cycles players
       if (inp.consume('click') && performance.now() - me.deathTime > 1500) this.cycleSpectate();
-      for (const a of ['jump', 'reload', 'alt', 'w1', 'w2', 'w5', 'next', 'prev', 'swap', 'drop', 'use', 'inspect', 'flashlight']) inp.consume(a);
+      for (const a of ['jump', 'reload', 'alt', 'w1', 'w2', 'w3', 'w5', 'next', 'prev', 'swap', 'drop', 'use', 'inspect', 'flashlight']) inp.consume(a);
       return;
     }
 
@@ -1411,12 +1428,14 @@ export class Game {
     // switching: 1 main gun, 2 pistol, 5 bomb, wheel cycles; touch ⇄ swaps guns (and the bomb)
     if (inp.consume('w1') && me.inv.primary) this.equip(me.inv.primary);
     if (inp.consume('w2') && me.inv.secondary) this.equip(me.inv.secondary);
+    if (inp.consume('w3') && me.melee) this.equip(me.melee);
     if (inp.consume('w5') && this.owns('c4')) this.equip('c4');
     if (inp.consume('next')) this.equip(this.cycleWeapon(1));
     if (inp.consume('prev')) this.equip(this.cycleWeapon(-1));
     if (inp.consume('swap')) this.equip(this.cycleWeapon(1));
     if (inp.consume('inspect') && me.reloading <= 0 && !me.zoom && !me.using && this.clock >= me.deployUntil) me.inspectAt = this.clock;
     if (me.weapon === 'c4') { this.updateBombHeld(dt); return; }
+    if (me.weapon === me.melee) { this.updateMelee(dt, frozen); return; }
     const w = WEAPONS[me.weapon];
     const a = this.ammoOf(me.weapon);
 
@@ -1485,6 +1504,67 @@ export class Game {
     me.fireInacc = 0;
     const hk = Math.exp(-dt * 9);
     me.hurtP *= hk; me.hurtY *= hk;
+  }
+
+  // The spoon in your hands (key 3): fire slashes (hold to keep swinging), alt (right-click / 🥄) stabs.
+  updateMelee(dt, frozen) {
+    const me = this.me, inp = this.input, now = this.clock;
+    inp.consume('reload');
+    const clicked = inp.consume('click'), alt = inp.consume('alt');
+    const blocked = frozen || this.buyOpen || me.using || now < me.useCooldown || now < me.deployUntil || now < me.nextShot;
+    if (!blocked) {
+      if (alt) this.swing(true);
+      else if (inp.fire || clicked) this.swing(false);
+    }
+    me.recP *= Math.exp(-dt * 7); me.recY *= Math.exp(-dt * 7);
+    me.fireInacc = 0;
+    const hk = Math.exp(-dt * 9);
+    me.hurtP *= hk; me.hurtY *= hk;
+  }
+
+  // One swing of the spoon. Like a knife it has a short reach and is forgiving about aim:
+  // straight ahead is tried first, then a small ring round the crosshair.
+  swing(stab) {
+    const me = this.me, a = stab ? SPOON.stab : SPOON.slash, now = this.clock;
+    me.inspectAt = -1;
+    const ex = me.pos.x, ey = me.pos.y + me.eyeOff, ez = me.pos.z;
+    const pitch = me.pitch + me.hurtP, yaw = me.yaw + me.hurtY;
+    const fwd = new THREE.Vector3(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch));
+    const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+    const up = new THREE.Vector3().crossVectors(right, fwd).normalize();
+    const RING = [[0, 0], [0.15, 0], [-0.15, 0], [0, 0.15], [0, -0.15], [0.11, 0.11], [-0.11, 0.11], [0.11, -0.11], [-0.11, -0.11]];
+    let best = null, wall = null;
+    for (const [ax, ay] of RING) {
+      const dir = fwd.clone().addScaledVector(right, ax).addScaledVector(up, ay).normalize();
+      const tr = this.world.trace(ex, ey, ez, dir.x, dir.y, dir.z, a.range + 0.2);
+      // walls, crates and barrels all stop a spoon
+      let stop = tr.solid ? tr.t : Infinity;
+      if (tr.pen.length) stop = Math.min(stop, tr.pen[0][0]);
+      for (const r of this.remotes.values()) {
+        if (!r.alive || !r.buf.length) continue;
+        const h = rayVsPlayer(ex, ey, ez, dir.x, dir.y, dir.z, r.rp.x, r.rp.y, r.rp.z, r.rp.yaw, hitScale(r.duck));
+        if (h && h.t <= a.range && h.t < stop && (!best || h.t < best.t)) best = { ...h, id: r.id, dir };
+      }
+      if (best) break;
+      if (!wall && stop <= a.range) wall = { t: stop, dir };
+    }
+    const r2 = v => Math.round(v * 100) / 100;
+    let hit = null;
+    sfx.playSwing();
+    if (best) {
+      const p = [ex + best.dir.x * best.t, ey + best.dir.y * best.t, ez + best.dir.z * best.t].map(r2);
+      hit = { id: best.id, part: best.part, p };
+      this.spawnPuff(p[0], p[1], p[2], 0.6, '#c0201a', 0.35, false);
+      sfx.playSpoonHit();
+      this.shake = Math.min(1, this.shake + 0.25);
+    } else if (wall) {
+      const t = Math.max(0, wall.t - 0.05);
+      this.impactFx(ex + wall.dir.x * t, ey + wall.dir.y * t, ez + wall.dir.z * t);
+      sfx.playSpoonWall();
+    }
+    this.transport.send({ t: 'melee', stab: stab ? 1 : 0, o: [ex, ey, ez].map(r2), hit, wall: wall ? 1 : 0 });
+    me.nextShot = now + (best ? a.hit : a.miss);
+    me.swingAt = now; me.swingStab = stab; me.swingDir = -me.swingDir;
   }
 
   altAction() {
@@ -1812,14 +1892,17 @@ export class Game {
         ip = inspectPose(me.weapon, w.type, this.clock - me.inspectAt);
         if (!ip || !me.alive) { ip = null; me.inspectAt = -1; }
       }
-      const P = ip ? dp.map((v, i) => v + ip[i]) : dp;
+      let P = ip ? dp.map((v, i) => v + ip[i]) : dp;
+      // swinging the spoon
+      const sp = w.type === 'melee' ? swingPose(me.swingStab, this.clock - me.swingAt, me.swingDir) : null;
+      if (sp) P = P.map((v, i) => v + sp[i]);
       // breathing while standing still
       const breathe = (1 - bobAmt) * (ip ? 0 : 1);
       const t = this.clock;
       // where each kind of gun sits on screen: x, y, z, then the turn the arms are posed for (the elbows
       // are anchored to it). The gun itself is NOT turned: its barrel stays parallel to the view so it
       // points exactly at the crosshair, where the bullets go.
-      const HOLD = { pistol: [0.088, -0.088, -0.28, 0.1], smg: [0.11, -0.11, -0.25, 0.15], shotgun: [0.13, -0.125, -0.25, 0.18], rifle: [0.14, -0.13, -0.26, 0.2], sniper: [0.14, -0.135, -0.25, 0.18], bomb: [0.0, -0.14, -0.3] };
+      const HOLD = { pistol: [0.088, -0.088, -0.28, 0.1], smg: [0.11, -0.11, -0.25, 0.15], shotgun: [0.13, -0.125, -0.25, 0.18], rifle: [0.14, -0.13, -0.26, 0.2], sniper: [0.14, -0.135, -0.25, 0.18], bomb: [0.0, -0.14, -0.3], melee: [0.115, -0.135, -0.3, 0.1] };
       const H = HOLD[(vm.userData.parts && vm.userData.parts.kind) || 'rifle'] || HOLD.rifle;
       // walking: a figure-8 bob; strafing tilts the gun; jumping lets it float
       const b = this.vmBob;
@@ -1942,13 +2025,13 @@ export class Game {
     useBtn.classList.toggle('pick', !!pick && use !== 'plant' && use !== 'defuse');
     const altBtn = document.getElementById('btn-alt');
     altBtn.classList.toggle('hidden', !w.alt);
-    const altLabel = w.alt === 'scope' ? '◎' : '≡';
+    const altLabel = w.alt === 'scope' ? '◎' : w.alt === 'stab' ? '🥄' : '≡';
     if (altBtn.textContent !== altLabel) altBtn.textContent = altLabel;
-    document.getElementById('btn-swap').classList.toggle('hidden', !(me.inv.primary && me.inv.secondary) && !this.owns('c4'));
+    document.getElementById('btn-swap').classList.toggle('hidden', !(me.inv.primary && me.inv.secondary) && !this.owns('c4') && !me.melee);
     const lightBtn = document.getElementById('btn-light');
     lightBtn.classList.toggle('hidden', !this.night);
     lightBtn.classList.toggle('on', !!me.light);
-    document.getElementById('btn-drop').classList.toggle('hidden', !me.alive || this.dm || (!!WEAPONS[me.weapon] && !(me.inv.primary && me.inv.secondary)));
+    document.getElementById('btn-drop').classList.toggle('hidden', !me.alive || this.dm || me.weapon === me.melee || (!!WEAPONS[me.weapon] && !(me.inv.primary && me.inv.secondary)));
     document.getElementById('btn-crouch').classList.toggle('on', this.input.crouchToggle);
     hud.buyButton(canBuy && !touch && !this.buyOpen && !this.dm);
     document.getElementById('btn-buy').classList.toggle('hidden', !canBuy);

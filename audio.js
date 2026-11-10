@@ -353,6 +353,10 @@ const MAKERS = {
   chimeUp: () => buf(0.9, (x, sr) => { const bell = (at, f) => partials(x, sr, at, [[f, 0.6, 0.35], [f * 2.76, 0.2, 0.18], [f * 5.4, 0.08, 0.08]], 1); bell(0, 659); bell(0.11, 988); normalize(x, 0.55); }),
   chimeDown: () => buf(0.9, (x, sr) => { const bell = (at, f) => partials(x, sr, at, [[f, 0.6, 0.35], [f * 2.76, 0.2, 0.18], [f * 5.4, 0.08, 0.08]], 1); bell(0, 523); bell(0.12, 392); normalize(x, 0.55); }),
   ui: () => buf(0.05, (x, sr) => { partials(x, sr, 0, [[1800, 0.5, 0.012]], 1); click(x, sr, 0, 3500, 2, 0.2); normalize(x, 0.5); }),
+  // the spoon: a swing through the air, a ringing bonk on a body, a clink on a wall
+  swoosh: () => buf(0.26, (x, sr) => { sweepNoise(x, sr, 0, 0.2, 500, 2600, 1.6, 1, 0.5); sweepNoise(x, sr, 0.03, 0.16, 2400, 900, 2.2, 0.5, 0.5); normalize(x, 0.6); }),
+  spoonHit: () => buf(0.6, (x, sr) => { thump(x, sr, 0, 240, 130, 0.05, 0.9, 2); noiseHit(x, sr, 0, 'lowpass', 900, 0.7, 0.025, 0.6); const f = 1480 + Math.random() * 120; partials(x, sr, 0.004, [[f, 0.55, 0.16], [f * 2.71, 0.35, 0.11], [f * 5.2, 0.18, 0.06]], 1); normalize(x, 0.9); }),
+  spoonWall: () => buf(0.35, (x, sr) => { click(x, sr, 0, 3200, 3, 0.8); const f = 2300 + Math.random() * 300; partials(x, sr, 0, [[f, 0.5, 0.07], [f * 2.4, 0.3, 0.045], [f * 4.1, 0.15, 0.025]], 1); noiseHit(x, sr, 0, 'lowpass', 700, 0.7, 0.012, 0.4); normalize(x, 0.7); }),
   // a dropped gun hitting the floor
   drop: () => buf(0.4, (x, sr) => { thump(x, sr, 0, 160, 90, 0.04, 0.7); noiseHit(x, sr, 0, 'lowpass', 700, 0.7, 0.03, 0.6); for (const [at, a] of [[0, 0.8], [0.1, 0.4], [0.17, 0.2]]) { click(x, sr, at, 1200 + Math.random() * 1200, 2, a); partials(x, sr, at, [[1700, 0.15, 0.04], [2900, 0.1, 0.03]], a); } normalize(x, 0.8); }),
   casing: () => buf(0.25, (x, sr) => { const f = 4200 + Math.random() * 1500; for (const [at, a] of [[0, 1], [0.06 + Math.random() * 0.03, 0.5], [0.12, 0.2]]) partials(x, sr, at, [[f, 0.5 * a, 0.03], [f * 1.63, 0.3 * a, 0.02], [f * 2.4, 0.15 * a, 0.012]], 1); normalize(x, 0.6); }),
@@ -517,6 +521,7 @@ export function pumpSequence(weaponId) {
 // pulling a gun out
 export function playEquip(weaponId) {
   if (!ctx) return;
+  if (weaponId === 'spoon') { sequence([[0, 'rustle', { gain: 0.2 }], [0.16, 'spoonWall', { gain: 0.16 }]]); return; }
   const m = MECH[weaponId];
   if (weaponId) warmGun(weaponId);
   if (m === 'slide') sequence([[0, 'rustle', { gain: 0.15 }], [0.25, 'slideBack', { gain: 0.35 }], [0.32, 'slideSlam', { gain: 0.4 }]]);
@@ -525,6 +530,15 @@ export function playEquip(weaponId) {
   else if (m) sequence([[0, 'rustle', { gain: 0.2 }], [0.3, 'handleRelease', { gain: 0.35 }]]);
   else sequence([[0, 'rustle', { gain: 0.25 }]]);
 }
+// the spoon. opts: { pos (null for your own), occ }
+function spoonSound(name, opts, gain) {
+  const o = opts || {};
+  play(sound(name), o.pos ? { pos: o.pos, gain: gain * 1.6, ref: 1.5, roll: 1.3, air: 25, occ: o.occ, wet: 0.3, rate: 0.95 + Math.random() * 0.1 }
+    : { gain, wet: 0.15, rate: 0.95 + Math.random() * 0.1 });
+}
+export function playSwing(opts) { spoonSound('swoosh', opts, 0.4); }
+export function playSpoonHit(opts) { spoonSound('spoonHit', opts, 0.6); }
+export function playSpoonWall(opts) { spoonSound('spoonWall', opts, 0.4); }
 export function playDryFire() { play(sound('dry'), { gain: 0.5, wet: 0.2 }); }
 export function playReload() { play(sound('magOut'), { gain: 0.4 }); }   // (kept for anything still calling it)
 export function playBolt() { play(sound('boltBack'), { gain: 0.4 }); }

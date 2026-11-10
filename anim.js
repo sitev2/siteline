@@ -14,6 +14,7 @@ const DRAW_FROM = {
   rifle: [0.15, -0.32, 0.1, -0.6, 0.9, 0.5],
   sniper: [0.18, -0.35, 0.12, -0.5, 1.0, 0.4],
   bomb: [0, -0.3, 0.05, -0.9, 0, 0],
+  melee: [0.06, -0.3, 0.06, -1.3, 0.2, 0.9],
 };
 
 const INSPECT = {
@@ -23,6 +24,8 @@ const INSPECT = {
   rifle: { dur: 3.0, keys: [[0, Z], [0.2, [-0.06, 0.06, 0.05, 0.15, 0.75, 0.45]], [0.45, [-0.06, 0.08, 0.05, 0.25, 0.85, 0.5]], [0.6, [0.02, 0.0, 0.02, -0.3, 0.1, -0.3]], [0.8, [0.02, 0.0, 0.02, -0.28, 0.05, -0.34]], [1, Z]] },
   sniper: { dur: 3.2, keys: [[0, Z], [0.25, [-0.06, 0.06, 0.03, 0.28, 0.95, 0.3]], [0.5, [-0.06, 0.07, 0.03, 0.3, 1.0, 0.32]], [0.65, [0.03, 0.03, 0, 0.05, -0.5, -0.6]], [0.85, [0.03, 0.03, 0, 0.06, -0.55, -0.62]], [1, Z]] },
   bomb: { dur: 2.2, keys: [[0, Z], [0.3, [0, 0.06, 0.06, 0.8, 0.2, 0]], [0.6, [0, 0.06, 0.06, 0.8, -0.3, 0.2]], [1, Z]] },
+  // the spoon: hold it up, admire both sides, give it a twirl
+  melee: { dur: 2.8, keys: [[0, Z], [0.16, [-0.1, 0.09, 0.02, 0.75, 0.5, 0.2]], [0.36, [-0.1, 0.1, 0.02, 0.8, 0.55, 0.25]], [0.5, [-0.09, 0.1, 0.02, 0.8, -2.3, 0.1]], [0.68, [-0.09, 0.1, 0.02, 0.82, -2.4, 0.1]], [0.8, [-0.05, 0.07, 0, 0.5, -0.6, 0]], [1, [0, 0, 0, 0, 0, -6.2832]]] },
 };
 
 // a few guns get their own flourish
@@ -34,7 +37,21 @@ const SPECIAL = {
   mag7: { dur: 2.8, keys: [[0, Z], [0.2, [-0.05, 0.06, 0.04, 0.5, 0.6, 0.5]], [0.48, [-0.05, 0.07, 0.04, 0.55, 0.62, 0.55]], [0.62, [0.02, 0.04, 0, -0.2, -0.4, -0.4]], [0.82, [0.02, 0.04, 0, -0.22, -0.42, -0.42]], [1, Z]] },
 };
 
-const TYPE = { pistol: 'pistol', smg: 'smg', shotgun: 'shotgun', rifle: 'rifle', sniper: 'sniper', bomb: 'bomb' };
+const TYPE = { pistol: 'pistol', smg: 'smg', shotgun: 'shotgun', rifle: 'rifle', sniper: 'sniper', bomb: 'bomb', melee: 'melee' };
+
+// Swinging the spoon. A slash sweeps across the screen (alternating high-to-low and low-to-high);
+// a stab pulls back and jabs straight out.
+const SLASH = { dur: 0.42, keys: [[0, Z], [0.14, [0.05, 0.04, 0.03, 0.2, -0.35, -0.3]], [0.4, [-0.2, -0.01, -0.1, -0.25, 0.85, 0.75]], [0.58, [-0.27, -0.05, -0.05, -0.35, 1.15, 0.95]], [1, Z]] };
+const STAB = { dur: 0.6, keys: [[0, Z], [0.2, [0.02, 0.03, 0.11, 0.3, -0.05, 0]], [0.4, [-0.07, 0.06, -0.17, -0.42, 0.28, 0.15]], [0.56, [-0.07, 0.06, -0.16, -0.4, 0.28, 0.15]], [1, Z]] };
+// t = seconds since the swing started, dir = 1 or -1; returns a pose, or null when it's over
+export function swingPose(stab, t, dir = 1) {
+  const def = stab ? STAB : SLASH;
+  const k = t / def.dur;
+  if (k >= 1 || k < 0) return null;
+  const p = curve(def.keys, k, 6);
+  if (!stab && dir < 0) { p[1] = -p[1] * 0.6 + 0.03 * Math.sin(Math.PI * k); p[3] = -p[3]; p[5] *= 0.6; }
+  return p;
+}
 
 
 const easeOut = t => 1 - Math.pow(1 - t, 3);
@@ -177,9 +194,10 @@ export function poseViewModel(vm, st) {
   if (u.handle) u.handle.position.copy(d.rest.handle);
   if (u.hammer) u.hammer.rotation.x = 0;
   const gp = _gp.set(0, kind === 'bomb' ? -0.03 : 0, kind === 'bomb' ? -0.06 : 0), gr = _gr.set(0, 0, 0);
+  if (u.rot) gr.copy(u.rot);        // a melee weapon is tipped forward in the fist
 
   // ---- where the hands normally hold the gun ----
-  const R0 = _R0.copy(u.grip), L0 = _L0.copy(u.fore);
+  const R0 = _R0.copy(u.grip), L0 = _L0.copy(u.fore || u.grip);
   if (u.foreKind === 'under' || u.foreKind === 'pump') L0.y += 0.026;   // the handguard sits in the curl of the fingers
   if (u.foreKind === 'under') L0.z -= 0.03;
   const R = _R.copy(R0), L = _L.copy(L0);

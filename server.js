@@ -8,6 +8,7 @@ import { NavGrid, BotBrain, BOT_NAMES } from './bots.js';
 import { cleanChat, CHAT_LIMIT } from './filter.js';
 import {
   WEAPONS, EQUIPMENT, MONEY, STARTER_PISTOL, canTeamBuy, rawDamage, applyArmor, isArmored, penMetres, HITGROUPS,
+  SPOON, hasSpoon, itemDef,
 } from './weapons.js';
 
 const r2 = v => Math.round(v * 100) / 100;
@@ -103,6 +104,7 @@ export class Server {
       armor: 0, helmet: false, kit: false, hs: 0, dmg: 0,
       duck: 0, ammo: {},
     };
+    p.spoon = hasSpoon(p.name);    // the secret spoon: only for the player with that name
     this.players.set(id, p);
     if (this.botCfg && this.phase !== 'lobby') this.replaceBotWith(p);
     this.send(id, { t: 'welcome', id, settings: this.settings, phase: this.phase, roster: this.roster(), practice: this.practice });
@@ -163,6 +165,7 @@ export class Server {
     switch (msg.t) {
       case 'st': return this.onState(p, msg);
       case 'shot': return this.onShot(p, msg);
+      case 'melee': return this.onMelee(p, msg);
       case 'buy': return this.onBuy(p, String(msg.item || ''));
       case 'refund': return this.onRefund(p, String(msg.item || ''));
       case 'drop': return this.onDrop(p, msg);
@@ -232,7 +235,7 @@ export class Server {
     if (p.dummy) return;
     this.send(p.id, {
       t: 'inv', inv: p.inv, w: p.w, money: p.money, armor: p.armor, helmet: p.helmet, kit: p.kit, fresh,
-      refunds: this.refundList(p), ...(extra || {}),
+      refunds: this.refundList(p), melee: p.spoon ? 'spoon' : null, ...(extra || {}),
     });
   }
 
@@ -366,6 +369,7 @@ export class Server {
 
   canHold(p, id) {
     if (id === 'c4') return this.bomb.state === 'carried' && this.bomb.carrier === p.id;
+    if (id === 'spoon') return !!p.spoon;
     return !!WEAPONS[id] && (id === p.inv.primary || id === p.inv.secondary);
   }
 
@@ -421,6 +425,47 @@ export class Server {
       totals.set(tgt.id, t);
     }
     for (const [tid, t] of totals) this.damage(this.players.get(tid), p, t, w.id, o);
+  }
+
+  // The secret spoon: a swing (slash) or a stab. m: { stab, o: [x, y, z], hit: { id, part, p: [x, y, z] } | null, wall }
+  // Works like a knife: short reach, no ammo, and much more damage from behind.
+  onMelee(p, m) {
+    if (!p.spoon || !p.alive || !this.world) return;
+    if (!['live', 'planted', 'end', 'practice', 'dm'].includes(this.phase)) return;
+    const stab = !!m.stab, a = stab ? SPOON.stab : SPOON.slash;
+    const now = performance.now();
+    const since = now - (p.meleeAt || -1e9);
+    if (since < (p.meleeGap || 0) * 0.6) return;
+    const o = Array.isArray(m.o) ? m.o.map(Number) : null;
+    if (!o || o.length !== 3 || !o.every(Number.isFinite)) return;
+    if (Math.hypot(o[0] - p.x, o[2] - p.z) > 4) return;
+    const first = since > (p.meleeGap || 0) + 400;    // swings straight after one another hit softer
+    p.w = 'spoon';
+
+    let tgt = null, pt = null;
+    const h = m.hit;
+    if (h && typeof h === 'object') {
+      tgt = this.players.get(h.id);
+      pt = Array.isArray(h.p) ? h.p.map(Number) : null;
+      const ok = tgt && tgt.alive && tgt !== p && pt && pt.length === 3 && pt.every(Number.isFinite)
+        && Math.hypot(pt[0] - tgt.x, pt[2] - tgt.z) <= 3.5 && pt[1] >= tgt.y - 1 && pt[1] <= tgt.y + 3
+        && Math.hypot(pt[0] - o[0], pt[1] - o[1], pt[2] - o[2]) <= a.range + 0.35
+        && this.world.traceFactor(o[0], o[1], o[2], pt[0], pt[1], pt[2], 0.05) > 0;   // nothing in the way, not even a crate
+      if (!ok) tgt = null;
+    }
+    p.meleeAt = now;
+    p.meleeGap = (tgt ? a.hit : a.miss) * 1000;
+    this.broadcast({ t: 'swing', id: p.id, stab: stab ? 1 : 0, hit: tgt ? 2 : m.wall ? 1 : 0 }, p.id);
+    if (!tgt) return;
+
+    // from behind? (the victim is facing away from the attacker)
+    const dx = tgt.x - p.x, dz = tgt.z - p.z, d = Math.hypot(dx, dz) || 1;
+    const back = (dx * -Math.sin(tgt.yaw) + dz * -Math.cos(tgt.yaw)) / d > 0.475;
+    const dmg = (back ? a.back : first ? a.damage : a.quick) * (this.mates(tgt, p) ? RULES.friendlyFire : 1);
+    const part = HITGROUPS.includes(h.part) ? h.part : 'chest';
+    // armour takes the edge off wherever the spoon lands (no headshot bonus)
+    const split = applyArmor(dmg, 'chest', tgt.armor, tgt.helmet, SPOON.armorPen);
+    this.damage(tgt, p, { hp: split.hp, armor: split.armor, head: false, part, armored: tgt.armor > 0 }, 'spoon', o);
   }
 
   // ---------- dropped guns, kits and the bomb ----------
@@ -574,8 +619,8 @@ export class Server {
       } else {
         attacker.kills++;
         if (head) attacker.hs++;
-        const w = WEAPONS[weapon];
-        if (w) this.addMoney(attacker, w.reward, `Kill with ${w.name}`);
+        const w = itemDef(weapon);
+        if (w && w.reward) this.addMoney(attacker, w.reward, `Kill with ${w.name}`);
       }
     }
     this.broadcast({

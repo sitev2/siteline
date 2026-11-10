@@ -157,8 +157,24 @@ export const BOMB_ITEM = {
   stand: 0, move: 0, air: 0, fire: 0, recover: 0.3,
 };
 
-// Anything you can hold: a gun or the bomb
-export function itemDef(id) { return WEAPONS[id] || (id === 'c4' ? BOMB_ITEM : null); }
+// ---------------- the secret spoon (never bought, never dropped) ----------------
+// A melee weapon that works like a CS knife. Only the player whose name is SPOON_OWNER gets one
+// (the host decides: see `spoon` in server.js). It is deliberately NOT in WEAPONS, so it never
+// shows up in the buy menu, on the floor or in account stats.
+//   slash (fire): quick swings — `damage` on the first swing, `quick` on swings straight after it
+//   stab (alt):   slow and short, hits much harder
+//   `back`: damage when you hit someone from behind. Ranges in metres, times in seconds.
+export const SPOON_OWNER = 'y1kes';
+export const SPOON = {
+  id: 'spoon', name: 'Spoon', type: 'melee', slot: 'melee', speed: TOP_SPEED, scopedSpeed: TOP_SPEED, deploy: 0.5,
+  stand: 0, move: 0, air: 0, fire: 0, recover: 0.3, alt: 'stab', reward: 1500, armorPen: 0.85,
+  slash: { damage: 40, quick: 25, back: 90, range: 48 * U, miss: 0.4, hit: 0.5 },
+  stab: { damage: 65, quick: 65, back: 180, range: 32 * U, miss: 1.0, hit: 1.0 },
+};
+export function hasSpoon(name) { return String(name || '').trim().toLowerCase() === SPOON_OWNER; }
+
+// Anything you can hold: a gun, the bomb or the spoon
+export function itemDef(id) { return WEAPONS[id] || (id === 'c4' ? BOMB_ITEM : id === 'spoon' ? SPOON : null); }
 export function itemName(id) {
   if (id === 'bomb') return 'bomb';
   const d = itemDef(id);
@@ -269,4 +285,5 @@ export const WEAPON_ICONS = {
   m4a1s: '<path d="M2 16h36v-3h6v-4h22v4h22v6h30v4H88v3H70v8h-8v-8H48l-6 10H28l6-12H2z"/>',
   ssg08: '<path d="M4 20h44v-4h70v4H62v4H46l-6 10h-8l4-10H26l-6 10H10l4-10H4z"/><rect x="40" y="8" width="26" height="6" rx="3"/>',
   awp: '<path d="M2 20h46v-4h70v5H64v5H46l-6 9h-9l4-9H24l-8 10H6l6-11H2z"/><rect x="38" y="6" width="30" height="8" rx="4"/>',
+  spoon: '<ellipse cx="94" cy="20" rx="20" ry="12"/><path d="M12 15.5h46l18 2v5l-18 2H12a4.5 4.5 0 0 1 0-9z"/>',
 };
