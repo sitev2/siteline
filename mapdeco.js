@@ -12,10 +12,10 @@ import { dressHouses, villageDeco } from './houses.js';
 
 // what each theme adds
 const DRESS = {
-  // Tuscan hill town (Flame): dusty cobbles with dirt patches and dry grass, hills and mountains around
+  // Tuscan hill town (Flame): dusty cobbles with dirt patches, hills and mountains around
   tuscan: {
     windowOn: [], frame: '#e6dac2', glass: '#20262c', door: '#6b4a30',
-    items: [], decals: ['dirt', 'dirt', 'crack', 'stain'], tufts: true,
+    items: [], decals: ['dirt', 'dirt', 'crack', 'stain'],
     backdrop: 'tuscan',
   },
   // houses dress themselves (houses.js); keep the streets clean
@@ -314,7 +314,7 @@ function backdrop(world, theme, kind, night, far) {
     }
   };
   if (kind === 'tuscan') {
-    // dry fields and vineyards, rolling hills with cypresses, a blue mountain ridge, and more of the town just outside
+    // dry fields, rolling hills with cypresses, a blue mountain ridge, and more of the town just outside
     M.geo(new THREE.CylinderGeometry(R * 2.2, R * 2.2, 0.2, 40), cx, -0.15, cz, 0, fade('#b9a56e', cx + R, cz, -0.2));
     around(9, 85, 110, (x, z) => { const w = (70 + r() * 60) * S; M.geo(U_CONE(7), x, -2, z, r() * 3, fade('#7d8fa6', x, z, 0.05), w, (30 + r() * 30) * S, w * 0.8, fade('#a7b4c4', x, z, 0.05), 0.75); }, 45);
     around(14, 70, 130, (x, z) => { const w = (45 + r() * 45) * S; M.geo(new THREE.SphereGeometry(1, 12, 6, 0, Math.PI * 2, 0, Math.PI / 2), x, -2, z, r() * 3, fade(['#8f925a', '#9c9560', '#7f8a52'][Math.floor(r() * 3)], x, z), w, (14 + r() * 18) * S, w * 0.7); });
@@ -609,20 +609,6 @@ export function decorateMap(world, theme, group, { gfx = {}, night = false, shad
       }
     }
     for (const k of kinds) { const m = inst[k].build(group); if (m) m.renderOrder = 1; }
-    // tufts of dry grass along the foot of walls and in the corners of the streets
-    if (T.tufts) {
-      const blade = new Inst(new THREE.PlaneGeometry(1, 1).translate(0, 0.5, 0), new THREE.MeshLambertMaterial({ color: '#ffffff', side: THREE.DoubleSide }));
-      const tuft = (x, z) => {
-        const n = 4 + Math.floor(r() * 4), hgt = 0.18 + r() * 0.22;
-        for (let b = 0; b < n; b++) blade.add(x + (r() - 0.5) * 0.25, 0, z + (r() - 0.5) * 0.25, 0.05, hgt * (0.6 + r() * 0.6), 1, ['#c9a85a', '#b89848', '#d6bb72', '#a8904a'][Math.floor(r() * 4)], r() * Math.PI, (r() - 0.5) * 0.5, (r() - 0.5) * 0.5);
-      };
-      for (const f of faces) {
-        if (f.len < 2) continue;
-        const [ux, uz] = f.dir, [nx, nz] = f.n;
-        for (let s = 0.3; s < f.len; s += 0.6 + r() * 1.6) if (r() < 0.45) tuft(f.x + ux * s + nx * 0.18, f.z + uz * s + nz * 0.18);
-      }
-      blade.build(group, false);
-    }
   }
 
   // distant scenery

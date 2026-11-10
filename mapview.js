@@ -87,7 +87,7 @@ export const THEMES = {
     water: '#3e7266',
   },
   // Tuscan hill town (Flame): sun-faded orange, ochre and grey stone, flaking plaster, pale terracotta
-  // roofs, dusty cobbles with dry grass, pale plywood crates on pallets, wooden barrels, a little blue pickup
+  // roofs, dusty cobbles, pale plywood crates on pallets, wooden barrels, a little blue pickup
   tuscan: {
     skyTop: '#6fa3d6', skyHorizon: '#f1e6d2', fog: '#ece2cf', fogNear: 50, fogFar: 180,
     sun: '#fff1da', sunIntensity: 2.8, hemiSky: '#dbe9ff', hemiGround: '#cdb592', hemiIntensity: 1.3,

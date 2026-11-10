@@ -735,8 +735,6 @@ export const MAPS = {
       for (const x of [39.5, 43, 46.5]) b.wall(x, 22.5, x + 0.5, 23, 2.2, '_stone');
       b.wall(39.5, 22.5, 47, 23, 5.2, '_stone', 2.2);
       b.wall(37.5, 20, 38, 20.5, 0.6, '_pot'); b.deco('pot', 37.75, 20.25);
-      b.deco('ivy', 39.95, 37, 0, 0.9, 4.2);                         // ivy up the arcade's street wall
-      b.deco('ivy', 38.6, 20, 0, 1.8, 4.6);
       b.deco('arcade', 37.5, 23, 40.5, 37, [[23, 24], [29.5, 30.5], [36, 36.5]]);
       b.deco('painta', 40, 2.6, 15.45, Math.PI, 'left');            // painted site letters with arrows
       b.deco('painta', 34, 2.4, 43.95, Math.PI, 'left');

@@ -115,36 +115,6 @@ function brickPaving() {
   t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
 }
-// a clump of ivy (transparent outside the leaves), for climbing up walls
-let ivyTex = null;
-function ivyTexture() {
-  if (ivyTex) return ivyTex;
-  const n = 256, c = document.createElement('canvas');
-  c.width = c.height = n;
-  const g = c.getContext('2d');
-  let s = 5;
-  const r = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
-  const greens = ['#3f6a2e', '#4d7a34', '#5b8a3c', '#36592a', '#6a9645', '#47702f'];
-  // stems climbing from the bottom, leaves thicker low down and thinning out at the top and sides
-  for (let k = 0; k < 9; k++) {
-    let x = n * (0.15 + r() * 0.7), y = n;
-    g.strokeStyle = 'rgba(80,60,40,0.9)'; g.lineWidth = 2;
-    g.beginPath(); g.moveTo(x, y);
-    const pts = [];
-    while (y > n * (0.05 + r() * 0.3)) { x += (r() - 0.5) * 22; y -= 10 + r() * 10; x = Math.max(10, Math.min(n - 10, x)); g.lineTo(x, y); pts.push([x, y]); }
-    g.stroke();
-    for (const [px, py] of pts) for (let i = 0; i < 9; i++) {
-      const lx = px + (r() - 0.5) * 34, ly = py + (r() - 0.5) * 22, sz = 5 + r() * 6;
-      g.fillStyle = greens[Math.floor(r() * greens.length)];
-      g.save(); g.translate(lx, ly); g.rotate(r() * Math.PI * 2);
-      g.beginPath(); g.moveTo(0, -sz); g.quadraticCurveTo(sz, -sz * 0.2, 0, sz); g.quadraticCurveTo(-sz, -sz * 0.2, 0, -sz); g.fill();
-      g.restore();
-    }
-  }
-  ivyTex = new THREE.CanvasTexture(c);
-  ivyTex.colorSpace = THREE.SRGBColorSpace;
-  return ivyTex;
-}
 // square terracotta floor tiles (for rooms)
 function floorTiles() {
   const n = 128, c = document.createElement('canvas');
@@ -828,12 +798,6 @@ export function villageDeco(world, d, I, group, { night = false, shadows = false
     const [x0, z0, x1, z1] = a;
     box.add((x0 + x1) / 2, 0.03, (z0 + z1) / 2, x1 - x0, 0.06, z1 - z0, '#d6cebf');
     box.add((x0 + x1) / 2, 0.062, (z0 + z1) / 2, x1 - x0 - 0.04, 0.008, z1 - z0 - 0.04, '#e2dbcd');
-  } else if (d.type === 'ivy') {
-    // [x, z, ry (which way the wall faces), width, height]: ivy climbing a wall
-    const [x, z, ry, w, hgt] = a;
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(w, hgt), new THREE.MeshLambertMaterial({ map: ivyTexture(), alphaTest: 0.5, side: THREE.DoubleSide }));
-    m.position.set(x + Math.sin(ry) * 0.04, hgt / 2, z + Math.cos(ry) * 0.04); m.rotation.y = ry;
-    group.add(m);
   } else if (d.type === 'shrubs') {
     // [x0, z0, x1, z1, y]: a bed of low shrubs and a few flowers on top of a planter
     const [x0, z0, x1, z1, y] = a;
