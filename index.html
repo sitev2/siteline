@@ -124,10 +124,18 @@
           </div>
           <button id="btn-practice" class="ghost">Practice &amp; bots</button>
         </div>
+        <div id="net-error" class="net-error hidden" role="alert">
+          <p id="net-error-text"></p>
+          <div class="net-error-actions">
+            <button id="btn-net-check" class="secondary">Check this Wi-Fi</button>
+            <button id="btn-net-dismiss" class="link">Hide</button>
+          </div>
+        </div>
         <div class="menu-links">
           <button id="btn-account" class="link">Account</button>
           <button id="btn-settings" class="link">Settings</button>
           <button id="btn-howto" class="link">How to play</button>
+          <button id="btn-nettest" class="link">Connection check</button>
         </div>
       </div>
     </section>
@@ -287,6 +295,21 @@
           <button id="btn-acct-logout" class="ghost">Log out</button>
         </div>
         <button class="ghost back">Back</button>
+      </div>
+    </section>
+
+    <section id="nettest" class="screen hidden">
+      <div class="panel">
+        <h2>Connection check</h2>
+        <p class="note">Tests what this Wi-Fi lets through for online games. It takes up to half a minute. If joining doesn't work, run it on both iPads: the host's and the one joining.</p>
+        <ul id="nettest-list" class="nettest-list"></ul>
+        <div id="nettest-verdict" class="nettest-verdict hidden"></div>
+        <div class="nettest-actions">
+          <button id="nettest-run" class="secondary">Run again</button>
+          <button id="nettest-copy" class="ghost">Copy results</button>
+        </div>
+        <textarea id="nettest-text" class="nettest-text hidden" readonly aria-label="Results to copy"></textarea>
+        <button class="primary back">Done</button>
       </div>
     </section>
 

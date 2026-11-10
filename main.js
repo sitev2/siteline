@@ -1,6 +1,7 @@
 // App controller: menus, lobby, hosting/joining, starting and leaving games.
 import { Server } from './server.js';
-import { HostNet, ClientNet, ServerNet, normaliseCode } from './net.js';
+import { HostNet, ClientNet, ServerNet, normaliseCode, relayStatus } from './net.js';
+import { STEPS as NET_STEPS, runNetTest, summarise as netVerdict, resultsText as netResultsText } from './nettest.js';
 import { CONFIG } from './config.js';
 import { Game } from './game.js';
 import { MAPS, mapsFor, isDmMap, dmVariant, resolveMap } from './maps.js';
@@ -16,7 +17,7 @@ import * as acct from './accounts.js';
 import { WEAPONS } from './weapons.js';
 
 const $ = (id) => document.getElementById(id);
-const screens = ['menu', 'lobby', 'settings', 'howto', 'practice', 'account'];
+const screens = ['menu', 'lobby', 'settings', 'howto', 'practice', 'account', 'nettest'];
 
 // ---------- settings ----------
 const STORE = 'siteline-settings';
@@ -172,6 +173,7 @@ async function serverGame(action, code) {
   app.mode = 'client';
   app.code = code || null;
   document.body.classList.remove('is-host');
+  hideNetError();
   loading(code ? `Joining room ${code}…` : 'Creating room…');
   app.clientNet = new ServerNet({
     onMessage: deliver,
@@ -186,7 +188,64 @@ async function serverGame(action, code) {
   } catch (e) {
     loading(null);
     cleanup();
-    toast(e.message || String(e), 6000);
+    showNetError(e.message || String(e));
+  }
+}
+
+// ---------- connection problems ----------
+// A failed host/join leaves its reason on the menu (a toast is gone before anyone reads it),
+// with a button to test this Wi-Fi.
+function showNetError(text) {
+  $('net-error-text').textContent = text;
+  $('net-error').classList.remove('hidden');
+}
+function hideNetError() { $('net-error').classList.add('hidden'); }
+
+let netTestRun = 0;
+function openNetTest() {
+  hideNetError();
+  openSub('nettest');
+  startNetTest();
+}
+async function startNetTest() {
+  const run = ++netTestRun;
+  const list = $('nettest-list');
+  list.innerHTML = '';
+  const rows = {};
+  for (const s of NET_STEPS) {
+    const li = document.createElement('li');
+    li.innerHTML = '<span class="mark" aria-hidden="true"></span><span class="name"></span><span class="detail"></span>';
+    li.querySelector('.name').textContent = s.label;
+    li.querySelector('.detail').textContent = s.what;
+    list.appendChild(li);
+    rows[s.id] = li;
+  }
+  $('nettest-verdict').classList.add('hidden');
+  $('nettest-text').classList.add('hidden');
+  $('nettest-run').disabled = true; $('nettest-copy').disabled = true;
+  const marks = { ok: '✓', fail: '✕', skip: '–', wait: '', run: '' };
+  const results = await runNetTest((id, state, detail) => {
+    if (run !== netTestRun || !rows[id]) return;
+    rows[id].dataset.state = state;
+    rows[id].querySelector('.mark').textContent = marks[state] || '';
+    if (detail) rows[id].querySelector('.detail').textContent = detail;
+  });
+  if (run !== netTestRun) return;
+  const v = netVerdict(results);
+  const box = $('nettest-verdict');
+  box.textContent = v.text;
+  box.className = `nettest-verdict ${v.good ? 'good' : 'bad'}`;
+  $('nettest-text').value = netResultsText(results);
+  $('nettest-run').disabled = false; $('nettest-copy').disabled = false;
+}
+async function copyNetResults() {
+  const text = $('nettest-text').value;
+  try { await navigator.clipboard.writeText(text); toast('Results copied — paste them in a message.'); }
+  catch (e) {
+    // no clipboard access: show the text so it can be selected and copied by hand
+    const ta = $('nettest-text');
+    ta.classList.remove('hidden'); ta.focus(); ta.select();
+    toast('Select the text and copy it.');
   }
 }
 
@@ -207,16 +266,18 @@ async function hostGame() {
     onLeave: (id) => app.server && app.server.removePlayer(id),
     onError: (e) => toast(e),
   });
+  hideNetError();
   try {
     app.code = await app.hostNet.open();
   } catch (e) {
     loading(null);
     cleanup();
-    toast(e.message || String(e), 6000);
+    showNetError(e.message || String(e));
     return;
   }
   if (app.mode !== 'host') return; // cancelled
   app.server.addPlayer('host', name);
+  if (relayStatus() === 'blocked') toast('This Wi-Fi blocks the relay sign-in, so friends on school or work Wi-Fi may not be able to join. Menu → Connection check shows more.', 9000);
 }
 
 async function joinGame(rawCode) {
@@ -230,9 +291,11 @@ async function joinGame(rawCode) {
   app.mode = 'client';
   app.code = code;
   document.body.classList.remove('is-host');
+  hideNetError();
   loading(`Joining room ${code}…`);
-  app.clientNet = new ClientNet({
+  const net = app.clientNet = new ClientNet({
     onMessage: deliver,
+    onStatus: (text) => { if (app.clientNet === net && !$('loading').classList.contains('hidden')) loading(text); },
     onClose: () => {
       if (app.mode !== 'client') return;
       toast('Disconnected from the host.', 5000);
@@ -240,12 +303,13 @@ async function joinGame(rawCode) {
     },
   });
   try {
-    await app.clientNet.connect(code, name);
-    loading('Waiting for the host…');
+    // resolves once the host has answered (its welcome has already opened the lobby or the game)
+    await net.connect(code, name);
   } catch (e) {
+    if (app.clientNet !== net) return;   // left or started something else meanwhile
     loading(null);
     cleanup();
-    toast(e.message || String(e), 6000);
+    showNetError(e.message || String(e));
   }
 }
 
@@ -893,7 +957,12 @@ function init() {
   $('btn-practice').addEventListener('click', () => { renderPracticeMenu(); openSub('practice'); });
   $('btn-settings').addEventListener('click', () => openSub('settings'));
   $('btn-howto').addEventListener('click', () => openSub('howto'));
-  for (const b of document.querySelectorAll('.back')) b.addEventListener('click', closeSub);
+  $('btn-nettest').addEventListener('click', openNetTest);
+  $('btn-net-check').addEventListener('click', openNetTest);
+  $('btn-net-dismiss').addEventListener('click', hideNetError);
+  $('nettest-run').addEventListener('click', startNetTest);
+  $('nettest-copy').addEventListener('click', copyNetResults);
+  for (const b of document.querySelectorAll('.back')) b.addEventListener('click', () => { netTestRun++; closeSub(); });
 
   $('btn-share').addEventListener('click', shareInvite);
   $('btn-leave-lobby').addEventListener('click', leaveToMenu);

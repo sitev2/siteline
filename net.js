@@ -15,33 +15,43 @@ export function normaliseCode(code) {
   return String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
 }
 
-// Fetch short-lived relay credentials once (if a TURN provider is configured).
-let iceCache = null;
+// ---------- relay (TURN) ----------
+// Short-lived relay login details from Metered (if configured). Only a good answer is kept: a fetch that a
+// school filter blocks or slows down is tried again next time, instead of leaving the game without a relay.
+let relayCache = null;
+let relayState = 'none';                 // 'none' (not configured) | 'ok' | 'blocked'
 export function relayConfigured() { return !!(CONFIG.turnApp && CONFIG.turnApiKey); }
-async function iceServers() {
-  if (iceCache) return iceCache;
-  let list = CONFIG.iceServers.slice();
-  if (relayConfigured()) {
+export function relayStatus() { return relayConfigured() ? relayState : 'none'; }
+export async function relayServers({ fresh = false } = {}) {
+  if (!relayConfigured()) return [];
+  if (relayCache && !fresh) return relayCache;
+  const url = `https://${encodeURIComponent(CONFIG.turnApp)}.metered.live/api/v1/turn/credentials?apiKey=${encodeURIComponent(CONFIG.turnApiKey)}`;
+  for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const ctl = new AbortController();
       const t = setTimeout(() => ctl.abort(), 6000);
-      const url = `https://${encodeURIComponent(CONFIG.turnApp)}.metered.live/api/v1/turn/credentials?apiKey=${encodeURIComponent(CONFIG.turnApiKey)}`;
-      const res = await fetch(url, { signal: ctl.signal });
+      const res = await fetch(url, { signal: ctl.signal, cache: 'no-store' });
       clearTimeout(t);
-      const relay = await res.json();
-      if (Array.isArray(relay) && relay.length) list = list.concat(relay);
-    } catch (e) {
-      console.warn('Relay credentials unavailable, using direct connections only', e);
-    }
+      const list = await res.json();
+      // keep the relay routes (TURN over UDP, TCP and TLS); its extra STUN entry adds nothing
+      const relay = Array.isArray(list) ? list.filter(s => s && /^turns?:/.test(String(s.urls))) : [];
+      if (relay.length) { relayCache = relay; relayState = 'ok'; return relay; }
+    } catch (e) { /* blocked or slow: try once more */ }
   }
-  iceCache = list;
-  return list;
+  relayState = 'blocked';
+  console.warn('Relay login unavailable on this network — direct connections only');
+  return [];
+}
+// one STUN server (to find a direct route) plus the relay routes; more servers only slow down the search
+async function iceServers() {
+  const relay = await relayServers();
+  return relay.length ? [CONFIG.iceServers[0], ...relay] : CONFIG.iceServers.slice();
 }
 
-function makePeer(id, ice) {
+function makePeer(id, ice, relayOnly = false) {
   if (typeof Peer === 'undefined') throw new Error('Networking library failed to load.');
   const config = { iceServers: ice || CONFIG.iceServers };
-  if (CONFIG.relayOnly) config.iceTransportPolicy = 'relay';
+  if (CONFIG.relayOnly || relayOnly) config.iceTransportPolicy = 'relay';
   const opts = { config, debug: CONFIG.debug ? 2 : 0 };
   if (CONFIG.peerServer) Object.assign(opts, CONFIG.peerServer);
   return id ? new Peer(id, opts) : new Peer(opts);
@@ -50,7 +60,7 @@ function makePeer(id, ice) {
 function describe(err) {
   const t = err && err.type;
   if (t === 'peer-unavailable') return 'Room not found. Check the code and that the host is still in the lobby.';
-  if (t === 'network' || t === 'server-error' || t === 'socket-error' || t === 'socket-closed') return 'Could not reach the matchmaking server. Check your internet — some school and work networks block it.';
+  if (t === 'network' || t === 'server-error' || t === 'socket-error' || t === 'socket-closed') return 'Could not reach the matchmaking server (0.peerjs.com). This Wi-Fi may be blocking it.';
   if (t === 'browser-incompatible') return 'This browser does not support WebRTC multiplayer.';
   return (err && err.message) || 'Connection error';
 }
@@ -136,46 +146,85 @@ export class HostNet {
 }
 
 export class ClientNet {
-  constructor({ onMessage, onClose }) {
-    Object.assign(this, { onMessage, onClose });
+  // onStatus (optional) gets short progress texts while connecting
+  constructor({ onMessage, onClose, onStatus }) {
+    Object.assign(this, { onMessage, onClose, onStatus });
     this.peer = null;
     this.conn = null;
     this.closed = false;
   }
 
+  status(text) { if (this.onStatus && !this.closed) this.onStatus(text); }
+
+  // Joins the room and resolves once the host has answered. First try: any route (direct or relay).
+  // If that never opens and there is a relay, a second try goes through the relay only, which gets
+  // through networks where a direct route looks possible but never connects.
   async connect(code, name) {
     const ice = await iceServers();
+    const relay = ice.some(s => /^turns?:/.test(String(s.urls)));
+    const tries = relay ? [[false, 12000], [true, 16000]] : [[false, 20000]];
+    let last = null;
+    for (const [relayOnly, ms] of tries) {
+      if (this.closed) throw new Error('Cancelled.');
+      if (relayOnly) this.status('Trying the relay…');
+      try { await this.attempt(code, name, ice, relayOnly, ms); return; }
+      catch (e) { last = e; if (e.final) break; }
+    }
+    this.destroy();
+    throw new Error(last && last.message || 'Could not connect to the host.');
+  }
+
+  attempt(code, name, ice, relayOnly, ms) {
     return new Promise((resolve, reject) => {
-      let settled = false;
-      const done = (err) => {
+      let settled = false, opened = false, signalled = false, peer, timer, replyTimer;
+      const fail = (message, final = false) => {
         if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        if (err) { this.destroy(); reject(new Error(describe(err))); } else resolve();
+        settled = true; clearTimeout(timer); clearTimeout(replyTimer);
+        try { peer && peer.destroy(); } catch (e) { /* already gone */ }
+        if (this.peer === peer) { this.peer = null; this.conn = null; }
+        reject(Object.assign(new Error(message), { final }));
       };
-      const timer = setTimeout(() => done({ message: relayConfigured()
-        ? 'Timed out connecting to the host. Check that the host is still in the lobby and both of you have internet.'
-        : 'Found the room but couldn\'t connect to the host. This network (often school or work Wi-Fi) blocks direct connections — a relay server fixes it (see README).' }), 20000);
-      let peer;
-      try { peer = makePeer(undefined, ice); } catch (e) { done(e); return; }
+      const blocked = () => {
+        const r = relayStatus();
+        if (r === 'ok') return 'Found the room but could not connect to the host, even through the relay. This Wi-Fi seems to block game connections. Tap “Check this Wi-Fi” to see what is blocked.';
+        if (r === 'blocked') return 'Found the room but could not connect to the host. This Wi-Fi blocks direct connections and the relay sign-in (metered.live). Tap “Check this Wi-Fi” to see what is blocked.';
+        return 'Found the room but couldn\'t connect to the host. This network (often school or work Wi-Fi) blocks direct connections — a relay server fixes it (see README).';
+      };
+      timer = setTimeout(() => {
+        if (!signalled) fail('Could not reach the matchmaking server (0.peerjs.com). This Wi-Fi may be blocking it, or the server is busy — try again.', true);
+        else fail(blocked());
+      }, ms);
+      try { peer = makePeer(undefined, ice, relayOnly); } catch (e) { fail(describe(e), true); return; }
       this.peer = peer;
       peer.on('error', (e) => {
-        if (!settled) done(e);
-        else if (e.type === 'peer-unavailable' || e.type === 'disconnected') this.lost();
+        if (!settled) {
+          const t = e && e.type;
+          // a missing room or an unreachable matchmaking server won't change on a second try
+          fail(describe(e), t === 'peer-unavailable' || t === 'network' || t === 'server-error' || t === 'socket-error' || t === 'socket-closed' || t === 'browser-incompatible');
+        } else if (e.type === 'peer-unavailable' || e.type === 'disconnected') this.lost();
       });
       peer.on('open', () => {
+        if (settled) return;
+        signalled = true;
+        this.status('Connecting to the host…');
         const conn = peer.connect(CONFIG.peerPrefix + code, { reliable: true, serialization: 'json' });
         this.conn = conn;
         conn.on('open', () => {
+          if (settled) return;
+          opened = true;
+          this.status('Waiting for the host…');
           conn.send({ t: 'hello', name });
-          done();
+          // the host answers straight away; don't wait the whole timeout for an answer that isn't coming
+          clearTimeout(timer);
+          replyTimer = setTimeout(() => fail('Connected to the host, but no answer came back. Try again.'), 10000);
         });
         conn.on('data', (msg) => {
-          if (msg && msg.t === 'full') { done({ message: 'That room is full.' }); return; }
-          this.onMessage(msg);
+          if (msg && msg.t === 'full') { fail('That room is full.', true); return; }
+          if (!settled && opened) { settled = true; clearTimeout(timer); clearTimeout(replyTimer); resolve(); }
+          if (this.conn === conn) this.onMessage(msg);
         });
-        conn.on('close', () => this.lost());
-        conn.on('error', () => this.lost());
+        conn.on('close', () => { if (settled) { if (this.conn === conn) this.lost(); } else if (opened) fail('The host closed the connection.'); });
+        conn.on('error', () => { if (settled) { if (this.conn === conn) this.lost(); } });
       });
     });
   }
@@ -194,7 +243,7 @@ export class ClientNet {
 
   destroy() {
     this.closed = true;
-    if (this.peer) this.peer.destroy();
+    if (this.peer) { try { this.peer.destroy(); } catch (e) { /* already gone */ } }
   }
 }
 

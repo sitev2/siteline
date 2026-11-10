@@ -94,7 +94,26 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .join-row, .practice-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
 #code { text-transform: uppercase; letter-spacing: .25em; font: 700 1.05rem var(--display); min-width: 0; }
 .practice-row .ghost { text-align: left; }
-.menu-links { display: flex; gap: 14px; justify-content: center; }
+.menu-links { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; }
+/* connection problems: a box that stays until dismissed, and the connection check screen */
+.net-error { padding: 12px 14px; border-radius: 10px; background: rgba(255,90,74,.1); border: 1px solid rgba(255,90,74,.45); display: grid; gap: 10px; }
+.net-error p { margin: 0; line-height: 1.45; }
+.net-error-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.nettest-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.nettest-list li { display: grid; grid-template-columns: 26px 1fr; gap: 2px 10px; align-items: start; padding: 10px 12px; border-radius: 10px; background: rgba(255,255,255,.04); border: 1px solid var(--line); }
+.nettest-list .mark { grid-row: span 2; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font: 700 .85rem var(--display); background: rgba(255,255,255,.08); color: var(--muted); }
+.nettest-list .name { font: 600 .95rem var(--display); letter-spacing: .02em; }
+.nettest-list .detail { color: var(--muted); font-size: .85rem; overflow-wrap: anywhere; }
+.nettest-list li[data-state="ok"] .mark { background: rgba(90,200,120,.18); color: #6fdc8c; }
+.nettest-list li[data-state="fail"] .mark { background: rgba(255,90,74,.18); color: var(--danger); }
+.nettest-list li[data-state="run"] .mark { color: var(--accent); }
+.nettest-list li[data-state="run"] .mark::after { content: ""; width: 10px; height: 10px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin .8s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .nettest-list li[data-state="run"] .mark::after { animation: none; } }
+.nettest-verdict { padding: 12px 14px; border-radius: 10px; line-height: 1.45; border: 1px solid var(--line); }
+.nettest-verdict.good { background: rgba(90,200,120,.1); border-color: rgba(90,200,120,.4); }
+.nettest-verdict.bad { background: rgba(255,90,74,.1); border-color: rgba(255,90,74,.45); }
+.nettest-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.nettest-text { width: 100%; min-height: 140px; background: rgba(255,255,255,.06); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 10px; font: .8rem ui-monospace, Menlo, monospace; -webkit-user-select: text; user-select: text; }
 .invite { padding: 12px 14px; border-radius: 10px; background: rgba(240,160,64,.12); border: 1px solid rgba(240,160,64,.4); }
 
 /* lobby */

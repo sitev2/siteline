@@ -14,7 +14,10 @@ The only folder is `server/` (the optional home game server).
 - `game.js` — 3D client: movement, shooting, effects, HUD updates
 - `server.js` — match rules (rounds, halftime swap, bomb, damage, hit checks). Runs in the
   host's browser AND on the home server
-- `net.js` — connections: PeerJS peer-to-peer, Metered relay, WebSocket server mode
+- `net.js` — connections: PeerJS peer-to-peer, Metered relay, WebSocket server mode. Joining tries any route, then relay-only;
+  it resolves once the host answers. A failed relay sign-in is retried next time (never cached). Errors stay on the menu (`#net-error`).
+- `nettest.js` — Menu → Connection check: tests relay sign-in, matchmaking (PeerJS), direct UDP, relay over UDP/TCP/TLS, and a
+  real message through the relay; plain-language verdict + Copy results (for school/work Wi-Fi problems)
 - `world.js` (multi-level map model, collision, wall-bang penetration), `maps.js` (map
   build scripts), `mapview.js` (3D scene), `mapdeco.js` (visual-only dressing read from the span grid: wall caps, windows/doors, lamps, pipes, decals, distant scenery — no collision), `houses.js` (village houses: tiled roofs, windows, shutters, balconies, church/tower/inn details), `models.js` (characters with arm IK + gun models with moving parts, all built in code), `textures.js`, `audio.js` (all sound synthesised in code: 3D positional, per-map reverb, wall muffling, layered gunshots, surface footsteps, reload/bolt/pump sequences timed to `anim.js`, ambience; `__test` renders buffers for checks),
   `input.js` (keyboard/mouse + touch), `hud.js`, `weapons.js` (weapon stats)
