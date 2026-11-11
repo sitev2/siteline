@@ -72,7 +72,8 @@ Logged-in players can add friends by username (the other player must accept), se
 
 - Only friends see your online status, activity and stats.
 - The game tells Supabase "I'm online" every 20 seconds while it's open; friends count as online for 90 seconds after that.
-- Nobody can read or change the friends or invites tables directly: only through the database functions in `supabase.sql`, which check you're logged in and that you're friends.
+- **Chat:** friends can message each other from the Friends screen (Chat button). Only friends can message, at most 20 messages a minute and 200 characters each; the game's swear filter runs on every message. Messages are **deleted after 7 days**, and unfriending deletes the chat.
+- Nobody can read or change the friends, invites or messages tables directly: only through the database functions in `supabase.sql`, which check you're logged in and that you're friends.
 
 ## What can and can't be protected from cheating
 
