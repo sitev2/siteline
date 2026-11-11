@@ -47,6 +47,7 @@ function friendly(msg) {
   if (/email not confirmed/i.test(msg)) return 'Please confirm your email first (check your inbox), then log in.';
   if (/password/i.test(msg) && /6/.test(msg)) return 'The password needs at least 6 characters.';
   if (/rate limit|too many/i.test(msg)) return 'Too many tries — wait a minute and try again.';
+  if (/could not find the function|schema cache/i.test(msg)) return 'Friends aren\'t set up in the database yet: the owner needs to run supabase.sql again (see SUPABASE.md).';
   return msg;
 }
 
@@ -146,3 +147,13 @@ export function favouriteWeapon(p) {
   for (const [w, k] of Object.entries(wk)) if (k > n) { best = w; n = k; }
   return best;
 }
+
+// ---------- friends, online status and game invites (see supabase.sql) ----------
+const rpc = (name, body = {}) => call(`/rest/v1/rpc/${name}`, { method: 'POST', body });
+export const heartbeat = (activity) => rpc('heartbeat', { p_activity: activity });
+export const friendList = () => rpc('friend_list');
+export const addFriend = (name) => rpc('add_friend', { p_name: String(name || '').trim() });
+export const answerFriend = (id, accept) => rpc('answer_friend', { p_other: id, p_accept: !!accept });
+export const removeFriend = (id) => rpc('remove_friend', { p_other: id });
+export const inviteFriend = (id, code) => rpc('invite_friend', { p_other: id, p_code: code });
+export const dismissInvite = (id) => rpc('dismiss_invite', { p_id: id });

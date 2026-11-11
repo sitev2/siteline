@@ -55,6 +55,25 @@ It takes about 10 minutes.
 
 The anon key is meant to be public. Supabase's row-level security rules, created by `supabase.sql`, decide what it can do. Never put the **service_role** / **secret** key in the game.
 
+## Updating the database after a game update
+
+Some updates (like **friends and invites**) need new tables in Supabase. When an update says so, do this once:
+
+1. Go to **https://supabase.com/dashboard** and open your **siteline** project.
+2. In the left sidebar, click **SQL Editor**, then **New query**.
+3. Open **`supabase.sql`** on GitHub (https://github.com/sitev2/siteline/blob/main/supabase.sql), click the **Copy raw file** button (two overlapping squares, top right of the file), and paste it into the Supabase editor.
+4. Click **Run** (bottom right). You should see "Success. No rows returned". If Supabase warns about "destructive operations", click **Run this query**: it only replaces the game's own functions and keeps every player and their stats.
+
+It is safe to run again any time. Until it has been run, the Friends screen says the database isn't set up yet.
+
+## Friends and invites
+
+Logged-in players can add friends by username (the other player must accept), see which friends are online and what they're doing ("In the menu", "In a 2v2 match"…), see their stats, and invite them to the game they're in. An invite pops up on the friend's screen with a **Join** button and expires after 3 minutes.
+
+- Only friends see your online status, activity and stats.
+- The game tells Supabase "I'm online" every 20 seconds while it's open; friends count as online for 90 seconds after that.
+- Nobody can read or change the friends or invites tables directly: only through the database functions in `supabase.sql`, which check you're logged in and that you're friends.
+
 ## What can and can't be protected from cheating
 
 Matches run in a player's browser: the host's browser runs the match, and each player's browser reports its own result. So be realistic:
