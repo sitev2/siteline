@@ -11,7 +11,9 @@ Every website file sits at the repo root (no folders). `index.html` loads them b
 bare name (`main.js`, `style.css`, `three.module.js`…), so new files go in the root too.
 The only folder is `server/` (the optional home game server).
 
-- `index.html`, `style.css` — page, menus, HUD, touch controls
+- `index.html`, `style.css` — page, menus, HUD, touch controls. A small script at the top of `index.html` loads `style.css`, `main.js`
+  and every game module with `?v=<page publish time>` (`document.lastModified`, import map), so an update never mixes new and saved
+  old files (that crashed to a black screen). **Add every new game .js file to its `files` list.**
 - `main.js` — menus, lobby, hosting/joining, starting games
 - `game.js` — 3D client: movement, shooting, effects, HUD updates
 - `server.js` — match rules (rounds, halftime swap, bomb, damage, hit checks). Runs in the
