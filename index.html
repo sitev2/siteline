@@ -57,12 +57,15 @@
 
     <div id="scoreboard" class="hidden"></div>
     <div id="chat-feed"></div>
+  </div>
+
+  <!-- in-match chat box: outside #hud so it sits ABOVE the touch controls (phones can tap it) -->
     <form id="chat-box" class="hidden" autocomplete="off">
       <button type="button" id="chat-mode" class="chat-mode">ALL</button>
       <input id="chat-input" maxlength="100" placeholder="Say something… (Enter to send, Esc to cancel)" enterkeyhint="send">
       <button type="submit" class="chat-send">Send</button>
+      <button type="button" id="chat-close" class="chat-send" aria-label="Close chat">✕</button>
     </form>
-  </div>
 
   <!-- ================= TOUCH CONTROLS ================= -->
   <div id="touch">
