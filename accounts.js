@@ -171,7 +171,17 @@ export function favouriteWeapon(p) {
 
 // ---------- friends, online status and game invites (see supabase.sql) ----------
 const rpc = (name, body = {}) => call(`/rest/v1/rpc/${name}`, { method: 'POST', body });
-export const heartbeat = (activity) => rpc('heartbeat', { p_activity: activity });
+// sends the room code too, so friends can join; falls back if supabase.sql hasn't been re-run yet
+let oldBeat = false;
+export async function heartbeat(activity, room) {
+  if (!oldBeat) {
+    try { return await rpc('heartbeat', { p_activity: activity, p_room: room || null }); } catch (e) {
+      if (!/heartbeat|function|schema cache/i.test(e.message || '')) throw e;
+      oldBeat = true;
+    }
+  }
+  return rpc('heartbeat', { p_activity: activity });
+}
 export const friendList = () => rpc('friend_list');
 export const addFriend = (name) => rpc('add_friend', { p_name: String(name || '').trim() });
 export const answerFriend = (id, accept) => rpc('answer_friend', { p_other: id, p_accept: !!accept });

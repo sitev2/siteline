@@ -307,13 +307,17 @@ language sql security definer set search_path = public stable as $$
     group by from_id) u;
 $$;
 
--- heartbeat again, now also reporting unread messages
-create or replace function public.heartbeat(p_activity text) returns json
+-- heartbeat again, now also reporting unread messages and saving the room code you're in
+-- (friends see it and get a "Join" button, so they can jump into your game without an invite)
+alter table public.profiles add column if not exists room text;
+drop function if exists public.heartbeat(text);
+create or replace function public.heartbeat(p_activity text, p_room text default null) returns json
 language plpgsql security definer set search_path = public as $$
 declare me uuid := auth.uid();
 begin
   if me is null then raise exception 'not logged in'; end if;
-  update public.profiles set last_seen = now(), activity = left(coalesce(p_activity, ''), 40) where id = me;
+  update public.profiles set last_seen = now(), activity = left(coalesce(p_activity, ''), 40),
+    room = case when upper(p_room) ~ '^[A-Z0-9]{4,8}$' then upper(p_room) end where id = me;
   delete from public.game_invites where created_at < now() - interval '10 minutes';
   return json_build_object(
     'requests', (select count(*) from public.friends where friend_id = me and not accepted),
@@ -323,6 +327,26 @@ begin
       from public.game_invites i join public.profiles p on p.id = i.from_id
       where i.to_id = me and i.created_at > now() - interval '3 minutes'), '[]'::json));
 end $$;
+
+-- friend list again, now with the room code of online friends who are in a game
+create or replace function public.friend_list() returns json
+language sql security definer set search_path = public stable as $$
+  select coalesce(json_agg(row_to_json(x) order by x.state, x.online desc, lower(x.username)), '[]'::json) from (
+    select p.id, p.username,
+      case when f.accepted then 'friend' when f.user_id = auth.uid() then 'outgoing' else 'incoming' end as state,
+      (f.accepted and p.last_seen > now() - interval '90 seconds') as online,
+      case when f.accepted and p.last_seen > now() - interval '90 seconds' then p.activity end as activity,
+      case when f.accepted and p.last_seen > now() - interval '90 seconds' then p.room end as room,
+      case when f.accepted then p.last_seen end as last_seen,
+      case when f.accepted then json_build_object(
+        'kills', p.kills, 'deaths', p.deaths, 'headshots', p.headshots, 'damage', p.damage,
+        'matches_played', p.matches_played, 'matches_won', p.matches_won, 'rounds_won', p.rounds_won,
+        'dm_wins', p.dm_wins, 'weapon_kills', p.weapon_kills) end as stats
+    from public.friends f
+    join public.profiles p on p.id = case when f.user_id = auth.uid() then f.friend_id else f.user_id end
+    where auth.uid() in (f.user_id, f.friend_id)
+  ) x;
+$$;
 
 -- unfriending also deletes your chat
 create or replace function public.remove_friend(p_other uuid) returns void
@@ -338,7 +362,7 @@ $$;
 do $$
 declare f text;
 begin
-  foreach f in array array['send_message(uuid, text)', 'chat_history(uuid, bigint)', 'unread_counts()', 'heartbeat(text)', 'remove_friend(uuid)'] loop
+  foreach f in array array['send_message(uuid, text)', 'chat_history(uuid, bigint)', 'unread_counts()', 'heartbeat(text, text)', 'remove_friend(uuid)', 'friend_list()'] loop
     execute format('revoke all on function public.%s from public, anon', f);
     execute format('grant execute on function public.%s to authenticated', f);
   end loop;

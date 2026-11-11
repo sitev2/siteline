@@ -526,6 +526,7 @@ async function openInviteRoom() {
     if (app.hostNet !== net) { net.destroy(); return; }
     app.code = code;
     updatePauseInvite();
+    activityChanged();   // friends get a Join button straight away
   } catch (e) {
     if (app.hostNet === net) { app.hostNet = null; net.destroy(); }
   }

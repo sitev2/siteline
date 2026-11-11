@@ -1,5 +1,6 @@
 // Friends: add by username, see who's online and what they're doing, look at their stats,
-// invite them to the game you're in (they get a "Join" pop-up instead of typing the code),
+// invite them to the game you're in (they get a "Join" pop-up instead of typing the code), join the
+// game they're in ("Join" button, works mid-match too),
 // and chat with them (messages are deleted after a week; the swear filter runs on every message).
 // Everything goes through Supabase (accounts.js → the functions in supabase.sql). While logged in,
 // the game says "I'm online" every 20 s; friends count as online for 90 s after the last one.
@@ -58,7 +59,7 @@ function onAccount() {
 async function beat() {
   if (!acct.loggedIn()) return;
   try {
-    const r = await acct.heartbeat(hooks.activity());
+    const r = await acct.heartbeat(hooks.activity(), hooks.roomCode());
     requests = r.requests | 0;
     const before = unread;
     unread = r.unread || {};
@@ -360,6 +361,7 @@ function render() {
     const st = document.createElement('small'); st.textContent = f.online ? (f.activity || 'Online') : ago(f.last_seen);
     who.append(n, st);
     const acts = document.createElement('span'); acts.className = 'factions';
+    if (f.online && f.room && f.room !== code) acts.appendChild(button('Join', 'primary small', () => hooks.joinGame(f.room)));
     if (code && f.online) acts.appendChild(button('Invite', 'primary small', () => act(() => acct.inviteFriend(f.id, code), `Invite sent to ${f.username}`)));
     const chatBtn = button('Chat', 'secondary small fchat-btn', () => openChat(f));
     if (unread[f.id]) { const n = document.createElement('span'); n.className = 'n'; n.textContent = unread[f.id]; chatBtn.appendChild(n); }

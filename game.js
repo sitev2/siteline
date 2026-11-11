@@ -431,7 +431,8 @@ export class Game {
         this.round = m.round;
         this.me.alive = false;
         this.me.deathTime = performance.now() - 5000;
-        this.hud.center('Joined mid-round', 'You will spawn next round', '#fff', 4);
+        if (m.now) this.hud.center('Joined the match', 'Buy time: get ready', '#fff', 3);
+        else this.hud.center('Joined mid-round', 'You will spawn next round', '#fff', 4);
         return;
     }
   }
