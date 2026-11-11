@@ -151,7 +151,7 @@ function deliver(msg) {
       toast(msg.text);
       return;
     case 'room':
-      app.code = msg.code;
+      app.code = app.serverIdx != null ? `${app.serverIdx + 1}${msg.code}` : msg.code;
       if (app.mode === 'client') rememberRoom();
       return;
     case 'ping':
@@ -169,87 +169,137 @@ function isLeader() {
   return !!(me && me.owner);
 }
 
-// ---------- dedicated server ----------
-// Free cloud hosts (e.g. Render) put the server to sleep when nobody plays; the first
-// request wakes it, which can take a minute. wakeServer() keeps asking the server's status
-// page until it answers, and shows progress on the menu (#server-wake).
-const wake = { state: 'idle', promise: null, checkedAt: 0 };
-const WAKE_LIMIT = 150000;   // give up after 2.5 min
+// ---------- dedicated servers ----------
+// CONFIG.servers lists game servers in order of preference (e.g. the home PC first, Render as
+// the backup); ?server=wss://… uses only that one. Hosting picks the first server that answers
+// from this network; if none does, it falls back to a direct (peer-to-peer) room.
+// Server rooms get the server's place in the list in front of their code ("1ABCDE" = first
+// server), so whoever types the code reaches the same server. Direct rooms keep 5-letter codes.
+// Free cloud hosts (e.g. Render) sleep when nobody plays: the first request wakes them, which
+// can take a minute, so a server that doesn't answer is asked again every few seconds.
+const WAKE_LIMIT = 90000;   // how long hosting/joining waits for a sleeping server
+const serverState = new Map();   // url → { up, checkedAt, waking: Promise | null }
 
-function serverHttpUrl() {
-  return String(CONFIG.serverUrl).replace(/^ws(s?):\/\//i, 'http$1://');
+function serverList() {
+  if (CONFIG.serverUrl) return [{ name: 'Game server', url: CONFIG.serverUrl }];
+  return (CONFIG.servers || []).filter(s => s && s.url);
 }
-function setWake(state, text) {
-  wake.state = state;
-  const box = $('server-wake');
-  box.dataset.state = state;
-  $('server-wake-text').textContent = text;
-  const btn = $('btn-wake');
-  btn.disabled = state === 'waking';
-  btn.textContent = state === 'awake' ? 'Check again' : state === 'failed' ? 'Try again' : 'Wake server';
+function stateOf(url) {
+  if (!serverState.has(url)) serverState.set(url, { up: false, checkedAt: 0, waking: null });
+  return serverState.get(url);
 }
-async function pingServer(ms) {
+async function pingServer(url, ms) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
   try {
-    const res = await fetch(serverHttpUrl(), { cache: 'no-store', signal: ctrl.signal });
+    const res = await fetch(String(url).replace(/^ws(s?):\/\//i, 'http$1://'), { cache: 'no-store', signal: ctrl.signal });
     return res.ok && (await res.text()).includes('SITELINE server is running');
   } catch (e) {
     return false;
   } finally { clearTimeout(timer); }
 }
-// Resolves true once the server answers, false after WAKE_LIMIT. Calls share one attempt.
-function wakeServer(onTick) {
-  if (!CONFIG.serverUrl) return Promise.resolve(true);
-  if (wake.state === 'awake' && performance.now() - wake.checkedAt < 5 * 60000) return Promise.resolve(true);
-  if (wake.promise) { if (onTick) wake.ticks.add(onTick); return wake.promise; }
-  wake.ticks = new Set(onTick ? [onTick] : []);
+// Keeps asking one server until it answers or `limit` ms pass. Calls for the same server share one attempt.
+function wakeOne(url, limit = WAKE_LIMIT) {
+  const st = stateOf(url);
+  if (st.up && performance.now() - st.checkedAt < 5 * 60000) return Promise.resolve(true);
+  if (st.waking) return st.waking;
   const t0 = performance.now();
-  const secs = () => Math.round((performance.now() - t0) / 1000);
+  st.waking = (async () => {
+    while (performance.now() - t0 < limit) {
+      if (await pingServer(url, Math.min(20000, limit))) { st.up = true; st.checkedAt = performance.now(); return true; }
+      st.up = false;
+      await new Promise(r => setTimeout(r, 3000));
+    }
+    return false;
+  })().finally(() => { st.waking = null; refreshWakeRow(); });
+  return st.waking;
+}
+// Index of the server to use: the first in the list that answers at once, otherwise the first
+// to wake up within WAKE_LIMIT; -1 if none does. onTick(text) reports progress every second.
+async function pickServer(onTick) {
+  const list = serverList();
+  const quick = await Promise.all(list.map(async s => {
+    const st = stateOf(s.url);
+    if (st.up && performance.now() - st.checkedAt < 5 * 60000) return true;
+    st.up = await pingServer(s.url, 4000);
+    if (st.up) st.checkedAt = performance.now();
+    return st.up;
+  }));
+  const i = quick.indexOf(true);
+  refreshWakeRow();
+  if (i >= 0) return i;
+  const t0 = performance.now();
   const tick = () => {
-    const text = `Waking the game server… ${secs()} s (can take up to a minute)`;
+    const text = `Waking the game server… ${Math.round((performance.now() - t0) / 1000)} s (can take up to a minute)`;
     setWake('waking', text);
-    for (const f of wake.ticks) f(text);
+    if (onTick) onTick(text);
   };
   tick();
   const clock = setInterval(tick, 1000);
-  wake.promise = (async () => {
-    while (performance.now() - t0 < WAKE_LIMIT) {
-      if (await pingServer(20000)) {
-        wake.checkedAt = performance.now();
-        setWake('awake', `Game server is awake ✓${secs() > 2 ? ` (took ${secs()} s)` : ''}`);
-        return true;
-      }
-      await new Promise(r => setTimeout(r, 3000));
-    }
-    setWake('failed', 'The game server did not wake up. It may be offline, or this Wi-Fi blocks it.');
-    return false;
-  })().finally(() => { clearInterval(clock); wake.promise = null; });
-  return wake.promise;
-}
-function initServerWake() {
-  if (!CONFIG.serverUrl) return;
-  $('server-wake').classList.remove('hidden');
-  $('btn-wake').addEventListener('click', () => { wake.checkedAt = 0; wakeServer(); });
-  wakeServer();   // start waking it as soon as the menu opens
+  try {
+    return await new Promise(resolve => {
+      let left = list.length;
+      list.forEach((s, k) => wakeOne(s.url).then(ok => {
+        if (ok) resolve(k);
+        else if (--left === 0) resolve(-1);
+      }));
+    });
+  } finally { clearInterval(clock); refreshWakeRow(); }
 }
 
-async function serverGame(action, code) {
-  const name = playerName();
-  hideNetError();
-  loading('Waking the game server…');
-  const awake = await wakeServer(text => loading(text));
-  if (!awake) {
-    loading(null);
-    showNetError('The game server did not wake up after 2.5 minutes. It may be offline, or this Wi-Fi blocks it. Try opening the server address in a new tab to check.');
-    return;
+// ----- the status row on the menu (#server-wake) -----
+function setWake(state, text) {
+  const box = $('server-wake');
+  box.dataset.state = state;
+  $('server-wake-text').textContent = text;
+  const btn = $('btn-wake');
+  btn.disabled = state === 'waking';
+  btn.textContent = state === 'waking' ? 'Waking…' : 'Check again';
+}
+function refreshWakeRow() {
+  const list = serverList();
+  if (!list.length) return;
+  const up = list.findIndex(s => stateOf(s.url).up);
+  if (up >= 0) {
+    const name = list.length > 1 ? `: ${list[up].name}` : '';
+    setWake('awake', `Game server ready${name} ✓${up > 0 ? ' (backup)' : ''}`);
+  } else if (list.some(s => stateOf(s.url).waking)) {
+    setWake('waking', 'Waking the game server… (can take up to a minute)');
+  } else if (CONFIG.serverUrl) {
+    setWake('failed', 'The game server is not answering. It may be offline, or this Wi-Fi blocks it.');
+  } else {
+    setWake('failed', 'Game servers are offline or blocked here. Hosting will use a direct connection, which may not work on school Wi-Fi.');
   }
+}
+function checkServers() {
+  for (const s of serverList()) { const st = stateOf(s.url); st.up = false; st.checkedAt = 0; }
+  pickServer().catch(() => {});
+}
+function initServerWake() {
+  if (!serverList().length) return;
+  $('server-wake').classList.remove('hidden');
+  $('btn-wake').addEventListener('click', checkServers);
+  checkServers();   // start waking them as soon as the menu opens
+}
+
+// Which server a typed room code belongs to: { server, code } or null for a direct room.
+function roomRoute(code) {
+  const list = serverList();
+  if (/^[1-9][A-Z0-9]{5}$/.test(code) && +code[0] <= list.length) return { server: +code[0] - 1, code: code.slice(1) };
+  if (CONFIG.serverUrl) return { server: 0, code };
+  return null;
+}
+
+async function serverGame(index, action, code) {
+  const name = playerName();
+  const srv = serverList()[index];
   cleanup();
   app.mode = 'client';
-  app.code = code || null;
+  app.serverIdx = index;
+  app.code = code ? `${index + 1}${code}` : null;
   document.body.classList.remove('is-host');
   hideNetError();
-  loading(code ? `Joining room ${code}…` : 'Creating room…');
+  loading(code ? `Joining room ${app.code}…` : 'Creating room…');
   app.clientNet = new ServerNet({
     onMessage: deliver,
     onClose: () => {
@@ -259,7 +309,7 @@ async function serverGame(action, code) {
     },
   });
   try {
-    await app.clientNet.connect(CONFIG.serverUrl, { t: action, code, name });
+    await app.clientNet.connect(srv.url, { t: action, code, name });
   } catch (e) {
     loading(null);
     cleanup();
@@ -354,7 +404,18 @@ async function copyText(text, done) {
 async function hostGame() {
   initAudio();
   tryFullscreen();
-  if (CONFIG.serverUrl) return serverGame('create');
+  if (serverList().length) {
+    hideNetError();
+    loading('Finding a game server…');
+    const i = await pickServer(text => loading(text));
+    if (i >= 0) return serverGame(i, 'create');
+    loading(null);
+    if (CONFIG.serverUrl) {
+      showNetError('The game server did not answer. It may be offline, or this Wi-Fi blocks it. Try opening the server address in a new tab to check.');
+      return;
+    }
+    toast('The game servers are offline or blocked here, so this room uses a direct connection. Friends on school Wi-Fi may not be able to join.', 9000);
+  }
   const name = playerName();
   cleanup();
   app.mode = 'host';
@@ -386,7 +447,22 @@ async function joinGame(rawCode) {
   const code = normaliseCode(rawCode);
   if (code.length < 4) { toast('Enter the room code from the host.'); $('code').focus(); return; }
   tryFullscreen();
-  if (CONFIG.serverUrl) return serverGame('join', code);
+  const route = roomRoute(code);
+  if (route) {
+    const srv = serverList()[route.server];
+    hideNetError();
+    const t0 = performance.now();
+    const tick = () => loading(`Connecting to the game server… ${Math.round((performance.now() - t0) / 1000)} s`);
+    tick();
+    const clock = setInterval(tick, 1000);
+    const ok = await wakeOne(srv.url).finally(() => clearInterval(clock));
+    if (!ok) {
+      loading(null);
+      showNetError(`Room ${code} is on a game server (${srv.name}) that isn't answering. It may be offline, or this Wi-Fi blocks it.`);
+      return;
+    }
+    return serverGame(route.server, 'join', route.code);
+  }
   const name = playerName();
   cleanup();
   app.mode = 'client';
@@ -522,7 +598,7 @@ function cleanup() {
   if (app.server) { app.server.destroy(); app.server = null; }
   if (app.hostNet) { app.hostNet.destroy(); app.hostNet = null; }
   if (app.clientNet) { app.clientNet.destroy(); app.clientNet = null; }
-  app.mode = null; app.myId = null; app.roster = []; app.code = null; app.botGame = null;
+  app.mode = null; app.myId = null; app.roster = []; app.code = null; app.botGame = null; app.serverIdx = null;
   updatePauseInvite();
 }
 
