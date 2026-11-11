@@ -159,3 +159,6 @@ export const inviteFriend = (id, code) => rpc('invite_friend', { p_other: id, p_
 export const dismissInvite = (id) => rpc('dismiss_invite', { p_id: id });
 export const sendMessage = (id, body) => rpc('send_message', { p_to: id, p_body: body });
 export const chatHistory = (id, after = 0) => rpc('chat_history', { p_other: id, p_after: after });
+export const isAdmin = () => rpc('is_admin');
+export const adminOverview = () => rpc('admin_overview');
+export const adminPlayers = () => rpc('admin_players');

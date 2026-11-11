@@ -343,3 +343,75 @@ begin
     execute format('grant execute on function public.%s to authenticated', f);
   end loop;
 end $$;
+
+-- ---------- admin view (read-only) ----------
+-- Admins can see game-wide numbers and every player's stats and online status, to check for
+-- problems. They can NOT see emails, passwords or what anyone wrote in chat, and they can't change anything.
+-- The admins are whoever owns these usernames WHEN THIS FILE IS RUN: create the accounts first.
+create table if not exists public.admins (
+  user_id uuid primary key references public.profiles(id) on delete cascade
+);
+alter table public.admins enable row level security;
+revoke all on public.admins from anon, authenticated;
+insert into public.admins (user_id)
+  select id from public.profiles where lower(username) in ('test123', 'test1234')
+  on conflict do nothing;
+
+create or replace function public.is_admin() returns boolean
+language sql security definer set search_path = public stable as $$
+  select exists (select 1 from public.admins where user_id = auth.uid());
+$$;
+
+create or replace function public.admin_overview() returns json
+language plpgsql security definer set search_path = public stable as $$
+begin
+  if not public.is_admin() then raise exception 'Admins only.'; end if;
+  return json_build_object(
+    'players',          (select count(*) from public.profiles),
+    'online_now',       (select count(*) from public.profiles where last_seen > now() - interval '90 seconds'),
+    'active_24h',       (select count(*) from public.profiles where last_seen > now() - interval '24 hours'),
+    'active_7d',        (select count(*) from public.profiles where last_seen > now() - interval '7 days'),
+    'new_7d',           (select count(*) from public.profiles where created_at > now() - interval '7 days'),
+    'matches',          (select coalesce(sum(matches_played), 0) from public.profiles),
+    'kills',            (select coalesce(sum(kills), 0) from public.profiles),
+    'matches_24h',      (select count(*) from public.profiles where last_report > now() - interval '24 hours'),
+    'friendships',      (select count(*) from public.friends where accepted),
+    'pending_requests', (select count(*) from public.friends where not accepted),
+    'invites_now',      (select count(*) from public.game_invites where created_at > now() - interval '3 minutes'),
+    'messages_24h',     (select count(*) from public.messages where created_at > now() - interval '24 hours'),
+    'messages_7d',      (select count(*) from public.messages where created_at > now() - interval '7 days'),
+    'balance_total',    (select coalesce(sum(balance_cents), 0) from public.profiles),
+    'db_mb',            round(pg_database_size(current_database()) / 1048576.0, 1),
+    'activities',       (select coalesce(json_object_agg(a, n), '{}'::json) from (
+                           select coalesce(nullif(activity, ''), 'Online') as a, count(*) as n from public.profiles
+                           where last_seen > now() - interval '90 seconds' group by 1) x),
+    'checked_at',       now());
+end $$;
+
+-- Every player (newest activity first), up to 500.
+create or replace function public.admin_players() returns json
+language plpgsql security definer set search_path = public stable as $$
+begin
+  if not public.is_admin() then raise exception 'Admins only.'; end if;
+  return (select coalesce(json_agg(row_to_json(x)), '[]'::json) from (
+    select p.username, p.created_at, p.last_seen,
+      (p.last_seen > now() - interval '90 seconds') as online,
+      case when p.last_seen > now() - interval '90 seconds' then p.activity end as activity,
+      p.kills, p.deaths, p.headshots, p.damage, p.matches_played, p.matches_won, p.rounds_won, p.dm_wins,
+      p.weapon_kills, p.balance_cents, p.last_report,
+      (select count(*) from public.friends f where f.accepted and p.id in (f.user_id, f.friend_id)) as friends,
+      (select count(*) from public.messages m where m.from_id = p.id and m.created_at > now() - interval '7 days') as messages_7d,
+      exists (select 1 from public.admins a where a.user_id = p.id) as admin
+    from public.profiles p
+    order by p.last_seen desc nulls last, p.created_at desc
+    limit 500) x);
+end $$;
+
+do $$
+declare f text;
+begin
+  foreach f in array array['is_admin()', 'admin_overview()', 'admin_players()'] loop
+    execute format('revoke all on function public.%s from public, anon', f);
+    execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
+end $$;
