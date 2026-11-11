@@ -3,6 +3,8 @@
 SITELINE is a browser 2v2 tactical shooter (wingman bomb defusal), published with
 GitHub Pages at https://sitev2.github.io/siteline/. The owner is not a developer:
 explain changes in plain language and keep instructions click-by-click.
+The owner asked for finished, tested pull requests to be **merged automatically** (no need to ask first).
+Still say what changed and anything they must do themselves (e.g. re-run `supabase.sql`, update the home server).
 
 ## Layout — keep it flat
 Every website file sits at the repo root (no folders). `index.html` loads them by
