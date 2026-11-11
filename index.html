@@ -138,6 +138,7 @@
           </div>
         </div>
         <div class="menu-links">
+          <button id="btn-friends" class="link">Friends</button>
           <button id="btn-account" class="link">Account</button>
           <button id="btn-settings" class="link">Settings</button>
           <button id="btn-howto" class="link">How to play</button>
@@ -154,6 +155,7 @@
             <div id="room-code" class="room-code">-----</div>
           </div>
           <div class="lobby-share">
+            <button id="btn-invite-friends" class="primary hidden">Invite friends</button>
             <button id="btn-share" class="secondary">Copy invite link</button>
             <button id="btn-leave-lobby" class="ghost">Leave</button>
           </div>
@@ -304,6 +306,28 @@
       </div>
     </section>
 
+    <section id="friends" class="screen hidden">
+      <div class="panel">
+        <h2>Friends</h2>
+        <div id="friends-out" class="hidden">
+          <p class="note">Log in to an account to add friends, see when they're online and invite them to your games.</p>
+          <button id="friends-login" class="primary">Log in or sign up</button>
+        </div>
+        <div id="friends-in" class="hidden friends-in">
+          <div class="join-row">
+            <input id="friend-name" maxlength="16" placeholder="Friend's username" autocomplete="off" spellcheck="false" autocapitalize="off">
+            <button id="friend-add" class="secondary">Add</button>
+          </div>
+          <p id="friend-msg" class="note friend-msg" role="status"></p>
+          <div id="friend-requests-wrap" class="hidden"><h3>Requests</h3><ul id="friend-requests" class="friend-list"></ul></div>
+          <h3>Your friends</h3>
+          <p id="friends-room" class="note"></p>
+          <ul id="friend-list" class="friend-list"></ul>
+        </div>
+        <button class="ghost back">Back</button>
+      </div>
+    </section>
+
     <section id="nettest" class="screen hidden">
       <div class="panel">
         <h2>Connection check</h2>
@@ -405,6 +429,11 @@
     <div id="loading" class="overlay hidden"><div class="spinner"></div><p id="loading-text">Connecting…</p><button id="btn-cancel-load" class="ghost">Cancel</button></div>
     <div id="rotate"><div class="rot-icon">⟳</div><p>Turn your device sideways to play</p></div>
     <div id="toasts"></div>
+    <div id="invite-pop" class="invite-pop hidden" role="alert">
+      <span id="invite-pop-text"></span>
+      <button id="invite-pop-join" class="primary small">Join</button>
+      <button id="invite-pop-close" class="ghost small" aria-label="Dismiss">✕</button>
+    </div>
   </div>
 
   <noscript>SITELINE needs JavaScript to run.</noscript>

@@ -15,10 +15,11 @@ import { DEFAULT_CROSSHAIR, crosshairCfg, drawCrosshair, crosshairCode, parseCro
 import { applyTouchLayout, openLayoutEditor } from './touchlayout.js';
 import { GFX_OPTIONS, PRESETS, resolveGraphics } from './graphics.js';
 import * as acct from './accounts.js';
+import { initFriends, openFriends, activityChanged } from './friends.js';
 import { WEAPONS } from './weapons.js';
 
 const $ = (id) => document.getElementById(id);
-const screens = ['menu', 'lobby', 'settings', 'howto', 'practice', 'account', 'nettest'];
+const screens = ['menu', 'lobby', 'settings', 'howto', 'practice', 'account', 'nettest', 'friends'];
 
 // ---------- settings ----------
 const STORE = 'siteline-settings';
@@ -504,6 +505,7 @@ function practice(cfg) {
   app.server.addPlayer('host', name);
   app.server.startBotGame(cfg);
   openInviteRoom();
+  activityChanged();
 }
 
 // Practice games also open a room (quietly) so friends can join with the code or link.
@@ -636,12 +638,22 @@ function leaveToMenu() {
   loading(null);
   show('menu');
   updateRejoin();
+  activityChanged();
 }
 
 // ---------- lobby ----------
 function showLobby() {
   show('lobby');
   renderLobby();
+  activityChanged();
+}
+
+// what friends see next to your name (friends.js)
+function activityText() {
+  if (app.mode === 'practice') return app.botGame === 'range' ? 'At the practice range' : 'Playing against bots';
+  if (app.game) return app.lobby.mode === 'dm' ? 'In a deathmatch' : 'In a 2v2 match';
+  if (app.mode === 'host' || app.mode === 'client') return 'In a lobby';
+  return 'In the menu';
 }
 
 function drawMapPreview(canvas, def) {
@@ -815,6 +827,7 @@ function startGame(msg) {
   });
   if (window.__debug) window.__game = app.game;
   if (!settings.touch) showPause(true);
+  activityChanged();
 }
 
 function endGame() {
@@ -1239,6 +1252,16 @@ function init() {
   acct.initAccounts().then(() => { renderAccount(); onLogin(); });
   applyTouchLayout(settings.touchLayout);
   $('btn-account').addEventListener('click', () => { renderAccount(); openSub('account'); });
+  $('btn-friends').addEventListener('click', () => { openSub('friends'); openFriends(); });
+  $('btn-invite-friends').addEventListener('click', () => { openSub('friends'); openFriends(); });
+  initFriends({
+    joinGame: (code) => { if (app.mode) leaveToMenu(); joinGame(code); },
+    activity: activityText,
+    roomCode: () => app.code,
+    toast,
+    openAccount: () => { renderAccount(); show('account'); },
+    isOpen: () => !$('friends').classList.contains('hidden'),
+  });
   document.addEventListener('pointerdown', () => initAudio(), { once: true });
   window.addEventListener('beforeunload', () => cleanup());
   void playClick;
