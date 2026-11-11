@@ -60,7 +60,7 @@ button:disabled { opacity: .4; cursor: default; }
 .field { display: grid; gap: 6px; }
 .field > span { font: 600 0.78rem var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
 .field.inline { display: flex; align-items: center; gap: 10px; }
-.field input:not([type=range]), .field select, #code, #friend-name, #fchat-input, #practice-map {
+.field input:not([type=range]), .field select, #code, #friend-name, #fchat-input, #admin-search, #practice-map {
   background: rgba(255,255,255,0.06); border: 1px solid var(--line); border-radius: 10px;
   padding: 12px 14px; font-size: 1rem; outline: none;
 }
@@ -552,7 +552,7 @@ li.online .fwho small { color: #8fe0a2; }
   border: 1px solid rgba(240,160,64,.6); box-shadow: 0 8px 30px rgba(0,0,0,.5); animation: toast .25s ease-out; }
 .invite-pop.hidden { display: none; }
 .invite-pop span { font-weight: 600; overflow-wrap: anywhere; }
-#friend-name, #fchat-input { min-width: 0; }
+#friend-name, #fchat-input, #admin-search { min-width: 0; }
 .fchat-view { display: grid; gap: 10px; }
 .fchat-head { display: flex; align-items: center; gap: 12px; }
 .fchat-head .fwho small.on { color: #8fe0a2; }
@@ -564,3 +564,20 @@ li.online .fwho small { color: #8fe0a2; }
 .bubble.mine { align-self: flex-end; background: rgba(240,160,64,.22); border: 1px solid rgba(240,160,64,.35); }
 .bubble small { display: block; color: var(--muted); font-size: .7rem; margin-top: 2px; text-align: right; }
 .fchat-btn .n { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 6px; border-radius: 9px; background: var(--accent); color: #1b1307; font-size: .75rem; }
+
+/* ---------------- admin ---------------- */
+.admin-panel { width: min(1100px, 100%); }
+.admin-panel h3 { margin: 4px 0 0; font: 700 .85rem var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.admin-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
+.admin-top h2 { margin: 0; }
+#admin-search { padding: 8px 12px; flex: 0 1 260px; }
+.admin-servers { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: .9rem; }
+.admin-servers li { padding: 8px 12px; border-radius: 8px; border: 1px solid var(--line); }
+.admin-servers li.ok { border-color: rgba(111,220,140,.4); }
+.admin-servers li.bad { border-color: rgba(255,90,74,.45); color: var(--danger); }
+.admin-table-wrap { overflow: auto; max-height: 60vh; border: 1px solid var(--line); border-radius: 10px; -webkit-overflow-scrolling: touch; }
+.admin-table { border-collapse: collapse; width: 100%; font-size: .85rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.admin-table th { position: sticky; top: 0; background: #1a1b20; text-align: left; font: 700 .72rem var(--display); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.admin-table th, .admin-table td { padding: 8px 10px; border-bottom: 1px solid var(--line); }
+.admin-table tr.online .fdot { background: #6fdc8c; opacity: 1; }
+.admin-table .fdot { display: inline-block; vertical-align: middle; }

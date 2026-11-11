@@ -16,10 +16,11 @@ import { applyTouchLayout, openLayoutEditor } from './touchlayout.js';
 import { GFX_OPTIONS, PRESETS, resolveGraphics } from './graphics.js';
 import * as acct from './accounts.js';
 import { initFriends, openFriends, activityChanged } from './friends.js';
+import { initAdmin, openAdmin } from './admin.js';
 import { WEAPONS } from './weapons.js';
 
 const $ = (id) => document.getElementById(id);
-const screens = ['menu', 'lobby', 'settings', 'howto', 'practice', 'account', 'nettest', 'friends'];
+const screens = ['menu', 'lobby', 'settings', 'howto', 'practice', 'account', 'nettest', 'friends', 'admin'];
 
 // ---------- settings ----------
 const STORE = 'siteline-settings';
@@ -1254,6 +1255,8 @@ function init() {
   $('btn-account').addEventListener('click', () => { renderAccount(); openSub('account'); });
   $('btn-friends').addEventListener('click', () => { openSub('friends'); openFriends(); });
   $('btn-invite-friends').addEventListener('click', () => { openSub('friends'); openFriends(); });
+  $('btn-admin').addEventListener('click', () => { openSub('admin'); openAdmin(); });
+  initAdmin({ isOpen: () => !$('admin').classList.contains('hidden') });
   initFriends({
     joinGame: (code) => { if (app.mode) leaveToMenu(); joinGame(code); },
     activity: activityText,

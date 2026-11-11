@@ -143,6 +143,7 @@
           <button id="btn-settings" class="link">Settings</button>
           <button id="btn-howto" class="link">How to play</button>
           <button id="btn-nettest" class="link">Connection check</button>
+          <button id="btn-admin" class="link hidden">Admin</button>
         </div>
       </div>
     </section>
@@ -337,6 +338,29 @@
           <p id="friends-room" class="note"></p>
           <ul id="friend-list" class="friend-list"></ul>
           </div>
+        </div>
+        <button class="ghost back">Back</button>
+      </div>
+    </section>
+
+    <section id="admin" class="screen hidden">
+      <div class="panel admin-panel">
+        <div class="admin-top"><h2>Admin</h2><button id="admin-refresh" class="secondary small">Refresh</button></div>
+        <p id="admin-msg" class="note friend-msg"></p>
+        <p class="note">Read-only. Players' emails, passwords and chat messages are never shown.</p>
+        <div id="admin-stats" class="stat-grid"></div>
+        <p id="admin-activity" class="note"></p>
+        <h3>Game servers</h3>
+        <ul id="admin-servers" class="admin-servers"></ul>
+        <div class="admin-top">
+          <h3 id="admin-count">Players</h3>
+          <input id="admin-search" placeholder="Search players" autocomplete="off" spellcheck="false">
+        </div>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead><tr><th>Player</th><th>Status</th><th>Joined</th><th>Matches</th><th>Kills / deaths</th><th>K/D</th><th>HS%</th><th>DM wins</th><th>Favourite</th><th>Last match</th><th>Friends</th><th>Msgs (7 d)</th><th>Balance</th></tr></thead>
+            <tbody id="admin-players"></tbody>
+          </table>
         </div>
         <button class="ghost back">Back</button>
       </div>

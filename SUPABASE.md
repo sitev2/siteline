@@ -75,6 +75,12 @@ Logged-in players can add friends by username (the other player must accept), se
 - **Chat:** friends can message each other from the Friends screen (Chat button). Only friends can message, at most 20 messages a minute and 200 characters each; the game's swear filter runs on every message. Messages are **deleted after 7 days**, and unfriending deletes the chat.
 - Nobody can read or change the friends, invites or messages tables directly: only through the database functions in `supabase.sql`, which check you're logged in and that you're friends.
 
+## Admin screen
+
+The accounts **test123** and **test1234** get an **Admin** link on the home screen. It shows game-wide numbers (players, who's online, matches, messages, database size), whether the game servers answer, and every player's stats and last time online. It is read-only and never shows emails, passwords or chat messages.
+
+Admins are set when you run `supabase.sql`: it looks up who owns those usernames at that moment. So **create those accounts before running it** (otherwise someone else could sign up with the name later and become admin when you next run it), and give them strong passwords. To change who is admin, edit the usernames in the "admin view" part of `supabase.sql` and run it again (to remove an admin, delete their row in Table Editor → `admins`).
+
 ## What can and can't be protected from cheating
 
 Matches run in a player's browser: the host's browser runs the match, and each player's browser reports its own result. So be realistic:
