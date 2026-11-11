@@ -218,6 +218,8 @@ export class Game {
     document.getElementById('chat-box').removeEventListener('submit', this.chatHandlers.submit);
     document.getElementById('chat-input').removeEventListener('keydown', this.chatHandlers.key);
     document.getElementById('chat-mode').removeEventListener('click', this.chatHandlers.mode);
+    document.getElementById('chat-close').removeEventListener('click', this.chatHandlers.close);
+    document.getElementById('btn-chat').removeEventListener('touchend', this.chatHandlers.tap);
     document.getElementById('chat-feed').replaceChildren();
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('orientationchange', this.onResize);
@@ -318,10 +320,16 @@ export class Game {
       },
       key: (e) => { if (e.key === 'Escape') { e.preventDefault(); this.closeChat(); } e.stopPropagation(); },
       mode: () => { this.chatTeam = !this.chatTeam; this.syncChatMode(); input.focus(); },
+      close: () => this.closeChat(),
+      // phones only open the keyboard when focus happens during the tap itself, so the 💬 button
+      // focuses the box on touchend (the game loop opening it a frame later is too late)
+      tap: () => { if (!this.chatOpen) this.openChat(false); input.focus(); },
     };
     box.addEventListener('submit', this.chatHandlers.submit);
     input.addEventListener('keydown', this.chatHandlers.key);
     mode.addEventListener('click', this.chatHandlers.mode);
+    document.getElementById('chat-close').addEventListener('click', this.chatHandlers.close);
+    document.getElementById('btn-chat').addEventListener('touchend', this.chatHandlers.tap);
   }
 
   syncChatMode() {
@@ -341,6 +349,8 @@ export class Game {
     const box = document.getElementById('chat-box'), input = document.getElementById('chat-input');
     box.classList.remove('hidden');
     input.value = '';
+    input.placeholder = this.settings.touch ? 'Say something…' : 'Say something… (Enter to send, Esc to cancel)';
+    input.focus();
     setTimeout(() => input.focus(), 0);
   }
 
