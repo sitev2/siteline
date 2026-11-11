@@ -67,7 +67,7 @@ Players sign up with just a **username and password**: no email. Supabase still 
 3. Click **Run**. It answers "Password reset for PlayerName…".
 4. Tell the player the temporary password. They log in with it, open **Account**, and press **Change password**.
 
-Only you can do this, in the SQL Editor. Players and the admin accounts (test123, test1234) can't: the Admin screen only shows stats.
+Only you can do this, in the SQL Editor. Players and the admin account (test123) can't: the Admin screen only shows stats.
 
 ## Updating the database after a game update
 
@@ -91,9 +91,9 @@ Logged-in players can add friends by username (the other player must accept), se
 
 ## Admin screen
 
-The accounts **test123** and **test1234** get an **Admin** link on the home screen. It shows game-wide numbers (players, who's online, matches, messages, database size), whether the game servers answer, and every player's stats and last time online. It is read-only and never shows emails, passwords or chat messages.
+The account **test123** gets an **Admin** link on the home screen. It shows game-wide numbers (players, who's online, matches, messages, database size), whether the game servers answer, and every player's stats and last time online. It is read-only and never shows emails, passwords or chat messages.
 
-Admins are set when you run `supabase.sql`: it looks up who owns those usernames at that moment. So **create those accounts before running it** (otherwise someone else could sign up with the name later and become admin when you next run it), and give them strong passwords. To change who is admin, edit the usernames in the "admin view" part of `supabase.sql` and run it again (to remove an admin, delete their row in Table Editor → `admins`).
+The admin is set when you run `supabase.sql`: it looks up who owns the username at that moment, and removes anyone else from the admin list. So **create the test123 account before running it** (otherwise someone else could sign up with that name later and become admin when you next run it), and give it a strong password. To change who is admin, edit the username in the "admin view" part of `supabase.sql` and run it again.
 
 ## What can and can't be protected from cheating
 

@@ -353,8 +353,11 @@ create table if not exists public.admins (
 );
 alter table public.admins enable row level security;
 revoke all on public.admins from anon, authenticated;
+-- The admin list is exactly these usernames: anyone else is removed from it each time this file runs.
+delete from public.admins a using public.profiles p
+  where p.id = a.user_id and lower(p.username) not in ('test123');
 insert into public.admins (user_id)
-  select id from public.profiles where lower(username) in ('test123', 'test1234')
+  select id from public.profiles where lower(username) in ('test123')
   on conflict do nothing;
 
 create or replace function public.is_admin() returns boolean
