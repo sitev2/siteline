@@ -15,7 +15,9 @@ const PATHS = {
     + `<path ${L(1.1)} d="M10 5.8c-3.4 0-4.8 1.7-4.8 4.7M10 8.2c-2 0-3 .9-3 2.3"/>`,
   blast: `<path ${S} d="M12 2.5l1.8 5.3 5-2.6-2.4 5 5.1 1.8-5.1 1.8 2.4 5-5-2.6-1.8 5.3-1.8-5.3-5 2.6 2.4-5-5.1-1.8 5.1-1.8-2.4-5 5 2.6z"/>`,
   spoon: `<ellipse ${S} cx="15.5" cy="8.5" rx="3.4" ry="4.8" transform="rotate(45 15.5 8.5)"/><path ${S} d="M12.8 11.2L4 20"/>`,
-  wrench: `<path ${S} d="M15 3.5a5 5 0 0 0-4.7 6.7L3.8 16.7a1.9 1.9 0 0 0 2.7 2.7l6.5-6.5A5 5 0 0 0 19.7 8l-3 3-3-1-1-3 3-3a5 5 0 0 0-.7-.5z"/>`,
+  // the defuse kit as it looks in the game: a flat case seen at an angle, tan patch on top, black strap round one end
+  kit: `<path ${L(1.5)} d="M2 12l5.5-5H22l-5.5 5zM2 12h14.5v5H2zM16.5 12L22 7v5l-5.5 5"/>`
+    + `<path ${F} d="M4.8 11l1.9-1.8h4.4L9.2 11z"/><path ${F} d="M11.6 12l5.5-5h2.1l-5.5 5zM11.6 12h2.1v5h-2.1z"/>`,
   search: `<circle ${S} cx="10.5" cy="10.5" r="6"/><path ${S} d="M15 15l5.5 5.5"/>`,
   light: `<path ${S} d="M6 3h12l-2.5 6h-7z"/><path ${S} d="M8.5 9h7v12h-7z"/><path ${S} d="M12 12.5v3"/>`,
   hand: `<path ${S} d="M8 13V6.5a1.5 1.5 0 0 1 3 0V11M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v6M17 12V9.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1a6 6 0 0 1-4.9-2.6l-2.8-4a1.5 1.5 0 0 1 2.4-1.8L8 14.5"/>`,
