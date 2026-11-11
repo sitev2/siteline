@@ -1287,11 +1287,8 @@ function init() {
     activity: activityText,
     roomCode: () => app.code,
     toast,
-    // a friend's message: in the match chat during a game (if chat is shown), otherwise a pop-up
-    friendMessage: (name, text) => {
-      if (app.game && settings.showChat !== false) app.game.hud.friendLine(name, text);
-      else toast(`💬 ${name}: ${text}`, 6000);
-    },
+    // a friend's message: the usual pop-up, now with what they wrote
+    friendMessage: (name, text) => toast(`💬 New message from ${name}: ${text}`, 6000),
     openAccount: () => { renderAccount(); show('account'); },
     isOpen: () => !$('friends').classList.contains('hidden'),
   });
