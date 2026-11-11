@@ -17,24 +17,45 @@ const DRAW_FROM = {
   melee: [0.06, -0.3, 0.06, -1.3, 0.2, 0.9],
 };
 
+// Looking the gun over. Each inspect is a few poses the hands move the gun through: it eases
+// into each pose, drifts a little while you look, then flows on to the next (see `curve`; the
+// curve never swings past a pose and back). Keys: [time 0–1, pose].
 const INSPECT = {
-  pistol: { dur: 2.4, keys: [[0, Z], [0.15, [-0.05, 0.04, 0.02, 0.1, 0.9, 0.55]], [0.45, [-0.05, 0.05, 0.02, 0.12, 0.95, 0.6]], [0.6, [0.02, 0.03, 0, 0.05, -0.8, -0.5]], [0.82, [0.02, 0.03, 0, 0.05, -0.85, -0.55]], [1, Z]] },
-  smg: { dur: 2.6, keys: [[0, Z], [0.2, [-0.04, 0.05, 0.03, 0.35, 0.6, 0.7]], [0.48, [-0.04, 0.06, 0.03, 0.38, 0.65, 0.75]], [0.64, [0.03, 0.02, 0, -0.2, -0.4, -0.3]], [0.84, [0.03, 0.02, 0, -0.22, -0.45, -0.32]], [1, Z]] },
-  shotgun: { dur: 2.8, keys: [[0, Z], [0.2, [-0.05, 0.04, 0.04, 0.1, 0.8, 0.6]], [0.48, [-0.05, 0.05, 0.04, 0.12, 0.82, 0.62]], [0.62, [0.02, 0.06, 0, -0.25, -0.3, -0.2]], [0.82, [0.02, 0.06, -0.02, -0.28, -0.32, -0.22]], [1, Z]] },
-  rifle: { dur: 3.0, keys: [[0, Z], [0.2, [-0.06, 0.06, 0.05, 0.15, 0.75, 0.45]], [0.45, [-0.06, 0.08, 0.05, 0.25, 0.85, 0.5]], [0.6, [0.02, 0.0, 0.02, -0.3, 0.1, -0.3]], [0.8, [0.02, 0.0, 0.02, -0.28, 0.05, -0.34]], [1, Z]] },
-  sniper: { dur: 3.2, keys: [[0, Z], [0.25, [-0.06, 0.06, 0.03, 0.28, 0.95, 0.3]], [0.5, [-0.06, 0.07, 0.03, 0.3, 1.0, 0.32]], [0.65, [0.03, 0.03, 0, 0.05, -0.5, -0.6]], [0.85, [0.03, 0.03, 0, 0.06, -0.55, -0.62]], [1, Z]] },
-  bomb: { dur: 2.2, keys: [[0, Z], [0.3, [0, 0.06, 0.06, 0.8, 0.2, 0]], [0.6, [0, 0.06, 0.06, 0.8, -0.3, 0.2]], [1, Z]] },
+  // left side, lift it over, right side, a glance down the sights, back
+  pistol: { dur: 2.7, keys: [[0, Z], [0.15, [-0.05, 0.045, 0.02, 0.14, 0.86, 0.5]], [0.38, [-0.055, 0.05, 0.02, 0.17, 0.93, 0.56]],
+    [0.46, [-0.045, 0.07, 0.0, 0.3, -0.1, 0.0]], [0.54, [-0.07, 0.035, -0.01, 0.1, -1.2, -0.3]], [0.74, [-0.072, 0.04, -0.01, 0.12, -1.26, -0.33]],
+    [0.86, [0.0, 0.03, -0.005, 0.2, -0.05, -0.08]], [1, Z]] },
+  smg: { dur: 2.9, keys: [[0, Z], [0.16, [-0.055, 0.05, 0.03, 0.2, 0.74, 0.6]], [0.4, [-0.06, 0.058, 0.03, 0.24, 0.8, 0.66]],
+    [0.5, [-0.07, 0.075, 0.01, 0.4, 0.05, 0.4]], [0.6, [-0.08, 0.055, 0.0, 0.42, -0.72, 0.38]], [0.8, [-0.082, 0.06, 0.0, 0.45, -0.77, 0.42]], [1, Z]] },
+  shotgun: { dur: 3.1, keys: [[0, Z], [0.17, [-0.065, 0.05, 0.03, 0.15, 0.78, 0.52]], [0.4, [-0.07, 0.058, 0.03, 0.19, 0.84, 0.58]],
+    [0.5, [-0.08, 0.075, 0.01, 0.38, 0.05, 0.4]], [0.6, [-0.09, 0.055, 0.0, 0.4, -0.68, 0.35]], [0.8, [-0.092, 0.06, 0.0, 0.43, -0.72, 0.38]], [1, Z]] },
+  // across the body showing the left side, then raised muzzle-up to the right to show the right
+  // side and the magazine (SMGs, shotguns and snipers do the same)
+  rifle: { dur: 3.3, keys: [[0, Z], [0.16, [-0.07, 0.06, 0.04, 0.18, 0.78, 0.48]], [0.4, [-0.075, 0.07, 0.04, 0.24, 0.85, 0.53]],
+    [0.5, [-0.08, 0.08, 0.01, 0.4, 0.05, 0.42]], [0.6, [-0.09, 0.06, 0.0, 0.42, -0.7, 0.35]], [0.8, [-0.092, 0.065, 0.0, 0.45, -0.74, 0.38]], [1, Z]] },
+  sniper: { dur: 3.5, keys: [[0, Z], [0.18, [-0.07, 0.04, -0.04, 0.22, 0.88, 0.3]], [0.42, [-0.075, 0.047, -0.04, 0.26, 0.94, 0.33]],
+    [0.52, [-0.07, 0.065, -0.05, 0.36, 0.1, 0.2]], [0.62, [-0.09, 0.045, -0.04, 0.38, -0.65, 0.3]], [0.82, [-0.092, 0.05, -0.04, 0.41, -0.7, 0.33]], [1, Z]] },
+  bomb: { dur: 2.4, keys: [[0, Z], [0.25, [0, 0.06, 0.06, 0.8, 0.25, 0.05]], [0.45, [0, 0.065, 0.06, 0.84, 0.3, 0.08]], [0.65, [0, 0.06, 0.06, 0.8, -0.3, 0.2]], [0.8, [0, 0.062, 0.06, 0.82, -0.34, 0.22]], [1, Z]] },
   // the spoon: hold it up, admire both sides, give it a twirl
   melee: { dur: 2.8, keys: [[0, Z], [0.16, [-0.1, 0.09, 0.02, 0.75, 0.5, 0.2]], [0.36, [-0.1, 0.1, 0.02, 0.8, 0.55, 0.25]], [0.5, [-0.09, 0.1, 0.02, 0.8, -2.3, 0.1]], [0.68, [-0.09, 0.1, 0.02, 0.82, -2.4, 0.1]], [0.8, [-0.05, 0.07, 0, 0.5, -0.6, 0]], [1, [0, 0, 0, 0, 0, -6.2832]]] },
 };
 
 // a few guns get their own flourish
 const SPECIAL = {
-  deagle: { dur: 2.8, keys: [[0, Z], [0.15, [-0.05, 0.04, 0.02, 0.1, 0.9, 0.55]], [0.45, [-0.05, 0.05, 0.02, 0.12, 0.95, 0.6]], [0.6, [0.02, 0.03, 0, 0.05, -0.8, -0.5]], [0.72, [0.02, 0.05, 0, 0.1, -0.1, -0.1]], [1, [0, 0, 0, 0, 0, -6.2832]]] },   // ends with a spin
-  glock: { dur: 2.4, keys: [[0, Z], [0.18, [-0.04, 0.05, 0.02, 0.25, 0.7, 0.9]], [0.45, [-0.04, 0.06, 0.02, 0.28, 0.75, 0.95]], [0.62, [0.03, 0.02, 0, -0.1, -0.7, -0.7]], [0.84, [0.03, 0.02, 0, -0.12, -0.72, -0.72]], [1, Z]] },
-  ak47: { dur: 3.1, keys: [[0, Z], [0.18, [-0.06, 0.07, 0.05, 0.2, 0.8, 0.6]], [0.42, [-0.06, 0.08, 0.05, 0.25, 0.85, 0.65]], [0.56, [0.03, 0.0, 0.02, -0.32, 0.12, -0.45]], [0.78, [0.03, 0.0, 0.02, -0.3, 0.06, -0.5]], [1, Z]] },
-  awp: { dur: 3.4, keys: [[0, Z], [0.22, [-0.07, 0.08, 0.03, 0.38, 1.05, 0.2]], [0.52, [-0.07, 0.09, 0.03, 0.4, 1.1, 0.22]], [0.68, [0.04, 0.04, 0, 0.05, -0.55, -0.7]], [0.88, [0.04, 0.04, 0, 0.06, -0.58, -0.72]], [1, Z]] },
-  mag7: { dur: 2.8, keys: [[0, Z], [0.2, [-0.05, 0.06, 0.04, 0.5, 0.6, 0.5]], [0.48, [-0.05, 0.07, 0.04, 0.55, 0.62, 0.55]], [0.62, [0.02, 0.04, 0, -0.2, -0.4, -0.4]], [0.82, [0.02, 0.04, 0, -0.22, -0.42, -0.42]], [1, Z]] },
+  // left side, right side, then the left hand lets go and the gun is spun forwards round the
+  // trigger finger (see `spin`) and caught
+  deagle: { dur: 3.1, keys: [[0, Z], [0.12, [-0.05, 0.045, 0.02, 0.14, 0.86, 0.5]], [0.29, [-0.055, 0.05, 0.02, 0.17, 0.93, 0.56]],
+    [0.37, [-0.045, 0.07, 0.0, 0.3, -0.1, 0.0]], [0.44, [-0.07, 0.035, -0.01, 0.1, -1.2, -0.3]], [0.53, [-0.072, 0.04, -0.01, 0.12, -1.26, -0.33]],
+    [0.65, [-0.025, 0.03, -0.035, 0.04, 0.75, 0.12]], [0.86, [-0.025, 0.03, -0.035, 0.03, 0.72, 0.1]], [1, Z]],
+    spin: { at: 2.16, windup: 0.12, dur: 0.3, settle: 0.14, hand: [0.57, 0.97], pivot: [0, -0.028, -0.05] } },
+  glock: { dur: 2.6, keys: [[0, Z], [0.15, [-0.045, 0.05, 0.02, 0.24, 0.72, 0.85]], [0.38, [-0.05, 0.056, 0.02, 0.28, 0.77, 0.92]],
+    [0.46, [-0.045, 0.07, 0.0, 0.32, -0.05, 0.1]], [0.55, [-0.065, 0.03, -0.01, 0.0, -1.15, -0.55]], [0.78, [-0.068, 0.035, -0.01, -0.02, -1.2, -0.58]], [1, Z]] },
+  ak47: { dur: 3.3, keys: [[0, Z], [0.16, [-0.07, 0.065, 0.04, 0.2, 0.8, 0.62]], [0.4, [-0.075, 0.075, 0.04, 0.26, 0.86, 0.68]],
+    [0.5, [-0.08, 0.085, 0.01, 0.42, 0.05, 0.45]], [0.6, [-0.09, 0.06, 0.0, 0.45, -0.72, 0.4]], [0.8, [-0.092, 0.065, 0.0, 0.48, -0.76, 0.44]], [1, Z]] },
+  awp: { dur: 3.6, keys: [[0, Z], [0.18, [-0.075, 0.045, -0.045, 0.3, 0.98, 0.2]], [0.42, [-0.08, 0.052, -0.045, 0.34, 1.04, 0.23]],
+    [0.52, [-0.075, 0.068, -0.055, 0.4, 0.15, 0.15]], [0.62, [-0.095, 0.045, -0.045, 0.4, -0.68, 0.28]], [0.82, [-0.097, 0.05, -0.045, 0.43, -0.73, 0.31]], [1, Z]] },
+  mag7: { dur: 3.0, keys: [[0, Z], [0.17, [-0.055, 0.06, 0.03, 0.42, 0.62, 0.5]], [0.4, [-0.06, 0.068, 0.03, 0.47, 0.66, 0.55]],
+    [0.5, [-0.075, 0.08, 0.01, 0.48, 0.05, 0.4]], [0.6, [-0.085, 0.055, 0.0, 0.42, -0.68, 0.35]], [0.8, [-0.087, 0.06, 0.0, 0.45, -0.72, 0.38]], [1, Z]] },
 };
 
 const TYPE = { pistol: 'pistol', smg: 'smg', shotgun: 'shotgun', rifle: 'rifle', sniper: 'sniper', bomb: 'bomb', melee: 'melee' };
@@ -64,7 +85,17 @@ function tan(keys, i, j) {
   if (i === 0 || i === keys.length - 1 || keys[i][2]) return 0;
   return (keys[i + 1][1][j] - keys[i - 1][1][j]) / (keys[i + 1][0] - keys[i - 1][0]);
 }
-function curve(keys, k, n) {
+// The same, but it never swings past a key and back (monotone): fast moves glide into a slow
+// drift instead of overshooting the pose and wobbling back. Used for inspects.
+function tanSoft(keys, i, j) {
+  if (i === 0 || i === keys.length - 1 || keys[i][2]) return 0;
+  const h0 = keys[i][0] - keys[i - 1][0], h1 = keys[i + 1][0] - keys[i][0];
+  const d0 = (keys[i][1][j] - keys[i - 1][1][j]) / h0, d1 = (keys[i + 1][1][j] - keys[i][1][j]) / h1;
+  if (d0 * d1 <= 0) return 0;
+  const w0 = 2 * h1 + h0, w1 = h1 + 2 * h0;
+  return (w0 + w1) / (w0 / d0 + w1 / d1);
+}
+function curve(keys, k, n, tf = tan) {
   const last = keys.length - 1;
   if (k <= keys[0][0]) return keys[0][1].slice(0, n);
   if (k >= keys[last][0]) return keys[last][1].slice(0, n);
@@ -74,7 +105,7 @@ function curve(keys, k, n) {
   const h = t1 - t0 || 1e-6, u = (k - t0) / h, u2 = u * u, u3 = u2 * u;
   const h00 = 2 * u3 - 3 * u2 + 1, h10 = u3 - 2 * u2 + u, h01 = -2 * u3 + 3 * u2, h11 = u3 - u2;
   const out = new Array(n);
-  for (let j = 0; j < n; j++) out[j] = h00 * a[j] + h10 * h * tan(keys, i, j) + h01 * b[j] + h11 * h * tan(keys, i + 1, j);
+  for (let j = 0; j < n; j++) out[j] = h00 * a[j] + h10 * h * tf(keys, i, j) + h01 * b[j] + h11 * h * tf(keys, i + 1, j);
   return out;
 }
 // the same for points: keys [[t, Vector3, stop?], …]
@@ -83,16 +114,54 @@ function curveV(out, keys, k) {
   return out.set(r[0], r[1], r[2]);
 }
 
-export function inspectDuration(weaponId, type) {
-  return (SPECIAL[weaponId] || INSPECT[TYPE[type]] || INSPECT.rifle).dur;
-}
+const inspectDef = (weaponId, type) => SPECIAL[weaponId] || INSPECT[TYPE[type]] || INSPECT.rifle;
 
 // t = seconds since the inspect started; returns a pose, or null when it's over
 export function inspectPose(weaponId, type, t) {
-  const def = SPECIAL[weaponId] || INSPECT[TYPE[type]] || INSPECT.rifle;
+  const def = inspectDef(weaponId, type);
   const k = t / def.dur;
   if (k >= 1) return null;
-  return curve(def.keys, k, 6);
+  const p = curve(def.keys, k, 6, tanSoft);
+  // hands are never perfectly still: a slow, small sway while you look (none at the start and end)
+  const life = Math.sin(Math.PI * k) ** 2;
+  p[0] += 0.0022 * Math.sin(t * 2.3) * life;
+  p[1] += 0.0018 * Math.sin(t * 1.7 + 1.3) * life;
+  p[3] += 0.014 * Math.sin(t * 1.9 + 2.1) * life;
+  p[4] += 0.016 * Math.sin(t * 1.3 + 0.4) * life;
+  p[5] += 0.014 * Math.sin(t * 2.1 + 0.9) * life;
+  return p;
+}
+
+// One-handed tricks during an inspect (the Deagle spin), t = seconds since it started:
+// { oneHand: 0–1 how far the left hand has let go, spin: the gun's forward turn round the trigger
+// finger (radians, a full turn is -2π), wrist: how far the right hand flicks with it }
+const TURN = Math.PI * 2;
+export function inspectTrick(weaponId, type, t) {
+  const def = inspectDef(weaponId, type), s = def.spin;
+  if (!s || t < 0 || t >= def.dur) return null;
+  const k = t / def.dur;
+  const oneHand = sm((k - s.hand[0]) / 0.06) * (1 - sm((k - s.hand[1] + 0.06) / 0.06));
+  // cock the wrist back (muzzle up), flick it forwards, catch it after one full turn
+  const COCK = 0.32, OVER = 0.12;
+  let spin = 0, wrist = 0;
+  const t0 = s.at - s.windup;
+  if (t >= t0 && t < s.at) {
+    spin = wrist = COCK * sm((t - t0) / s.windup);
+  } else if (t >= s.at) {
+    const u = (t - s.at) / s.dur;
+    if (u < 1) {
+      // starts at full speed (the flick) and slows into the catch: snappy, not floaty
+      const e = 1 - Math.pow(1 - u, 2.6);
+      spin = COCK - (TURN + COCK + OVER) * e;
+      wrist = COCK - (COCK + 0.3) * sm(u / 0.45) + 0.3 * sm((u - 0.45) / 0.55);
+    } else {
+      // the catch: settle back from the little overshoot
+      const c = clamp01((t - s.at - s.dur) / s.settle);
+      spin = -TURN - OVER * (1 - sm(c));
+      wrist = -0.05 * Math.sin(Math.PI * c);
+    }
+  }
+  return { oneHand, spin, wrist, pivot: s.pivot };
 }
 
 // k = how much of the draw is left (1 = just started, 0 = done)
@@ -144,17 +213,21 @@ function holdQuat(u) {
 
 // Sudden jumps (an animation interrupted half way, a pose that starts at once) are soaked up:
 // the jump becomes an offset that springs back to zero, so what you see glides instead.
-const _j = new V3();
-function settle(A, name, raw, dt) {
+// `fast` = the quickest a value moves in a normal animation (per second): anything quicker is
+// a jump. (Positions move up to ~2.5 m/s, turns up to ~8 rad/s during a pistol reload.)
+const _j = new V3(), _k = new V3();
+function settle(A, name, raw, dt, fast = 3.5) {
   let s = A[name];
   if (!s) s = A[name] = { prev: raw.clone(), off: new V3(), vel: new V3() };
   _j.subVectors(raw, s.prev);
-  if (_j.length() > 3.5 * dt + 0.004) s.off.sub(_j);
+  if (_j.length() > fast * dt + 0.004) s.off.sub(_j);
   s.prev.copy(raw);
-  // critically damped spring
-  const w = 16;
-  s.vel.addScaledVector(s.off, -w * w * dt).multiplyScalar(Math.max(0, 1 - 2 * w * dt));
-  s.off.addScaledVector(s.vel, dt);
+  // critically damped spring, solved exactly so it always comes back to rest, at any frame rate
+  // (a step-by-step version froze below ~32 fps, so each reload left the gun a little more turned)
+  const w = 16, e = Math.exp(-w * dt);
+  _k.copy(s.vel).addScaledVector(s.off, w);
+  s.off.addScaledVector(_k, dt).multiplyScalar(e);
+  s.vel.addScaledVector(_k, -w * dt).multiplyScalar(e);
   if (s.off.lengthSq() < 1e-10) { s.off.set(0, 0, 0); s.vel.set(0, 0, 0); }
   return raw.add(s.off);
 }
@@ -347,13 +420,14 @@ export function poseViewModel(vm, st) {
   }
 
   // ---- one-handed moments (the Deagle spin): the left hand drops out of the way ----
-  if (st.oneHand > 0) {
+  const trick = st.trick || null, oneHand = trick ? trick.oneHand : 0;
+  if (oneHand > 0) {
     // a spot below the screen (camera space) turned into gun space, so it stays below the screen
     // however the gun is turned
     vm.updateMatrix();
     _gm4.compose(gp, _qt.setFromEuler(_e.set(gr.x, gr.y, gr.z)), _one);
     const away = _tmp2.set(-0.2, -0.45, -0.2).applyMatrix4(_inv.copy(vm.matrix).invert()).applyMatrix4(_gm4.invert());
-    L.lerp(away, sm(st.oneHand));
+    L.lerp(away, sm(oneHand));
   }
 
   // ---- hammer follows the slide ----
@@ -361,13 +435,25 @@ export function poseViewModel(vm, st) {
   if (u.hammer) u.hammer.rotation.x = 1.35 * clamp01(slideBack / 0.026);
 
   // ---- gun pose, smoothed against sudden changes ----
-  settle(A, 'gp', gp, dt); settle(A, 'gr', gr, dt);
+  settle(A, 'gp', gp, dt); settle(A, 'gr', gr, dt, 20);
   gun.position.copy(gp);
   gun.rotation.set(gr.x, gr.y, gr.z);
   gun.updateMatrix();
+  // what the hands hold on to: normally the gun itself
+  const base = _gunM.copy(gun.matrix), baseQ = _gunQ.copy(gun.quaternion);
+  const frameR = _frameR.copy(base), qFrameR = _qFrameR.copy(baseQ);
+  if (trick) {
+    // a spin: the gun turns forwards round the trigger finger while the hand only flicks
+    const pv = _pv.fromArray(trick.pivot);
+    if (trick.wrist) { frameR.multiply(aboutPivot(_ms, pv, trick.wrist)); qFrameR.multiply(_qt.setFromAxisAngle(XAX, trick.wrist)); }
+    if (trick.spin) {
+      _ms2.copy(base).multiply(aboutPivot(_ms, pv, trick.spin)).decompose(gun.position, gun.quaternion, gun.scale);
+      gun.updateMatrix();
+    }
+  }
 
   // ---- hands: position in gun space (jumps soaked up), turned for what they are doing ----
-  if (st.oneHand > 0 && A.L) { A.L.prev.copy(L); } else settle(A, 'L', L, dt);
+  if (oneHand > 0 && A.L) { A.L.prev.copy(L); } else settle(A, 'L', L, dt);
   settle(A, 'R', R, dt);
   const qL = _qL.copy(qHold);
   if (wMag > 0) qL.slerp(Q_MAG, wMag);
@@ -376,13 +462,8 @@ export function poseViewModel(vm, st) {
   if (wPress > 0) qL.slerp(Q_PRESS, wPress);
   if (wBolt > 0) qR.slerp(Q_BOLT, wBolt);
   settleQ(A, 'qL', qL, dt); settleQ(A, 'qR', qR, dt);
-  placeHand(d.handR, R, qR, gun);
-  placeHand(d.handL, L, qL, gun);
-  if (st.spin) {
-    // the gun spins round the trigger finger: undo the spin for the hand holding it
-    d.handR.position.applyAxisAngle(ZAX, -st.spin);
-    d.handR.quaternion.premultiply(_qt.setFromAxisAngle(ZAX, -st.spin));
-  }
+  placeHand(d.handR, R, qR, frameR, qFrameR);
+  placeHand(d.handL, L, qL, base, baseQ);
 
   // a shell in the left hand while loading
   if (shellAt) {
@@ -421,10 +502,18 @@ const ELBOW_OUT = new V3(-0.5, -0.5, -0.15), _anc = new V3();
 const _inv = new THREE.Matrix4(), _base = new THREE.Matrix4(), _bp = new V3(), _bq = new THREE.Quaternion(), _bs = new V3();
 const _shift = new V3(), _elR = new V3(), _elL = new V3(), _wr = new V3(), _dir = new V3(), _gm4 = new THREE.Matrix4(), _one = new V3(1, 1, 1);
 
-function placeHand(hand, localPos, localQuat, gun) {
-  hand.position.copy(localPos).applyMatrix4(gun.matrix);
-  hand.quaternion.copy(gun.quaternion).multiply(localQuat);
+// frame: the gun's matrix (or the hand's own frame during a spin), frameQ: its turn
+function placeHand(hand, localPos, localQuat, frame, frameQ) {
+  hand.position.copy(localPos).applyMatrix4(frame);
+  hand.quaternion.copy(frameQ).multiply(localQuat);
 }
+// turning by `a` round the x axis through the point pv
+function aboutPivot(out, pv, a) {
+  const c = Math.cos(a), s = Math.sin(a);
+  return out.makeRotationX(a).setPosition(0, pv.y - (c * pv.y - s * pv.z), pv.z - (s * pv.y + c * pv.z));
+}
+const XAX = new V3(1, 0, 0), _pv = new V3(), _ms = new THREE.Matrix4(), _ms2 = new THREE.Matrix4();
+const _gunM = new THREE.Matrix4(), _gunQ = new THREE.Quaternion(), _frameR = new THREE.Matrix4(), _qFrameR = new THREE.Quaternion();
 
 function aimForearm(arm, hand, elbow) {
   hand.updateMatrix();
