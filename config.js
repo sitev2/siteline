@@ -31,6 +31,7 @@ export const CONFIG = {
   //   { name: 'Home', url: 'wss://gamebox.tail1234.ts.net' },
   //   { name: 'Render', url: 'wss://siteline-server.onrender.com' },
   servers: [
+    { name: 'Render', url: 'wss://siteline-server.onrender.com' },
   ],
   // Test one server on its own with ?server=wss://... in the page address
   // (then only that server is used).
