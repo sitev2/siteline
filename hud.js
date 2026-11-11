@@ -3,6 +3,7 @@ import { CELL } from './world.js';
 import { TEAM_COLORS } from './models.js';
 import { itemName, WEAPON_ICONS } from './weapons.js';
 import { drawCrosshair, crosshairCfg } from './crosshair.js';
+import { icon, iconHTML } from './icons.js';
 
 const $ = (id) => document.getElementById(id);
 export const TEAM_NAMES = { atk: 'Attackers', def: 'Defenders' };
@@ -84,7 +85,7 @@ export class Hud {
   // mag = null for the bomb (no ammo)
   setAmmo(weapon, mag, res, reloading, mode = '') {
     const noAmmo = mag == null;
-    this.set('ammo-mag', noAmmo ? (weapon === 'spoon' ? '🥄' : '💣') : reloading ? '··' : String(mag));
+    this.set('ammo-mag', noAmmo ? icon(weapon === 'spoon' ? 'spoon' : 'bomb') : reloading ? '··' : String(mag), 'innerHTML');
     this.set('ammo-res', noAmmo ? '' : `/ ${res}`);
     this.set('weapon-name', itemName(weapon));
     this.set('fire-mode', mode);
@@ -142,7 +143,7 @@ export class Hud {
   }
 
   setTimer(sec, planted) {
-    this.set('timer', planted ? `💣 ${fmtTime(sec)}` : fmtTime(sec));
+    this.set('timer', planted ? `${icon('bomb')} ${fmtTime(sec)}` : fmtTime(sec), 'innerHTML');
     $('timer').classList.toggle('planted', !!planted);
   }
 
@@ -175,11 +176,11 @@ export class Hud {
     const row = document.createElement('div');
     row.className = 'kf';
     // weapon silhouette (or the bomb), a headshot mark, then the victim
-    const icon = WEAPON_ICONS[weapon] ? `<svg class="kf-icon" viewBox="0 0 120 40" aria-label="${esc(itemName(weapon))}">${WEAPON_ICONS[weapon]}</svg>`
-      : `<span class="kf-w">${weapon === 'bomb' ? '💥' : esc(itemName(weapon))}</span>`;
+    const wIcon = WEAPON_ICONS[weapon] ? `<svg class="kf-icon" viewBox="0 0 120 40" aria-label="${esc(itemName(weapon))}">${WEAPON_ICONS[weapon]}</svg>`
+      : `<span class="kf-w">${weapon === 'bomb' ? icon('blast') : esc(itemName(weapon))}</span>`;
     const col = t => (TEAM_COLORS[t] || TEAM_COLORS.ffa).css;
     const k = killer ? `<b style="color:${col(killer.team)}">${esc(killer.name)}</b> ` : '';
-    row.innerHTML = `${k}${icon}${head ? '<span class="kf-hs" title="Headshot">✦</span>' : ''} <b style="color:${col(victim.team)}">${esc(victim.name)}</b>`;
+    row.innerHTML = `${k}${wIcon}${head ? `<span class="kf-hs" title="Headshot">${icon('star')}</span>` : ''} <b style="color:${col(victim.team)}">${esc(victim.name)}</b>`;
     const feed = $('killfeed');
     feed.prepend(row);
     while (feed.children.length > 5) feed.lastChild.remove();
@@ -188,9 +189,9 @@ export class Hud {
   }
 
   center(text, sub = '', color = '#fff', seconds = 3) {
-    $('center-msg').textContent = text;
+    $('center-msg').innerHTML = iconHTML(text);
     $('center-msg').style.color = color;
-    $('center-sub').textContent = sub;
+    $('center-sub').innerHTML = iconHTML(sub);
     $('center').classList.remove('hidden');
     this.centerTimer = seconds;
   }
@@ -204,7 +205,7 @@ export class Hud {
   }
 
   hint(text) {
-    this.set('hint', text || '');
+    this.set('hint', iconHTML(text || ''), 'innerHTML');
     $('hint').classList.toggle('hidden', !text);
   }
 
@@ -234,7 +235,7 @@ export class Hud {
     row.className = 'chat-line';
     const tag = document.createElement('span');
     tag.className = 'tag';
-    tag.textContent = (m.dead ? '☠ ' : '') + (m.toTeam ? '(team)' : '');
+    tag.innerHTML = (m.dead ? icon('skull') + ' ' : '') + (m.toTeam ? '(team)' : '');
     const name = document.createElement('b');
     name.style.color = (TEAM_COLORS[m.team] || TEAM_COLORS.ffa).css;
     name.textContent = m.name + ': ';

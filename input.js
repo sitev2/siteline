@@ -12,8 +12,6 @@ export class Input {
     this.fire = false;
     this.useHeld = false;
     this.walk = false;
-    this.crouchHeld = false;   // keyboard: hold C
-    this.crouchToggle = false; // touch: tap the crouch button to crouch / stand
     this.scoreHeld = false;
     this.pressed = new Set();     // one-shot actions consumed each frame
     this.touchMove = { x: 0, y: 0 };
@@ -37,7 +35,6 @@ export class Input {
 
   press(action) { this.pressed.add(action); }
 
-  get crouch() { return this.crouchHeld || this.crouchToggle; }
 
   consume(action) {
     const had = this.pressed.has(action);
@@ -95,7 +92,6 @@ export class Input {
       if (act === 'score') { this.scoreHeld = true; return; }
       if (act === 'use') this.useHeld = true;
       if (act === 'walk') { this.walk = true; return; }
-      if (act === 'crouch') { this.crouchHeld = true; return; }
       if (!e.repeat) this.press(act);
     });
     this.on(window, 'keyup', (e) => {
@@ -105,10 +101,9 @@ export class Input {
       if (act === 'score') this.scoreHeld = false;
       if (act === 'use') this.useHeld = false;
       if (act === 'walk') this.walk = false;
-      if (act === 'crouch') this.crouchHeld = false;
     });
     this.on(window, 'blur', () => {
-      this.held.clear(); this.fire = false; this.useHeld = false; this.scoreHeld = false; this.walk = false; this.crouchHeld = false; this.updateMove();
+      this.held.clear(); this.fire = false; this.useHeld = false; this.scoreHeld = false; this.walk = false; this.updateMove();
     });
 
     // mouse
@@ -159,7 +154,6 @@ export class Input {
         info.btn = btn; btn.classList.add('down');
         if (act === 'fire') { this.fire = true; this.press('click'); info.kind = 'look'; }
         else if (act === 'use') { this.useHeld = true; this.press('use'); info.kind = 'hold'; }
-        else if (act === 'crouch') { this.crouchToggle = !this.crouchToggle; info.kind = 'tap'; }
         else if (act === 'score') { this.scoreHeld = true; info.kind = 'hold'; }
         else { this.press(act); info.kind = 'tap'; }
       } else if (e.clientX < window.innerWidth * 0.42 && ![...this.pointers.values()].some(p => p.kind === 'joy')) {

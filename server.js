@@ -1,7 +1,7 @@
 // Authoritative game state. Runs inside the host player's browser.
 // Clients send their own movement and shots; the host validates hits,
 // owns health, armour, money, the bomb, rounds and score, and broadcasts snapshots.
-import { World, CELL, EYE, EYE_CROUCH, bodyHeight, blastField, blastDamage } from './world.js';
+import { World, CELL, EYE, blastField, blastDamage } from './world.js';
 import { MAPS, resolveMap, mapsFor, isDmMap, dmVariant } from './maps.js';
 import { RULES } from './config.js';
 import { NavGrid, BotBrain, BOT_NAMES } from './bots.js';
@@ -18,7 +18,7 @@ const DM_LOADOUT = { primary: 'ak47', secondary: 'deagle' };
 const PICK_AUTO = 0.9;   // walk this close to a dropped gun with a free slot to pick it up
 const PICK_USE = 2.2;    // how far away you can swap for a gun with E / ✋
 const REJOIN_WAIT = 60;   // seconds a match waits for a team that left before it is forfeited
-const eyeOf = p => p.y + EYE + (EYE_CROUCH - EYE) * (p.duck || 0);
+const eyeOf = p => p.y + EYE;
 
 function cleanName(n) {
   const s = String(n || '').replace(/[^\p{L}\p{N} _.\-!?]/gu, '').trim().slice(0, 16);
@@ -103,7 +103,7 @@ export class Server {
       hp: 100, alive: false, kills: 0, deaths: 0, lastShot: 0, use: false, moved: 0, dummy: false, ping: 0, squad,
       money: this.practice ? MONEY.max : MONEY.start, inv: { primary: null, secondary: STARTER_PISTOL[team] },
       armor: 0, helmet: false, kit: false, hs: 0, dmg: 0,
-      duck: 0, ammo: {},
+      ammo: {},
     };
     p.spoon = hasSpoon(p.name);    // the secret spoon: only for the player with that name
     this.players.set(id, p);
@@ -406,7 +406,6 @@ export class Server {
     p.moved += Math.hypot(m.x - p.x, m.z - p.z);
     p.x = m.x; p.y = m.y; p.z = m.z; p.yaw = m.yaw; p.pitch = m.pitch;
     p.use = !!m.u;
-    p.duck = Number.isFinite(m.c) ? Math.max(0, Math.min(1, m.c)) : 0;
     if (this.canHold(p, m.w)) p.w = m.w;
     // remember ammo so a dropped gun keeps what was left in it
     if (Array.isArray(m.am) && m.am.length === 4) {
@@ -675,7 +674,7 @@ export class Server {
     }
     this.broadcast({
       t: 'kill', killer: attacker ? attacker.id : null, victim: tgt.id, w: weapon, head: !!head,
-      from: from ? from.map(r2) : null, part: part || 'chest', duck: r2(tgt.duck || 0),
+      from: from ? from.map(r2) : null, part: part || 'chest',
     });
     if (this.bomb.carrier === tgt.id && this.bomb.state === 'carried') this.dropBomb(tgt, this.throwSpot(tgt, 0.4, Math.PI));
     if (this.dm) {
@@ -771,7 +770,7 @@ export class Server {
       id, name: name + suffix, botName: name, team, x: 0, y: 0, z: 0, yaw: 0, pitch: 0, w: STARTER_PISTOL[team] || 'glock',
       hp: 100, alive: false, kills: 0, deaths: 0, lastShot: 0, use: false, moved: 0, dummy: false, bot: true, ping: 0,
       squad: this.squadOf(team), money: MONEY.start, inv: { primary: null, secondary: STARTER_PISTOL[team] || 'glock' },
-      armor: 0, helmet: false, kit: false, hs: 0, dmg: 0, duck: 0, ammo: {}, ...extra,
+      armor: 0, helmet: false, kit: false, hs: 0, dmg: 0, ammo: {}, ...extra,
     };
     this.players.set(id, p);
     this.bots.set(id, new BotBrain(this, p, cfg || { kind: this.botCfg.kind, level: this.botCfg.level, behavior: this.botCfg.behavior }));
@@ -1017,7 +1016,7 @@ export class Server {
       const lo = p.dmLoadout || DM_LOADOUT;
       p.inv = { primary: lo.primary, secondary: lo.secondary };
       p.w = p.inv.primary || p.inv.secondary;
-      p.armor = 100; p.helmet = true; p.kit = false; p.duck = 0; p.ammo = {};
+      p.armor = 100; p.helmet = true; p.kit = false; p.ammo = {};
       const s = this.dmSpawn(p);
       p.x = s.x; p.y = 0; p.z = s.z;
       p.yaw = Number.isFinite(s.yaw) ? s.yaw : 0;
@@ -1028,7 +1027,6 @@ export class Server {
     if (!p.inv.secondary) p.inv.secondary = STARTER_PISTOL[p.team];
     if (!p.inv.primary && !p.inv.secondary) p.inv.secondary = STARTER_PISTOL[p.team];
     if (p.w !== p.inv.primary && p.w !== p.inv.secondary) p.w = p.inv.primary || p.inv.secondary;
-    p.duck = 0;
     const list = this.world.spawns[p.team];
     const s = list[Math.floor(Math.random() * list.length)];
     p.x = s.x; p.y = 0; p.z = s.z;
@@ -1048,7 +1046,7 @@ export class Server {
     this.bomb = this.freshBomb();
     this.roundPlanted = false;
     this.clearDrops();
-    for (const p of this.players.values()) { p.bought = {}; p.duck = 0; if (p.bot) p.light = !!this.settings.night; }
+    for (const p of this.players.values()) { p.bought = {}; if (p.bot) p.light = !!this.settings.night; }
     const spawns = {};
     for (const team of ['atk', 'def']) {
       const list = this.world.spawns[team].slice().sort(() => Math.random() - 0.5);
@@ -1307,7 +1305,7 @@ export class Server {
     const ps = [];
     for (const p of this.players.values()) {
       ps.push([p.id, r2(p.x), r2(p.y), r2(p.z), r2(p.yaw), r2(p.pitch), p.alive ? 1 : 0, p.hp, p.w, p.kills, p.deaths,
-        p.team === 'atk' ? 0 : p.team === 'def' ? 1 : 2, p.use ? 1 : 0, p.ping, p.armor | 0, (p.helmet ? 1 : 0) | (p.kit ? 2 : 0) | (p.light ? 4 : 0), p.money | 0, r2(p.duck || 0)]);
+        p.team === 'atk' ? 0 : p.team === 'def' ? 1 : 2, p.use ? 1 : 0, p.ping, p.armor | 0, (p.helmet ? 1 : 0) | (p.kit ? 2 : 0) | (p.light ? 4 : 0), p.money | 0]);
     }
     const b = this.bomb;
     const timeLeft = this.phase === 'planted' || (this.practice && b.state === 'planted') ? b.timer : this.timer;

@@ -999,12 +999,11 @@ function solveArm(arm, target, L1, L2, pole) {
 const POLE_R = new THREE.Vector3(0.8, -1, 0.35), POLE_L = new THREE.Vector3(-0.8, -1, 0.15);
 const _t = new THREE.Vector3();
 
-// state: { speed, fwd, side (m/s in the body's frame), pitch, duck (0..1), air, use (planting / defusing) }
+// state: { speed, fwd, side (m/s in the body's frame), pitch, air, use (planting / defusing) }
 export function animateModel(model, dt, state) {
   model.t += dt;
   const speed = state.speed || 0;
   const use = !!state.use;
-  const duck = use ? 0 : (state.duck || 0);
   // airborne / landing
   model.air += ((state.air ? 1 : 0) - model.air) * Math.min(1, dt * 10);
   if (model.wasAir && !state.air) model.land = 1;
@@ -1019,15 +1018,15 @@ export function animateModel(model, dt, state) {
   const wantYaw = Math.max(-1.1, Math.min(1.1, ang)) * moving;
   model.legYaw += (wantYaw - model.legYaw) * Math.min(1, dt * 8);
   const walk = speed < 3.2;
-  model.phase += dt * speed * (duck > 0.5 ? 3.0 : walk ? 2.6 : 1.85) * dir;
+  model.phase += dt * speed * (walk ? 2.6 : 1.85) * dir;
   const run = Math.min(1, speed / 5.5) * (1 - model.air);
   const amp = (walk ? 0.38 : 0.62) * Math.min(1, speed / 2) * (1 - model.air);
   const ph = model.phase;
   const breathe = Math.sin(model.t * 1.6) * (1 - moving);
 
   // hips: height, bob and sway
-  let hipY = 0.92 - 0.4 * duck - model.land * 0.07 - model.air * 0.04;
-  hipY += (Math.abs(Math.sin(ph)) - 0.6) * 0.03 * Math.min(1, speed / 2) * (1 - model.air) * (1 - duck * 0.5);
+  let hipY = 0.92 - model.land * 0.07 - model.air * 0.04;
+  hipY += (Math.abs(Math.sin(ph)) - 0.6) * 0.03 * Math.min(1, speed / 2) * (1 - model.air);
   model.hips.position.y = hipY;
   const gd = model.gunData || {};
   const kind = gd.kind || 'rifle';
@@ -1039,11 +1038,11 @@ export function animateModel(model, dt, state) {
     const s = Math.sin(ph + (i ? Math.PI : 0));
     const c = Math.cos(ph + (i ? Math.PI : 0));
     // forward swing lifts the knee; idle stance keeps the left foot a little ahead
-    const stance = (1 - moving) * (i === 0 ? -0.12 : 0.1) * (1 - duck);
+    const stance = (1 - moving) * (i === 0 ? -0.12 : 0.1);
     const tuck = model.air * (i ? 0.45 : 0.85);
-    model.thighs[i].rotation.set(1.15 * duck + s * amp + stance + tuck - model.land * 0.25, 0, 0);
+    model.thighs[i].rotation.set(s * amp + stance + tuck - model.land * 0.25, 0, 0);
     const knee = 0.12 * moving + Math.max(0, c) * (walk ? 0.55 : 1.1) * Math.min(1, speed / 2) * (1 - model.air) + model.land * 0.5;
-    model.shins[i].rotation.set(-2.05 * duck - knee - tuck * 1.25, 0, 0);
+    model.shins[i].rotation.set(-knee - tuck * 1.25, 0, 0);
   }
   // kneeling to plant or defuse: right knee on the ground, left foot forward (blends in and out)
   model.useW += ((use ? 1 : 0) - model.useW) * Math.min(1, dt * 7);
@@ -1057,8 +1056,8 @@ export function animateModel(model, dt, state) {
     T[1].rotation.x = mix(T[1].rotation.x, 0.25); S[1].rotation.x = mix(S[1].rotation.x, -1.65);
     T[0].rotation.x = mix(T[0].rotation.x, 1.4); S[0].rotation.x = mix(S[0].rotation.x, -1.4);
   }
-  // upper body: lean into a run, crouch hunch, breathing
-  const lean = -0.18 * run - 0.22 * duck - 0.35 * kw + breathe * 0.012;
+  // upper body: lean into a run, breathing
+  const lean = -0.18 * run - 0.35 * kw + breathe * 0.012;
   model.spine.rotation.x = lean;
   model.spine.rotation.z = -Math.sin(ph) * 0.03 * run;
   // aim pitch and gun hold

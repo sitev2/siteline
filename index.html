@@ -44,12 +44,12 @@
     <div id="econ"><div id="income"></div><div id="money">$800</div></div>
     <div id="vitals">
       <div class="vit-left">
-        <div id="hp"><span class="plus">✚</span><b id="hp-value">100</b><div class="hpbar"><div id="hp-bar"></div><div id="hp-ghost"></div></div></div>
-        <div id="armor" class="none"><span class="shield">⛉</span><b id="armor-value">0</b><span id="helmet-icon" class="hidden" title="Helmet">⛑</span></div>
+        <div id="hp"><span class="plus"><i data-icon="plus"></i></span><b id="hp-value">100</b><div class="hpbar"><div id="hp-bar"></div><div id="hp-ghost"></div></div></div>
+        <div id="armor" class="none"><span class="shield"><i data-icon="shield"></i></span><b id="armor-value">0</b><span id="helmet-icon" class="hidden" title="Helmet"><i data-icon="helmet"></i></span></div>
       </div>
       <div class="vit-mid">
-        <div id="bomb-icon" class="hidden">💣 BOMB</div>
-        <div id="kit-icon" class="hidden">🔧 KIT</div>
+        <div id="bomb-icon" class="hidden"><i data-icon="bomb"></i><span class="lbl"> BOMB</span></div>
+        <div id="kit-icon" class="hidden"><i data-icon="wrench"></i><span class="lbl"> KIT</span></div>
       </div>
       <div id="ammo"><span id="weapon-name">Pistol</span><span id="fire-mode"></span><b id="ammo-mag">20</b><span id="ammo-res">/ 60</span></div>
     </div>
@@ -73,19 +73,18 @@
     <div id="joy"><div id="joy-knob"></div></div>
     <button data-act="fire" id="btn-fire" aria-label="Fire"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 2v6M12 16v6M2 12h6M16 12h6" stroke="currentColor" stroke-width="2"/></svg></button>
     <button data-act="fire" id="btn-fire-left" aria-label="Fire"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/></svg></button>
-    <button data-act="jump" id="btn-jump" aria-label="Jump">⤒</button>
-    <button data-act="reload" id="btn-reload" aria-label="Reload">↻</button>
-    <button data-act="alt" id="btn-alt" class="hidden" aria-label="Scope or burst mode">◎</button>
-    <button data-act="swap" id="btn-swap" aria-label="Switch weapon">⇄</button>
-    <button data-act="crouch" id="btn-crouch" aria-label="Crouch">⤓</button>
-    <button data-act="drop" id="btn-drop" aria-label="Drop weapon">⇩</button>
-    <button data-act="inspect" id="btn-inspect" aria-label="Inspect weapon">🔍</button>
-    <button data-act="chatAll" id="btn-chat" aria-label="Chat">💬</button>
-    <button data-act="flashlight" id="btn-light" class="hidden" aria-label="Flashlight">🔦</button>
-    <button data-act="use" id="btn-use" class="hidden" aria-label="Plant or defuse">✋</button>
-    <button data-act="buy" id="btn-buy" class="hidden" aria-label="Buy menu">🛒</button>
-    <button data-act="score" id="btn-score" aria-label="Scoreboard">☰</button>
-    <button data-act="menu" id="btn-menu" aria-label="Menu">❚❚</button>
+    <button data-act="jump" id="btn-jump" aria-label="Jump"><i data-icon="jump"></i></button>
+    <button data-act="reload" id="btn-reload" aria-label="Reload"><i data-icon="reload"></i></button>
+    <button data-act="alt" id="btn-alt" class="hidden" aria-label="Scope or burst mode"><i data-icon="scope"></i></button>
+    <button data-act="swap" id="btn-swap" aria-label="Switch weapon"><i data-icon="swap"></i></button>
+    <button data-act="drop" id="btn-drop" aria-label="Drop weapon"><i data-icon="drop"></i></button>
+    <button data-act="inspect" id="btn-inspect" aria-label="Inspect weapon"><i data-icon="search"></i></button>
+    <button data-act="chatAll" id="btn-chat" aria-label="Chat"><i data-icon="chat"></i></button>
+    <button data-act="flashlight" id="btn-light" class="hidden" aria-label="Flashlight"><i data-icon="light"></i></button>
+    <button data-act="use" id="btn-use" class="hidden" aria-label="Plant or defuse"><i data-icon="hand"></i></button>
+    <button data-act="buy" id="btn-buy" class="hidden" aria-label="Buy menu"><i data-icon="cart"></i></button>
+    <button data-act="score" id="btn-score" aria-label="Scoreboard"><i data-icon="list"></i></button>
+    <button data-act="menu" id="btn-menu" aria-label="Menu"><i data-icon="pause"></i></button>
   </div>
 
   <div id="layout-editor" class="hidden">
@@ -178,7 +177,7 @@
           <div id="map-cards" class="map-cards"></div>
           <div class="lobby-row">
             <div class="match-rules" id="match-rules"><b>2v2</b> · first to <b>9</b> · sides swap after round <b>8</b> · 8–8 is a draw</div>
-            <label class="check night-toggle"><input type="checkbox" id="lobby-night"> 🌙 Night mode</label>
+            <label class="check night-toggle"><input type="checkbox" id="lobby-night"> <i data-icon="moon"></i> Night mode</label>
             <button id="btn-shuffle" class="ghost host-only">Shuffle teams</button>
             <button id="btn-start" class="primary host-only">Start match</button>
           </div>
@@ -207,7 +206,7 @@
         <label class="field p-botopt"><span>Bot difficulty</span>
           <select id="p-level"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select>
         </label>
-        <label class="check"><input type="checkbox" id="p-night"> 🌙 Night mode (dark map, flashlights)</label>
+        <label class="check"><input type="checkbox" id="p-night"> <i data-icon="moon"></i> Night mode (dark map, flashlights)</label>
         <p class="note" id="p-note">Friends can join with the room code or invite link from the pause menu. They take a bot's place.</p>
         <button id="p-start" class="primary">Start</button>
         <button class="ghost back">Back</button>
@@ -239,7 +238,7 @@
         <div class="tab-page hidden" data-page="controls">
           <p class="note">Click an action, then press the key you want. Esc cancels. The mouse wheel switches guns and the right mouse button scopes as well.</p>
           <div id="keybinds" class="keybinds"></div>
-          <p id="ctrl-warning" class="warn hidden">⚠ You picked Ctrl. In most browsers Ctrl+W closes the tab — so don't crouch and walk forward at the same time with Ctrl, or pick another key.</p>
+          <p id="ctrl-warning" class="warn hidden"><i data-icon="warn"></i> You picked Ctrl. In most browsers Ctrl+W closes the tab — so don't hold it while walking forward, or pick another key.</p>
           <button id="btn-keys-reset" class="ghost">Reset to defaults</button>
         </div>
 
@@ -405,14 +404,14 @@
             <p><b class="c-atk">Attackers</b> carry a bomb. Plant it on the bomb site, then protect it until it explodes.</p>
             <p><b class="c-def">Defenders</b> stop the plant, or defuse the bomb once it's down. Wipe out the other team to win the round too.</p>
             <p><b>Practice &amp; bots</b>: a practice range with bot targets, a 2v2 bot match and bot deathmatch, on easy, normal or hard. Friends can join from the invite in the pause menu and take a bot's place.</p>
-            <p><b>Deathmatch</b> (2–4 players): everyone for themselves, first to 30 kills or 10 minutes. You respawn after a second with full armour; press B / 🛒 any time to pick any gun for free.</p>
+            <p><b>Deathmatch</b> (2–4 players): everyone for themselves, first to 30 kills or 10 minutes. You respawn after a second with full armour; press B / <i data-icon="cart"></i> any time to pick any gun for free.</p>
             <p>Teams of two. No respawns during a round. First to 9 rounds wins, the teams swap sides after round 8, and 8–8 is a draw. Rounds last 1:55; once the bomb is planted it explodes after 40 seconds. Defusing takes 10 seconds, or 5 with a defuse kit — keep looking at the bomb.</p>
             <h3>Money &amp; buying</h3>
             <p>Everyone starts each half with $800. You earn money for winning rounds, for kills (cheaper guns pay more) and a growing loss bonus when your team loses. Buy guns, armour and kits in your spawn area during the first 20 seconds of each round. Survivors keep their gear.</p>
             <h3>Shooting</h3>
             <p>Stand still to be accurate: guns only shoot straight once you've slowed to about a third of your speed — tap the opposite key to stop instantly. Automatic guns kick in a fixed pattern you can learn. Armour stops part of the damage and stops your aim being knocked around. Bullets pass through boxes, crates and barrels with reduced damage; solid walls stop everything.</p>
-            <h3>Crouching &amp; teamwork</h3>
-            <p>Crouch to be quieter, smaller and recover your aim faster; crouch in mid-air to jump higher. Jump onto a teammate's head to reach high spots — they can walk around with you on top. The dead drop their gun (and kit) for anyone to pick up.</p>
+            <h3>Teamwork</h3>
+            <p>Jump onto a teammate's head to reach high spots — they can walk around with you on top. The dead drop their gun (and kit) for anyone to pick up.</p>
           </div>
           <div>
             <h3>Keyboard &amp; mouse</h3>
@@ -422,7 +421,6 @@
               <tr><td><kbd>Right click</kbd> / <kbd>Q</kbd></td><td>Scope · burst mode</td></tr>
               <tr><td><kbd>Space</kbd></td><td>Jump</td></tr>
               <tr><td><kbd>Shift</kbd></td><td>Walk quietly</td></tr>
-              <tr><td><kbd>C</kbd> (hold)</td><td>Crouch (silent, smaller)</td></tr>
               <tr><td><kbd>R</kbd></td><td>Reload</td></tr>
               <tr><td><kbd>E</kbd> (hold)</td><td>Plant / defuse · tap to pick up the gun you're looking at</td></tr>
               <tr><td><kbd>G</kbd></td><td>Drop your gun (or the bomb)</td></tr>
@@ -438,8 +436,8 @@
           <div>
             <h3>Phone &amp; tablet</h3>
             <p>Turn your device sideways. Put your left thumb anywhere on the left side to move. Drag on the right side to aim.</p>
-            <p>Hold the big fire button to shoot — you can keep dragging it to aim while firing. ⇄ switches guns (and the bomb, if you carry it), ◎ scopes (or switches burst mode), ⤓ crouches (tap again to stand), ⇩ drops your gun, 🛒 opens the buy menu. ✋ appears when you can plant, defuse or pick up a gun.</p>
-            <p>🔍 inspects your gun, 💬 opens chat and 🔦 switches your flashlight on at night. You can move, resize and fade every button in Settings → Phone layout.</p>
+            <p>Hold the big fire button to shoot — you can keep dragging it to aim while firing. <i data-icon="swap"></i> switches guns (and the bomb, if you carry it), <i data-icon="scope"></i> scopes (or switches burst mode), <i data-icon="drop"></i> drops your gun, <i data-icon="cart"></i> opens the buy menu. <i data-icon="hand"></i> appears when you can plant, defuse or pick up a gun.</p>
+            <p><i data-icon="search"></i> inspects your gun, <i data-icon="chat"></i> opens chat and <i data-icon="light"></i> switches your flashlight on at night. You can move, resize and fade every button in Settings → Phone layout.</p>
             <p>On iPhone, tap Share → <i>Add to Home Screen</i> and launch from there for full screen.</p>
           </div>
         </div>

@@ -8,12 +8,6 @@ export const STEP = 0.42;         // max height you can walk up without jumping
 export const PLAYER_RADIUS = 0.36;
 export const PLAYER_HEIGHT = 1.8;
 export const EYE = 1.62;
-export const CROUCH_HEIGHT = 1.37;  // 54 units
-export const EYE_CROUCH = 1.17;     // 46 units
-export const TUCK = 0.28;           // crouching in the air pulls your feet up this much (crouch-jump ≈ 65 units)
-// body height / hitbox scale for a crouch amount 0 (standing) … 1 (fully crouched)
-export const bodyHeight = duck => PLAYER_HEIGHT - (PLAYER_HEIGHT - CROUCH_HEIGHT) * duck;
-export const hitScale = duck => 1 - 0.25 * duck;
 
 export function hash2(x, y) {
   let h = (x * 374761393 + y * 668265263) | 0;
@@ -317,7 +311,7 @@ export class World {
   }
 
   // Move a body (feet position p, velocity v). Returns true if on the ground.
-  // height: body height (lower when crouched). platforms: [{x, z, r, top}] — round tops you can
+  // height: body height. platforms: [{x, z, r, top}] — round tops you can
   // stand on, such as a teammate's head.
   move(p, v, dt, r = PLAYER_RADIUS, wasOnGround = false, height = PLAYER_HEIGHT, platforms = null) {
     let onGround = false;
@@ -466,7 +460,7 @@ function raySphere(ox, oy, oz, dx, dy, dz, cx, cy, cz, r) {
 }
 
 // Hit zones in the player's own frame (x = right, z = back, feet at y = 0).
-// `h` scales heights (crouching); `yaw` turns the zones with the player.
+// `h` scales heights; `yaw` turns the zones with the player.
 const ZONES = [
   ['chest', -0.2, 1.12, -0.16, 0.2, 1.42, 0.16],
   ['stomach', -0.19, 0.82, -0.15, 0.19, 1.12, 0.15],

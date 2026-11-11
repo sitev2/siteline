@@ -5,7 +5,7 @@
 // bursts, fall back to cover when hurt or reloading, and play the bomb objective as a team
 // (routes into the site, holding angles, guarding the planted bomb, retakes, saving).
 // They fire through the same hit checks as players.
-import { CELL, STEP, PLAYER_RADIUS, EYE, EYE_CROUCH, GRAVITY, bodyHeight, hitScale, rayVsPlayer } from './world.js';
+import { CELL, STEP, PLAYER_RADIUS, PLAYER_HEIGHT, EYE, GRAVITY, rayVsPlayer } from './world.js';
 import { WEAPONS, U, runSpeed, penMetres, ACCURATE_SPEED, patternAt } from './weapons.js';
 import { RULES } from './config.js';
 
@@ -18,17 +18,17 @@ import { RULES } from './config.js';
 //   stop: chance they stop moving to shoot; fov: how wide they look (cosine); sight: metres
 //   smart: how much they use tactics (pre-aiming, counter-strafing, cover, teamwork) 0–1
 //   hear: how far they hear (share of the full distance); callout: seconds before teammates share a sighting
-//   retreatHp: fall back to cover below this much health; crouch: chance to crouch for a long spray
+//   retreatHp: fall back to cover below this much health
 export const BOT_LEVELS = {
-  easy: { reaction: 0.8, turn: 3.0, err: 0.12, minErr: 0.04, settle: 1.6, head: 0.08, recoil: 1.0, burst: [6, 12], pause: 0.5, tap: 0.5, stop: 0.35, fov: 0.45, sight: 35, smart: 0.25, hear: 0.55, callout: 1.2, retreatHp: 0, crouch: 0 },
-  normal: { reaction: 0.45, turn: 6.0, err: 0.065, minErr: 0.018, settle: 0.9, head: 0.22, recoil: 0.45, burst: [3, 7], pause: 0.32, tap: 0.32, stop: 0.8, fov: 0.25, sight: 50, smart: 0.65, hear: 0.85, callout: 0.6, retreatHp: 30, crouch: 0.25 },
-  hard: { reaction: 0.25, turn: 11, err: 0.032, minErr: 0.007, settle: 0.45, head: 0.42, recoil: 0.15, burst: [3, 5], pause: 0.2, tap: 0.21, stop: 1.0, fov: 0.1, sight: 70, smart: 1.0, hear: 1.0, callout: 0.35, retreatHp: 40, crouch: 0.45 },
+  easy: { reaction: 0.8, turn: 3.0, err: 0.12, minErr: 0.04, settle: 1.6, head: 0.08, recoil: 1.0, burst: [6, 12], pause: 0.5, tap: 0.5, stop: 0.35, fov: 0.45, sight: 35, smart: 0.25, hear: 0.55, callout: 1.2, retreatHp: 0 },
+  normal: { reaction: 0.45, turn: 6.0, err: 0.065, minErr: 0.018, settle: 0.9, head: 0.22, recoil: 0.45, burst: [3, 7], pause: 0.32, tap: 0.32, stop: 0.8, fov: 0.25, sight: 50, smart: 0.65, hear: 0.85, callout: 0.6, retreatHp: 30 },
+  hard: { reaction: 0.25, turn: 11, err: 0.032, minErr: 0.007, settle: 0.45, head: 0.42, recoil: 0.15, burst: [3, 5], pause: 0.2, tap: 0.21, stop: 1.0, fov: 0.1, sight: 70, smart: 1.0, hear: 1.0, callout: 0.35, retreatHp: 40 },
 };
 
 export const BOT_NAMES = ['Ash', 'Birch', 'Cedar', 'Dune', 'Ember', 'Flint', 'Grove', 'Haze', 'Iris', 'Jade', 'Kite', 'Lark', 'Moss', 'Nova', 'Onyx', 'Pike'];
 
 const JUMP_V = Math.sqrt(2 * GRAVITY * 54 * U);
-const eyeOf = p => p.y + EYE + (EYE_CROUCH - EYE) * (p.duck || 0);
+const eyeOf = p => p.y + EYE;
 const angDiff = (a, b) => { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
 const rnd = (a, b) => a + Math.random() * (b - a);
 
@@ -406,8 +406,8 @@ export class BotBrain {
     this.nextShot = 0; this.burstLeft = 0; this.reloadUntil = 0; this.shots = 0; this.fireInacc = 0; this.lastFire = -10;
     this.idleUntil = 0; this.stuckPos = null; this.stuckCount = 0;
     this.spot = null; this.alertYaw = null; this.alertUntil = 0; this.boughtRound = -1; this.buyAt = 0;
-    this.p.use = false; this.p.duck = 0;
-    this.strafe = 0; this.strafeUntil = 0; this.crouchFight = false;
+    this.p.use = false;
+    this.strafe = 0; this.strafeUntil = 0;
     this.mem.clear();
     this.mode = 'objective'; this.cover = null; this.coverUntil = 0; this.holdLook = 0;
     this.plan = null; this.planRound = -1; this.waitUntil = 0; this.hurtAt = -10;
@@ -446,7 +446,7 @@ export class BotBrain {
   // can I see this player? (cover like boxes blocks sight even though bullets go through it)
   canSee(q) {
     const p = this.p, ex = p.x, ey = eyeOf(p), ez = p.z;
-    const h = bodyHeight(q.duck || 0);
+    const h = PLAYER_HEIGHT;
     for (const fy of [0.92, 0.55]) {
       if (clearLine(this.world, ex, ey, ez, q.x, q.y + h * fy, q.z)) return true;
     }
@@ -580,7 +580,7 @@ export class BotBrain {
     }
     const t = shoots && this.target && now - this.lastSeen < 0.25 ? this.target : null;
 
-    let move = null, speedK = 1, duck = 0;
+    let move = null, speedK = 1;
     if (this.mode === 'retreat' && this.cover) {
       // back off to cover, still shooting if they're in view
       p.use = false;
@@ -591,19 +591,17 @@ export class BotBrain {
       this.aimAndShoot(t, dt, now);
       move = this.combatMove(t, now);
       speedK = move ? (this.strafeK || 0.55) : 0;
-      duck = this.crouchFight ? 1 : 0;
     } else {
       if (this.alertYaw != null && now < this.alertUntil) this.turnTo(this.alertYaw, 0, dt);
       const goal = this.mode === 'hunt' ? this.huntGoal(now) : this.objective(now);
       if (goal && goal.use) {
-        // planting / defusing: stand still, crouch and keep looking at the spot
+        // planting / defusing: stand still and keep looking at the spot
         p.use = true;
         if (goal.look) this.faceSpot(goal.look, dt);
       } else {
         p.use = false;
         if (goal && goal.x != null) move = this.navigate(goal, now);
         if (goal && goal.sneak && move) speedK = 0.5;     // walking is silent
-        if (goal && goal.duck && !move) duck = 1;
         const alert = this.alertYaw != null && now < this.alertUntil;
         if (!alert) {
           const th = this.threat(now, 6);
@@ -614,7 +612,6 @@ export class BotBrain {
         }
       }
     }
-    p.duck += ((p.use || duck ? 1 : 0) - p.duck) * Math.min(1, dt * 8);
     this.physics(move, speedK, dt, now);
   }
 
@@ -667,7 +664,7 @@ export class BotBrain {
     const gx = th.x + th.vx * age, gz = th.z + th.vz * age;
     const d = Math.hypot(gx - p.x, gz - p.z);
     // just lost them round a corner: hold the angle for a moment first
-    if (th.seen && now - th.t < 0.9 * this.L.smart + 0.2 && d > 4) return { lookAt: th, duck: false };
+    if (th.seen && now - th.t < 0.9 * this.L.smart + 0.2 && d > 4) return { lookAt: th };
     if (d < 1.2) { th.t -= 3; return null; }   // nobody here: this clue gets old quickly
     return { x: gx, y: th.y, z: gz, r: 1, sneak: this.L.smart > 0.5 && d < 12, lookAt: th };
   }
@@ -701,12 +698,12 @@ export class BotBrain {
     const p = this.p, v = this.vel;
     const w = WEAPONS[p.w];
     const wading = p.y < 0.3 && this.world.waterAt(p.x, p.z) > 0;   // canal water slows everyone
-    const max = (w ? runSpeed(w, false) : 250 * U) * (p.duck > 0.5 ? 0.34 : 1) * speedK * (wading ? 0.72 : 1);
+    const max = (w ? runSpeed(w, false) : 250 * U) * speedK * (wading ? 0.72 : 1);
     const tx = move ? move[0] * max : 0, tz = move ? move[1] * max : 0;
     const k = Math.min(1, dt * (move ? 8 : 14 + this.L.smart * 10));      // good players stop dead to shoot
     v.x += (tx - v.x) * k; v.z += (tz - v.z) * k;
     const ox = p.x, oz = p.z;
-    this.onGround = this.world.move(p, v, dt, PLAYER_RADIUS, this.onGround, bodyHeight(p.duck));
+    this.onGround = this.world.move(p, v, dt, PLAYER_RADIUS, this.onGround, PLAYER_HEIGHT);
     p.moved += Math.hypot(p.x - ox, p.z - oz);
     // stuck? jump, then find another way
     if (move) {
@@ -765,7 +762,7 @@ export class BotBrain {
   }
 
   // ---------- where to go ----------
-  // returns { x, y, z, r, face, lookAt, sneak, duck } to walk to, { use: true, look } to
+  // returns { x, y, z, r, face, lookAt, sneak } to walk to, { use: true, look } to
   // plant / defuse here, or null to stand
   objective(now) {
     const p = this.p;
@@ -796,7 +793,6 @@ export class BotBrain {
       const h = holds[Math.floor(Math.random() * Math.min(holds.length, 3))];
       this.plan.hold = { x: h.x, y: h.y, z: h.z, r: 0.5 };
       this.plan.watch = { x: r.entry.x, y: r.entry.y, z: r.entry.z };
-      this.plan.crouch = slot === 0 && this.L.smart > 0.85 && Math.random() < 0.5;
     }
     return this.plan;
   }
@@ -816,7 +812,7 @@ export class BotBrain {
       // guard the bomb from a sheltered spot that can see it
       if (!this.spot || !this.spot.guard) this.spot = this.guardSpot(b, 5, 14) || { ...pickSpot((x, y, z) => Math.hypot(x - b.x, z - b.z) < 7 && Math.hypot(x - b.x, z - b.z) > 2), guard: true };
       const there = Math.hypot(this.spot.x - p.x, this.spot.z - p.z) < 0.8;
-      return { ...this.spot, lookAt: { x: b.x, y: b.y, z: b.z }, duck: there && this.L.smart > 0.6 };
+      return { ...this.spot, lookAt: { x: b.x, y: b.y, z: b.z } };
     }
     const carrier = b.state === 'carried' && b.carrier === p.id;
     const route = tac && tac.routes[plan.route || 0];
@@ -893,7 +889,7 @@ export class BotBrain {
       }
       const th = this.threat(now, 5);
       const heard = th && Math.hypot(th.x - p.x, th.z - p.z) < 30 ? th : null;
-      return { ...plan.hold, lookAt: there ? heard || { x: plan.watch.x, y: plan.watch.y + 0.1, z: plan.watch.z } : null, duck: there && plan.crouch };
+      return { ...plan.hold, lookAt: there ? heard || { x: plan.watch.x, y: plan.watch.y + 0.1, z: plan.watch.z } : null };
     }
     const rect = this.world.siteRects[0];
     if (!this.spot) this.spot = pickSpot((x, y, z) => rect && Math.hypot(x - (rect.x0 + rect.x1) / 2, z - (rect.z0 + rect.z1) / 2) < 14);
@@ -1012,12 +1008,10 @@ export class BotBrain {
       this.strafeUntil = now + rnd(0.25, 0.6) * (1.4 - L.smart * 0.6);
       this.strafe = Math.random() < L.stop * (1 - L.smart * 0.5) ? 0 : (Math.random() < 0.5 ? -1 : 1);
       this.strafeK = 0.55 + L.smart * 0.35;
-      // crouch for a long spray at medium range (rifles)
-      this.crouchFight = w && w.auto && d > 8 && d < 28 && Math.random() < L.crouch;
     }
     if (d < 2.5) return null;
     if (L.smart > 0.5 && ready && aimed) return null;                   // counter-strafe: stand still for the shot
-    if (!this.strafe || this.crouchFight) return null;
+    if (!this.strafe) return null;
     const fx = (t.x - p.x) / d, fz = (t.z - p.z) / d;
     let mx = -fz * this.strafe, mz = fx * this.strafe;
     // don't strafe into a wall or off a ledge
@@ -1031,10 +1025,9 @@ export class BotBrain {
 
   aimAndShoot(t, dt, now) {
     const p = this.p, L = this.L;
-    const scale = hitScale(t.duck || 0);
     // lead a moving target a little
     const m = this.mem.get(t.id), lead = L.smart * 0.06;
-    const ax = t.x + (m ? m.vx * lead : 0), ay = t.y + (this.aimHead ? 1.6 : 1.2) * scale, az = t.z + (m ? m.vz * lead : 0);
+    const ax = t.x + (m ? m.vx * lead : 0), ay = t.y + (this.aimHead ? 1.6 : 1.2), az = t.z + (m ? m.vz * lead : 0);
     const ex = p.x, ey = eyeOf(p), ez = p.z;
     const dx = ax - ex, dy = ay - ey, dz = az - ez, hd = Math.hypot(dx, dz), d = Math.hypot(hd, dy);
     // aim error shrinks while we track the target
@@ -1063,7 +1056,7 @@ export class BotBrain {
     const fx = -Math.sin(p.yaw) * Math.cos(p.pitch), fy = Math.sin(p.pitch), fz = -Math.cos(p.yaw) * Math.cos(p.pitch);
     for (const q of this.s.players.values()) {
       if (q === p || q === t || !q.alive || !this.s.mates(p, q)) continue;
-      const h = rayVsPlayer(ex, ey, ez, fx, fy, fz, q.x, q.y, q.z, q.yaw, hitScale(q.duck || 0));
+      const h = rayVsPlayer(ex, ey, ez, fx, fy, fz, q.x, q.y, q.z, q.yaw);
       if (h && h.t < d) return true;
     }
     return false;
@@ -1147,7 +1140,7 @@ export class BotBrain {
       let best = null;
       for (const q of this.s.players.values()) {
         if (q === p || !q.alive) continue;
-        const h = rayVsPlayer(ex, ey, ez, dx, dy, dz, q.x, q.y, q.z, q.yaw, hitScale(q.duck || 0));
+        const h = rayVsPlayer(ex, ey, ez, dx, dy, dz, q.x, q.y, q.z, q.yaw);
         if (h && h.t < wallT && (!best || h.t < best.t)) best = { ...h, id: q.id };
       }
       const t = best ? best.t : wallT;

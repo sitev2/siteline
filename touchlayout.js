@@ -2,7 +2,7 @@
 // settings.touchLayout = { 'btn-fire': { x, y, s, o }, … } — x / y are the button centre as a
 // share of the screen width / height, s = size (1 = normal), o = opacity. Missing = default spot.
 
-const EDITABLE = ['btn-fire', 'btn-fire-left', 'btn-jump', 'btn-crouch', 'btn-reload', 'btn-alt', 'btn-swap', 'btn-use',
+const EDITABLE = ['btn-fire', 'btn-fire-left', 'btn-jump', 'btn-reload', 'btn-alt', 'btn-swap', 'btn-use',
   'btn-buy', 'btn-drop', 'btn-inspect', 'btn-chat', 'btn-light', 'btn-score', 'btn-menu'];
 
 export function applyTouchLayout(layout) {
