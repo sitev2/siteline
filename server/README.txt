@@ -1,6 +1,7 @@
 SITELINE GAME SERVER — WINDOWS SETUP
 ====================================
 
+(On ZimaOS? Use ZIMAOS.txt instead: it's a ready-made app.)
 (On Ubuntu Linux? Use LINUX.txt instead: one script sets it all up,
 including starting on boot and nightly updates.)
 
