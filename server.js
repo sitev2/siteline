@@ -124,9 +124,20 @@ export class Server {
       this.later(0.3, () => this.respawn(p));
     } else if (this.phase !== 'lobby') {
       p.squad = this.squadOf(p.team);
+      // joined during buy time (and the round isn't about to be replayed): play this round straight away
+      const now = this.phase === 'freeze' && !this.hold && !this.botCfg && this.world;
       this.send(id, this.startMsg());
-      this.send(id, { t: 'snapScore', score: this.score, round: this.round });
+      this.send(id, { t: 'snapScore', score: this.score, round: this.round, now: !!now });
       this.send(id, this.dropsMsg());
+      if (now) {
+        this.later(0.3, () => {
+          if (this.phase !== 'freeze' || !this.players.has(id) || p.alive) return;
+          this.resetLoadout(p); p.ammo = {}; p.bought = {};
+          p.w = p.inv.secondary = STARTER_PISTOL[p.team];
+          this.respawn(p);
+          this.broadcastRoster();
+        });
+      }
     }
     this.broadcastRoster();
     if (back) this.broadcast({ t: 'toast', text: `${p.name} is back in the game` }, id);
