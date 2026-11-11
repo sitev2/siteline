@@ -1,6 +1,6 @@
 # Turning on accounts (Supabase, free)
 
-Accounts are optional. Without them everyone plays as a guest. With them, players can sign up with an email, password and username, and the game keeps:
+Accounts are optional. Without them everyone plays as a guest. With them, players can sign up with a username and password (no email), and the game keeps:
 
 - their stats: kills, deaths, headshots, damage, matches played and won, rounds won, deathmatch wins and favourite weapon
 - their balance: 10–80 cents per match win
@@ -29,11 +29,7 @@ It takes about 10 minutes.
 
 1. In the left sidebar, click **Authentication**, then **Sign In / Providers** (on some versions it's **Providers**, then **Email**).
 2. Make sure **Email** is turned on.
-3. **Confirm email:**
-   - On means new players must click a link in an email before they can log in. This is safer.
-   - Off means they can play straight away.
-   Either works with the game.
-4. Click **Authentication**, then **URL Configuration**. Set **Site URL** to your game's address, for example `https://your-site.netlify.app`, and click **Save**. The confirmation emails link there.
+3. Turn **Confirm email** **OFF** and click **Save**. Accounts use only a username and password (see "Username-only accounts" below), so there's no real email to confirm.
 
 ## 4. Paste your project URL and key into the game
 
@@ -55,27 +51,23 @@ It takes about 10 minutes.
 
 The anon key is meant to be public. Supabase's row-level security rules, created by `supabase.sql`, decide what it can do. Never put the **service_role** / **secret** key in the game.
 
-## Forgot password (needs email sending set up)
+## Username-only accounts and password resets
 
-The Account screen has **Forgot password?** (sends a reset link by email) and, when logged in, **Change password**. The reset link opens the game, which then asks for a new password.
+Players sign up with just a **username and password**: no email. Supabase still needs an email address for every account, so the game gives it a made-up one (`name@players.siteline.invalid`) that never receives mail. Accounts made earlier with a real email still work: those players can log in with their email.
 
-**Supabase's built-in email only sends to you and your Supabase team members, and only about 2 emails an hour.** Until you connect your own email sender (SMTP), players asking for a reset get "The game can't send emails to that address yet". Sign-up confirmation emails have the same limit. To fix it (free, about 15 minutes):
+**One setting is required:** Supabase → **Authentication** → **Sign In / Providers** (or **Providers** → **Email**) → turn **Confirm email** **OFF** → **Save**. While it's on, sign-up shows "Sign-up needs one Supabase setting changed…".
 
-1. **Tell Supabase where the game is.** Supabase → **Authentication** → **URL Configuration**:
-   - **Site URL:** `https://sitev2.github.io/siteline/`
-   - **Redirect URLs** → **Add URL** → `https://sitev2.github.io/siteline/` → **Save**.
-2. **Make a free email-sending account**, for example **Brevo** (https://www.brevo.com, free plan, 300 emails a day):
-   - Sign up, then go to **Senders, Domains & Dedicated IPs** → **Senders** → **Add a sender**, and use an email address you own. Brevo emails you a link to confirm it.
-   - Go to **SMTP & API** → **SMTP** tab → **Generate a new SMTP key**. Keep this page open: it shows the **SMTP server**, **Port**, **Login** and the **key**.
-3. **Connect it to Supabase.** Supabase → **Authentication** → **Emails** → **SMTP Settings** → turn on **Enable custom SMTP** and fill in:
-   - **Sender email:** the address you confirmed in Brevo. **Sender name:** `SITELINE`
-   - **Host:** `smtp-relay.brevo.com` **Port:** `587`
-   - **Username:** the Brevo **Login**. **Password:** the Brevo **SMTP key**
-   - **Save**.
-4. Supabase then allows 30 emails an hour. You can change that under **Authentication** → **Rate Limits**.
-5. Test it: in the game, Account → **Forgot password?** with your own email. Check the spam folder the first time.
+**Forgot password:** players can't reset it themselves; the game tells them to ask you. To reset someone's password:
 
-(Menu names can differ slightly between versions of Supabase and Brevo. Any SMTP service works the same way.)
+1. Supabase → **SQL Editor** → **New query**.
+2. Type this, with their username and a temporary password of your choice:
+   ```sql
+   select public.owner_reset_password('PlayerName', 'temporary123');
+   ```
+3. Click **Run**. It answers "Password reset for PlayerName…".
+4. Tell the player the temporary password. They log in with it, open **Account**, and press **Change password**.
+
+Only you can do this, in the SQL Editor. Players and the admin accounts (test123, test1234) can't: the Admin screen only shows stats.
 
 ## Updating the database after a game update
 

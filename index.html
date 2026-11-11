@@ -291,19 +291,20 @@
         <div id="acct-off" class="hidden"><p class="note">Accounts aren't switched on for this copy of the game yet (the owner adds a free Supabase project — see SUPABASE.md). You can play as a guest.</p></div>
         <div id="acct-out" class="hidden">
           <div class="tabs"><button class="tab selected" data-acct="login">Log in</button><button class="tab" data-acct="signup">Sign up</button></div>
-          <label class="field acct-signup hidden"><span>Username</span><input id="acct-user" maxlength="16" autocomplete="username" placeholder="3–16 letters, numbers or _"></label>
-          <label class="field"><span>Email</span><input id="acct-email" type="email" autocomplete="email"></label>
-          <label class="field acct-passfield"><span>Password</span><input id="acct-pass" type="password" autocomplete="current-password" placeholder="at least 6 characters"></label>
+          <label class="field"><span>Username</span><input id="acct-user" maxlength="40" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="3–16 letters, numbers or _"></label>
+          <label class="field"><span>Password</span><input id="acct-pass" type="password" autocomplete="current-password" placeholder="at least 6 characters"></label>
+          <label class="field acct-signup hidden"><span>Password again</span><input id="acct-pass2" type="password" autocomplete="new-password"></label>
           <p id="acct-msg" class="note"></p>
           <button id="btn-acct-go" class="primary">Log in</button>
           <button id="btn-acct-forgot" class="link small">Forgot password?</button>
+          <p class="note acct-signup hidden">No email needed. Remember your password: if you forget it, the game's owner has to reset it for you.</p>
           <p class="note">Playing as a guest works too — an account just keeps your stats and settings.</p>
         </div>
         <div id="acct-in" class="hidden">
           <div class="acct-head"><b id="acct-name"></b><span id="acct-balance" class="balance"></span></div>
           <div id="acct-stats" class="stat-grid"></div>
           <div id="acct-newpass" class="acct-newpass hidden">
-            <label class="field"><span id="acct-newpass-title">New password</span><input id="acct-newpass-input" type="password" autocomplete="new-password" placeholder="at least 6 characters"></label>
+            <label class="field"><span>New password</span><input id="acct-newpass-input" type="password" autocomplete="new-password" placeholder="at least 6 characters"></label>
             <p id="acct-newpass-msg" class="note"></p>
             <button id="btn-acct-newpass" class="primary">Save new password</button>
           </div>
