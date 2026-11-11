@@ -16,8 +16,20 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="style.css">
-  <script type="importmap">{ "imports": { "three": "./three.module.js" } }</script>
+  <script>
+    // Every game file gets ?v=<time this page was published>, so after an update the browser loads a
+    // matching set (a new page with old saved scripts used to crash into a black screen).
+    // New .js files: add them to this list (libraries stay unversioned).
+    (function () {
+      var v = Date.parse(document.lastModified) || Date.now();
+      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'buy', 'config', 'crosshair', 'filter', 'friends', 'game', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'models', 'net', 'netlog', 'nettest', 'post', 'ragdoll', 'server', 'textures', 'touchlayout', 'weapons', 'world'];
+      var imports = { three: './three.module.js' };
+      for (var i = 0; i < files.length; i++) imports['./' + files[i] + '.js'] = './' + files[i] + '.js?v=' + v;
+      window.SITELINE_V = v;
+      document.write('<link rel="stylesheet" href="style.css?v=' + v + '">' +
+        '<script type="importmap">' + JSON.stringify({ imports: imports }) + '<\/script>');
+    })();
+  </script>
 </head>
 <body>
   <div id="stage"></div>
@@ -485,6 +497,6 @@
 
   <noscript>SITELINE needs JavaScript to run.</noscript>
   <script src="peerjs.min.js"></script>
-  <script type="module" src="main.js"></script>
+  <script>document.write('<script type="module" src="main.js?v=' + window.SITELINE_V + '"><\/script>');</script>
 </body>
 </html>
