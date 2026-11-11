@@ -249,3 +249,97 @@ begin
     execute format('grant execute on function public.%s to authenticated', f);
   end loop;
 end $$;
+
+-- ---------- chat between friends ----------
+-- Only friends can message each other. Messages are deleted after 7 days (and when you unfriend).
+-- At most 20 messages a minute, 200 characters each.
+create table if not exists public.messages (
+  id         bigserial primary key,
+  from_id    uuid not null references public.profiles(id) on delete cascade,
+  to_id      uuid not null references public.profiles(id) on delete cascade,
+  body       text not null check (char_length(body) between 1 and 200),
+  created_at timestamptz not null default now(),
+  read_at    timestamptz
+);
+create index if not exists messages_pair on public.messages (from_id, to_id, id);
+create index if not exists messages_unread on public.messages (to_id) where read_at is null;
+create index if not exists messages_age on public.messages (created_at);
+alter table public.messages enable row level security;
+revoke all on public.messages from anon, authenticated;
+
+create or replace function public.send_message(p_to uuid, p_body text) returns bigint
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); b text := trim(regexp_replace(coalesce(p_body, ''), '\s+', ' ', 'g')); new_id bigint;
+begin
+  if me is null then raise exception 'not logged in'; end if;
+  if not public.are_friends(me, p_to) then raise exception 'You can only message friends.'; end if;
+  if b = '' then raise exception 'Type a message first.'; end if;
+  if (select count(*) from public.messages where from_id = me and created_at > now() - interval '1 minute') >= 20 then
+    raise exception 'Slow down: too many messages in a minute.';
+  end if;
+  delete from public.messages where created_at < now() - interval '7 days';
+  insert into public.messages (from_id, to_id, body) values (me, p_to, left(b, 200)) returning id into new_id;
+  return new_id;
+end $$;
+
+-- The last 100 messages with a friend (only newer than p_after if given). Marks theirs as read.
+create or replace function public.chat_history(p_other uuid, p_after bigint default 0) returns json
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid(); res json;
+begin
+  if me is null then raise exception 'not logged in'; end if;
+  select coalesce(json_agg(json_build_object('id', id, 'mine', from_id = me, 'body', body, 'at', created_at) order by id), '[]'::json)
+    into res from (
+      select * from public.messages
+      where ((from_id = me and to_id = p_other) or (from_id = p_other and to_id = me))
+        and id > coalesce(p_after, 0) and created_at > now() - interval '7 days'
+      order by id desc limit 100) m;
+  update public.messages set read_at = now() where from_id = p_other and to_id = me and read_at is null;
+  return res;
+end $$;
+
+-- unread messages per friend: { "<friend id>": count }
+create or replace function public.unread_counts() returns json
+language sql security definer set search_path = public stable as $$
+  select coalesce(json_object_agg(from_id, n), '{}'::json) from (
+    select from_id, count(*) as n from public.messages
+    where to_id = auth.uid() and read_at is null and created_at > now() - interval '7 days'
+    group by from_id) u;
+$$;
+
+-- heartbeat again, now also reporting unread messages
+create or replace function public.heartbeat(p_activity text) returns json
+language plpgsql security definer set search_path = public as $$
+declare me uuid := auth.uid();
+begin
+  if me is null then raise exception 'not logged in'; end if;
+  update public.profiles set last_seen = now(), activity = left(coalesce(p_activity, ''), 40) where id = me;
+  delete from public.game_invites where created_at < now() - interval '10 minutes';
+  return json_build_object(
+    'requests', (select count(*) from public.friends where friend_id = me and not accepted),
+    'unread', public.unread_counts(),
+    'invites', coalesce((
+      select json_agg(json_build_object('id', i.id, 'from', p.username, 'code', i.code) order by i.id)
+      from public.game_invites i join public.profiles p on p.id = i.from_id
+      where i.to_id = me and i.created_at > now() - interval '3 minutes'), '[]'::json));
+end $$;
+
+-- unfriending also deletes your chat
+create or replace function public.remove_friend(p_other uuid) returns void
+language sql security definer set search_path = public as $$
+  delete from public.friends
+  where (user_id = auth.uid() and friend_id = p_other) or (user_id = p_other and friend_id = auth.uid());
+  delete from public.game_invites
+  where (from_id = auth.uid() and to_id = p_other) or (from_id = p_other and to_id = auth.uid());
+  delete from public.messages
+  where (from_id = auth.uid() and to_id = p_other) or (from_id = p_other and to_id = auth.uid());
+$$;
+
+do $$
+declare f text;
+begin
+  foreach f in array array['send_message(uuid, text)', 'chat_history(uuid, bigint)', 'unread_counts()', 'heartbeat(text)', 'remove_friend(uuid)'] loop
+    execute format('revoke all on function public.%s from public, anon', f);
+    execute format('grant execute on function public.%s to authenticated', f);
+  end loop;
+end $$;

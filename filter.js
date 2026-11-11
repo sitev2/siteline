@@ -16,8 +16,8 @@ const pattern = WORDS.slice().sort((a, b) => b.length - a.length)
 // whole words only (so "class", "shitake"-style false hits are rarer), letters may be glued to "s"/"ing"/"ed"
 const RE = new RegExp(`(^|[^a-z0-9])(${pattern})(?=$|[^a-z0-9]|s\\b|es\\b|ed\\b|ing\\b|er\\b|y\\b)`, 'gi');
 
-export function cleanChat(text) {
-  let s = String(text || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 100);
+export function cleanChat(text, max = 100) {
+  let s = String(text || '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
   s = s.replace(RE, (m, pre, word) => pre + word[0] + '*'.repeat(Math.max(2, word.length - 1)));
   return s;
 }

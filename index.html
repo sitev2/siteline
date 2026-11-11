@@ -314,6 +314,19 @@
           <button id="friends-login" class="primary">Log in or sign up</button>
         </div>
         <div id="friends-in" class="hidden friends-in">
+          <div id="fchat-view" class="fchat-view hidden">
+            <div class="fchat-head">
+              <button id="fchat-back" class="ghost small">← Friends</button>
+              <span class="fwho"><b id="fchat-name"></b><small id="fchat-status"></small></span>
+            </div>
+            <div id="fchat-log" class="fchat-log" role="log" aria-live="polite"></div>
+            <div class="join-row">
+              <input id="fchat-input" maxlength="200" placeholder="Message…" autocomplete="off" enterkeyhint="send">
+              <button id="fchat-send" class="primary">Send</button>
+            </div>
+            <p id="fchat-msg" class="note friend-msg">Messages are deleted after a week.</p>
+          </div>
+          <div id="friends-main" class="friends-in">
           <div class="join-row">
             <input id="friend-name" maxlength="16" placeholder="Friend's username" autocomplete="off" spellcheck="false" autocapitalize="off">
             <button id="friend-add" class="secondary">Add</button>
@@ -323,6 +336,7 @@
           <h3>Your friends</h3>
           <p id="friends-room" class="note"></p>
           <ul id="friend-list" class="friend-list"></ul>
+          </div>
         </div>
         <button class="ghost back">Back</button>
       </div>

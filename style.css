@@ -60,12 +60,12 @@ button:disabled { opacity: .4; cursor: default; }
 .field { display: grid; gap: 6px; }
 .field > span { font: 600 0.78rem var(--display); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); display: flex; justify-content: space-between; }
 .field.inline { display: flex; align-items: center; gap: 10px; }
-.field input:not([type=range]), .field select, #code, #friend-name, #practice-map {
+.field input:not([type=range]), .field select, #code, #friend-name, #fchat-input, #practice-map {
   background: rgba(255,255,255,0.06); border: 1px solid var(--line); border-radius: 10px;
   padding: 12px 14px; font-size: 1rem; outline: none;
 }
 select option { background: #222; }
-.field input:focus, #code:focus, #friend-name:focus, select:focus { border-color: var(--accent); }
+.field input:focus, #code:focus, #friend-name:focus, #fchat-input:focus, select:focus { border-color: var(--accent); }
 input[type=range] { width: 100%; accent-color: var(--accent); }
 .check { display: flex; gap: 10px; align-items: center; color: var(--muted); }
 .note { color: var(--muted); font-size: .88rem; margin: 6px 0; }
@@ -552,4 +552,15 @@ li.online .fwho small { color: #8fe0a2; }
   border: 1px solid rgba(240,160,64,.6); box-shadow: 0 8px 30px rgba(0,0,0,.5); animation: toast .25s ease-out; }
 .invite-pop.hidden { display: none; }
 .invite-pop span { font-weight: 600; overflow-wrap: anywhere; }
-#friend-name { min-width: 0; }
+#friend-name, #fchat-input { min-width: 0; }
+.fchat-view { display: grid; gap: 10px; }
+.fchat-head { display: flex; align-items: center; gap: 12px; }
+.fchat-head .fwho small.on { color: #8fe0a2; }
+.fchat-log { height: min(46vh, 380px); overflow-y: auto; overscroll-behavior: contain; display: flex; flex-direction: column; gap: 6px;
+  padding: 10px; border-radius: 10px; border: 1px solid var(--line); background: rgba(0,0,0,.25); }
+.fchat-log .empty { color: var(--muted); font-size: .9rem; margin: auto; text-align: center; }
+.fchat-day { align-self: center; color: var(--muted); font-size: .75rem; margin: 4px 0; }
+.bubble { max-width: 80%; padding: 8px 12px; border-radius: 14px; background: rgba(255,255,255,.08); align-self: flex-start; overflow-wrap: anywhere; line-height: 1.35; }
+.bubble.mine { align-self: flex-end; background: rgba(240,160,64,.22); border: 1px solid rgba(240,160,64,.35); }
+.bubble small { display: block; color: var(--muted); font-size: .7rem; margin-top: 2px; text-align: right; }
+.fchat-btn .n { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 6px; border-radius: 9px; background: var(--accent); color: #1b1307; font-size: .75rem; }
