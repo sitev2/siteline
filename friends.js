@@ -13,11 +13,12 @@ const BEAT_MS = 20000;
 const LIST_MS = 10000;
 const CHAT_MS = 3000;
 
-let hooks = null;          // { joinGame(code), activity(), roomCode(), toast(text), openAccount(), isOpen() }
+let hooks = null;          // { joinGame(code), activity(), roomCode(), toast(text), friendMessage(name, text), openAccount(), isOpen() }
 let beatTimer = null, listTimer = null;
 let friends = [];
 let requests = 0;
 let shownInvites = new Set();   // invite ids already shown
+let shownMsgs = new Set();      // friend message ids already shown as a pop-up / chat line
 let invite = null;              // the invite pop-up on screen: { id, from, code }
 let openStats = null;           // friend id whose stats are expanded
 let confirmRemove = null;       // friend id waiting for "Yes, remove"
@@ -44,7 +45,7 @@ export function initFriends(h) {
 function onAccount() {
   clearInterval(beatTimer);
   beatTimer = null;
-  friends = []; requests = 0; shownInvites = new Set(); unread = {};
+  friends = []; requests = 0; shownInvites = new Set(); shownMsgs = new Set(); unread = {};
   closeChat();
   closeInvite(false);
   if (acct.loggedIn()) {
@@ -66,9 +67,18 @@ async function beat() {
     if (chatWith) delete unread[chatWith.id];
     const fresh = Object.keys(unread).filter(id => unread[id] > (before[id] || 0));
     if (fresh.length && fresh.some(id => !friends.find(f => f.id === id))) await loadList();
-    for (const id of fresh) {
-      const f = friends.find(x => x.id === id);
-      hooks.toast(`💬 New message from ${f ? f.username : 'a friend'}`, 4000);
+    if (Array.isArray(r.latest)) {
+      // newer database: show the messages themselves (in the match chat during a game)
+      for (const m of r.latest) {
+        if (shownMsgs.has(m.id) || (chatWith && m.from === chatWith.id)) continue;
+        shownMsgs.add(m.id);
+        hooks.friendMessage(m.name || 'A friend', cleanChat(String(m.body || ''), 200));
+      }
+    } else {
+      for (const id of fresh) {
+        const f = friends.find(x => x.id === id);
+        hooks.toast(`💬 New message from ${f ? f.username : 'a friend'}`, 4000);
+      }
     }
     updateBadge();
     if (fresh.length && hooks.isOpen() && !chatWith) render();

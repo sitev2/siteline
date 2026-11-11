@@ -246,6 +246,26 @@ export class Hud {
     void myTeam;
   }
 
+  // a message from a friend (Friends chat), shown in the match chat feed
+  friendLine(name, text) {
+    const feed = $('chat-feed');
+    const row = document.createElement('div');
+    row.className = 'chat-line friend';
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.textContent = '💬 friend';
+    const who = document.createElement('b');
+    who.textContent = name + ': ';
+    const hint = document.createElement('span');
+    hint.className = 'hint';
+    hint.textContent = 'reply: pause → Friends';
+    row.append(tag, who, document.createTextNode(text), hint);
+    feed.appendChild(row);
+    while (feed.children.length > 7) feed.firstChild.remove();
+    setTimeout(() => row.classList.add('fade'), 15000);
+    setTimeout(() => row.remove(), 15700);
+  }
+
   hitmarker(head, kill) {
     const el = $('hitmarker');
     el.className = kill ? 'kill' : head ? 'head' : '';
