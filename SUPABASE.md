@@ -55,6 +55,28 @@ It takes about 10 minutes.
 
 The anon key is meant to be public. Supabase's row-level security rules, created by `supabase.sql`, decide what it can do. Never put the **service_role** / **secret** key in the game.
 
+## Forgot password (needs email sending set up)
+
+The Account screen has **Forgot password?** (sends a reset link by email) and, when logged in, **Change password**. The reset link opens the game, which then asks for a new password.
+
+**Supabase's built-in email only sends to you and your Supabase team members, and only about 2 emails an hour.** Until you connect your own email sender (SMTP), players asking for a reset get "The game can't send emails to that address yet". Sign-up confirmation emails have the same limit. To fix it (free, about 15 minutes):
+
+1. **Tell Supabase where the game is.** Supabase → **Authentication** → **URL Configuration**:
+   - **Site URL:** `https://sitev2.github.io/siteline/`
+   - **Redirect URLs** → **Add URL** → `https://sitev2.github.io/siteline/` → **Save**.
+2. **Make a free email-sending account**, for example **Brevo** (https://www.brevo.com, free plan, 300 emails a day):
+   - Sign up, then go to **Senders, Domains & Dedicated IPs** → **Senders** → **Add a sender**, and use an email address you own. Brevo emails you a link to confirm it.
+   - Go to **SMTP & API** → **SMTP** tab → **Generate a new SMTP key**. Keep this page open: it shows the **SMTP server**, **Port**, **Login** and the **key**.
+3. **Connect it to Supabase.** Supabase → **Authentication** → **Emails** → **SMTP Settings** → turn on **Enable custom SMTP** and fill in:
+   - **Sender email:** the address you confirmed in Brevo. **Sender name:** `SITELINE`
+   - **Host:** `smtp-relay.brevo.com` **Port:** `587`
+   - **Username:** the Brevo **Login**. **Password:** the Brevo **SMTP key**
+   - **Save**.
+4. Supabase then allows 30 emails an hour. You can change that under **Authentication** → **Rate Limits**.
+5. Test it: in the game, Account → **Forgot password?** with your own email. Check the spam folder the first time.
+
+(Menu names can differ slightly between versions of Supabase and Brevo. Any SMTP service works the same way.)
+
 ## Updating the database after a game update
 
 Some updates (like **friends and invites**) need new tables in Supabase. When an update says so, do this once:

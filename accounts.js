@@ -46,7 +46,10 @@ function friendly(msg) {
   if (/already registered|already exists/i.test(msg)) return 'That email already has an account. Try logging in.';
   if (/email not confirmed/i.test(msg)) return 'Please confirm your email first (check your inbox), then log in.';
   if (/password/i.test(msg) && /6/.test(msg)) return 'The password needs at least 6 characters.';
+  if (/not authorized/i.test(msg) && /email/i.test(msg)) return 'The game can\'t send emails to that address yet: the owner needs to set up email sending in Supabase (see SUPABASE.md).';
+  if (/email rate limit|over_email_send_rate_limit/i.test(msg)) return 'Too many emails were sent in the last hour. Try again later.';
   if (/rate limit|too many/i.test(msg)) return 'Too many tries — wait a minute and try again.';
+  if (/same.*password|different from the old/i.test(msg)) return 'That\'s your current password. Choose a different one.';
   if (/could not find the function|schema cache/i.test(msg)) return 'Friends aren\'t set up in the database yet: the owner needs to run supabase.sql again (see SUPABASE.md).';
   return msg;
 }
@@ -65,10 +68,35 @@ async function freshSession() {
   } catch (e) { saveSession(null); profile = null; emit(); }
 }
 
+// Links in Supabase's emails (confirm sign-up, reset password) open the game with
+// #access_token=…&refresh_token=…&type=recovery|signup (or #error=…) after the address.
+let authLink = null;   // { type } or { error }, read once by the menu
+function readAuthLink() {
+  const h = new URLSearchParams(location.hash.replace(/^#/, ''));
+  if (!h.get('access_token') && !h.get('error') && !h.get('error_description')) return null;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* old browser */ }
+  if (!h.get('access_token')) return { error: (h.get('error_description') || h.get('error') || 'unknown error').replace(/\+/g, ' ') };
+  return {
+    type: h.get('type') || 'login',
+    tokens: { access_token: h.get('access_token'), refresh_token: h.get('refresh_token'), expires_in: +h.get('expires_in') || 3600, expires_at: +h.get('expires_at') || 0 },
+  };
+}
+export function takeAuthLink() { const l = authLink; authLink = null; return l; }
+
 // ---------- public API ----------
 export async function initAccounts() {
   if (!accountsEnabled()) return;
   try { session = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { session = null; }
+  const link = readAuthLink();
+  if (link && link.tokens) {
+    const t = link.tokens;
+    session = { ...t, expires_at: t.expires_at || Date.now() / 1000 + t.expires_in, user: null };
+    try {
+      const u = await call('/auth/v1/user');
+      saveSession({ ...session, user: { id: u.id, email: u.email } });
+      authLink = { type: link.type };
+    } catch (e) { saveSession(null); authLink = { error: e.message }; }
+  } else if (link) authLink = { error: link.error };
   if (session) {
     try { await loadProfile(); } catch (e) { saveSession(null); profile = null; }
     emit();
@@ -105,6 +133,18 @@ export async function logIn(email, password) {
   saveSession(s);
   await loadProfile();
   emit();
+}
+
+// "Forgot password?": Supabase emails a link back to this page (see readAuthLink).
+export async function requestPasswordReset(email) {
+  email = String(email || '').trim();
+  if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('Type the email address of your account first.');
+  const back = location.origin + location.pathname;
+  await call(`/auth/v1/recover?redirect_to=${encodeURIComponent(back)}`, { method: 'POST', body: { email }, auth: false });
+}
+export async function setNewPassword(password) {
+  if (String(password || '').length < 6) throw new Error('The password needs at least 6 characters.');
+  await call('/auth/v1/user', { method: 'PUT', body: { password } });
 }
 
 export function logOut() {

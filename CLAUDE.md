@@ -49,7 +49,9 @@ The only folder is `server/` (the optional home game server).
   each bomb map once (`tactics()`: routes into the site, hidden gathering points, holding spots). Difficulty knobs in `BOT_LEVELS`.
   `node check_bots.mjs foundry hard 5` plays fast bot-vs-bot matches with no graphics (add `dm` for deathmatch).
 - `accounts.js` (+ `supabase.sql`, `SUPABASE.md`) — optional Supabase accounts; `config.js` `supabaseUrl` / `supabaseAnonKey`
-  (empty = guest only). Stats only change through the `report_match` SQL function; practice / bot games never report.
+  (empty = guest only). Forgot password: `requestPasswordReset` (POST `/auth/v1/recover?redirect_to=`), email links come back
+  as `#access_token…&type=recovery` (`readAuthLink` → `takeAuthLink`, `handleAuthLink()` in `main.js` shows the new-password form;
+  `setNewPassword` = PUT `/auth/v1/user`). Needs custom SMTP in Supabase for players' emails (steps in `SUPABASE.md`). Stats only change through the `report_match` SQL function; practice / bot games never report.
 - `friends.js` — Friends screen (logged-in only): add by username + accept, online dot + activity (`activityText()` in `main.js`), friends'
   stats, Invite button (sends `app.code`) → friend gets the `#invite-pop` "Join" pop-up. All via Supabase RPCs in `supabase.sql`
   (`heartbeat` every 20 s returns requests + invites; online = seen in the last 90 s; tables `friends`, `game_invites` have no direct

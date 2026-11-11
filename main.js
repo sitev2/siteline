@@ -1067,25 +1067,70 @@ function bindAccount() {
     mode = m;
     for (const t of document.querySelectorAll('#account .tab')) t.classList.toggle('selected', t.dataset.acct === m);
     document.querySelector('.acct-signup').classList.toggle('hidden', m !== 'signup');
-    $('btn-acct-go').textContent = m === 'signup' ? 'Create account' : 'Log in';
+    document.querySelector('.acct-passfield').classList.toggle('hidden', m === 'reset');
+    $('btn-acct-forgot').classList.toggle('hidden', m !== 'login');
+    $('btn-acct-go').textContent = m === 'signup' ? 'Create account' : m === 'reset' ? 'Send reset link' : 'Log in';
     $('acct-pass').autocomplete = m === 'signup' ? 'new-password' : 'current-password';
     $('acct-msg').textContent = '';
   };
   for (const t of document.querySelectorAll('#account .tab')) t.addEventListener('click', () => setMode(t.dataset.acct));
   $('btn-acct-go').addEventListener('click', async () => {
     const email = $('acct-email').value.trim(), pass = $('acct-pass').value, user = $('acct-user').value.trim();
-    $('acct-msg').textContent = mode === 'signup' ? 'Creating your account…' : 'Logging in…';
+    $('acct-msg').textContent = mode === 'signup' ? 'Creating your account…' : mode === 'reset' ? 'Sending…' : 'Logging in…';
     try {
-      if (mode === 'signup') {
+      if (mode === 'reset') {
+        await acct.requestPasswordReset(email);
+        $('acct-msg').textContent = `If ${email} has an account, an email with a reset link is on its way (check spam too). Open the link, and the game opens where you can choose a new password.`;
+      } else if (mode === 'signup') {
         const r = await acct.signUp(email, pass, user);
         if (r.needsConfirm) setMode('login');
         $('acct-msg').textContent = r.needsConfirm ? 'Account created! Check your email and click the link to confirm, then log in here.' : '';
       } else await acct.logIn(email, pass);
     } catch (e) { $('acct-msg').textContent = e.message || String(e); }
   });
+  $('btn-acct-forgot').addEventListener('click', () => {
+    setMode('reset');
+    for (const t of document.querySelectorAll('#account .tab')) t.classList.remove('selected');
+    $('acct-msg').textContent = 'Type your account\'s email and we\'ll send you a link to choose a new password.';
+    $('acct-email').focus();
+  });
+  $('btn-acct-changepass').addEventListener('click', () => showNewPassword(false));
+  $('btn-acct-newpass').addEventListener('click', async () => {
+    $('acct-newpass-msg').textContent = 'Saving…';
+    try {
+      await acct.setNewPassword($('acct-newpass-input').value);
+      $('acct-newpass-input').value = '';
+      $('acct-newpass').classList.add('hidden');
+      $('btn-acct-changepass').classList.remove('hidden');
+      toast('New password saved');
+    } catch (e) { $('acct-newpass-msg').textContent = e.message || String(e); }
+  });
   $('btn-acct-logout').addEventListener('click', () => acct.logOut());
   acct.onAccountChange(() => { renderAccount(); onLogin(); });
   setMode('login');
+}
+
+function showNewPassword(fromEmail) {
+  $('acct-newpass-title').textContent = fromEmail ? 'Choose a new password' : 'New password';
+  $('acct-newpass-msg').textContent = fromEmail ? 'You opened the reset link, so you\'re logged in. Pick a new password to finish.' : '';
+  $('acct-newpass').classList.remove('hidden');
+  $('btn-acct-changepass').classList.add('hidden');
+  $('acct-newpass-input').focus();
+}
+
+// after a link from a Supabase email (password reset, sign-up confirmation) opened the game
+function handleAuthLink() {
+  const link = acct.takeAuthLink();
+  if (!link) return;
+  if (link.error) {
+    renderAccount();
+    openSub('account');
+    $('acct-msg').textContent = `That email link didn't work (${link.error}). Links work once and expire after an hour: ask for a new one with "Forgot password?".`;
+  } else if (link.type === 'recovery') {
+    renderAccount();
+    openSub('account');
+    showNewPassword(true);
+  } else if (acct.loggedIn()) toast('Email confirmed. You\'re logged in!', 5000);
 }
 
 function renderAccount() {
@@ -1250,7 +1295,7 @@ function init() {
   bindPracticeMenu();
   bindAccount();
   renderAccount();
-  acct.initAccounts().then(() => { renderAccount(); onLogin(); });
+  acct.initAccounts().then(() => { renderAccount(); onLogin(); handleAuthLink(); });
   applyTouchLayout(settings.touchLayout);
   $('btn-account').addEventListener('click', () => { renderAccount(); openSub('account'); });
   $('btn-friends').addEventListener('click', () => { openSub('friends'); openFriends(); });
