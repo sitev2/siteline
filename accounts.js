@@ -42,12 +42,10 @@ async function call(path, { method = 'GET', body, auth = true, headers = {} } = 
 }
 
 function friendly(msg) {
-  if (/invalid login/i.test(msg)) return 'Wrong email or password.';
-  if (/already registered|already exists/i.test(msg)) return 'That email already has an account. Try logging in.';
-  if (/email not confirmed/i.test(msg)) return 'Please confirm your email first (check your inbox), then log in.';
+  if (/invalid login/i.test(msg)) return 'Wrong username or password.';
+  if (/already registered|already exists/i.test(msg)) return 'That username is taken.';
+  if (/email not confirmed/i.test(msg)) return "This account was made while Supabase still asked for email confirmation. The game's owner can fix it (see SUPABASE.md).";
   if (/password/i.test(msg) && /6/.test(msg)) return 'The password needs at least 6 characters.';
-  if (/not authorized/i.test(msg) && /email/i.test(msg)) return 'The game can\'t send emails to that address yet: the owner needs to set up email sending in Supabase (see SUPABASE.md).';
-  if (/email rate limit|over_email_send_rate_limit/i.test(msg)) return 'Too many emails were sent in the last hour. Try again later.';
   if (/rate limit|too many/i.test(msg)) return 'Too many tries — wait a minute and try again.';
   if (/same.*password|different from the old/i.test(msg)) return 'That\'s your current password. Choose a different one.';
   if (/could not find the function|schema cache/i.test(msg)) return 'Friends aren\'t set up in the database yet: the owner needs to run supabase.sql again (see SUPABASE.md).';
@@ -68,35 +66,23 @@ async function freshSession() {
   } catch (e) { saveSession(null); profile = null; emit(); }
 }
 
-// Links in Supabase's emails (confirm sign-up, reset password) open the game with
-// #access_token=…&refresh_token=…&type=recovery|signup (or #error=…) after the address.
-let authLink = null;   // { type } or { error }, read once by the menu
-function readAuthLink() {
-  const h = new URLSearchParams(location.hash.replace(/^#/, ''));
-  if (!h.get('access_token') && !h.get('error') && !h.get('error_description')) return null;
-  try { history.replaceState(null, '', location.pathname + location.search); } catch (e) { /* old browser */ }
-  if (!h.get('access_token')) return { error: (h.get('error_description') || h.get('error') || 'unknown error').replace(/\+/g, ' ') };
-  return {
-    type: h.get('type') || 'login',
-    tokens: { access_token: h.get('access_token'), refresh_token: h.get('refresh_token'), expires_in: +h.get('expires_in') || 3600, expires_at: +h.get('expires_at') || 0 },
-  };
+// Accounts use a username and password only: no real email. Supabase still needs an email
+// address, so the game makes one from the username that never receives mail
+// (needs "Confirm email" turned OFF in Supabase, see SUPABASE.md). Accounts made earlier
+// with a real email can still log in with that email.
+const PLAYER_DOMAIN = 'players.siteline.invalid';
+const USERNAME = /^[A-Za-z0-9_]{3,16}$/;
+function loginEmail(nameOrEmail) {
+  const v = String(nameOrEmail || '').trim();
+  if (v.includes('@')) return v;
+  if (!USERNAME.test(v)) throw new Error('Type your username (3–16 letters, numbers or _).');
+  return `${v.toLowerCase()}@${PLAYER_DOMAIN}`;
 }
-export function takeAuthLink() { const l = authLink; authLink = null; return l; }
 
 // ---------- public API ----------
 export async function initAccounts() {
   if (!accountsEnabled()) return;
   try { session = JSON.parse(localStorage.getItem(STORE) || 'null'); } catch (e) { session = null; }
-  const link = readAuthLink();
-  if (link && link.tokens) {
-    const t = link.tokens;
-    session = { ...t, expires_at: t.expires_at || Date.now() / 1000 + t.expires_in, user: null };
-    try {
-      const u = await call('/auth/v1/user');
-      saveSession({ ...session, user: { id: u.id, email: u.email } });
-      authLink = { type: link.type };
-    } catch (e) { saveSession(null); authLink = { error: e.message }; }
-  } else if (link) authLink = { error: link.error };
   if (session) {
     try { await loadProfile(); } catch (e) { saveSession(null); profile = null; }
     emit();
@@ -114,34 +100,29 @@ export async function usernameFree(name) {
   return !!(await call('/rest/v1/rpc/username_available', { method: 'POST', body: { name }, auth: false }));
 }
 
-export async function signUp(email, password, username) {
+export async function signUp(username, password) {
   username = String(username || '').trim();
-  if (!/^[A-Za-z0-9_]{3,16}$/.test(username)) throw new Error('Usernames are 3–16 letters, numbers or _.');
+  if (!USERNAME.test(username)) throw new Error('Usernames are 3–16 letters, numbers or _.');
+  if (String(password || '').length < 6) throw new Error('The password needs at least 6 characters.');
   if (!(await usernameFree(username))) throw new Error('That username is taken.');
-  const res = await call('/auth/v1/signup', { method: 'POST', body: { email, password, data: { username } }, auth: false });
-  if (res && res.access_token) {
-    saveSession(res);
-    await loadProfile();
-    emit();
-    return { needsConfirm: false };
+  const res = await call('/auth/v1/signup', { method: 'POST', body: { email: loginEmail(username), password, data: { username } }, auth: false });
+  if (!res || !res.access_token) {
+    // Supabase is still set to confirm emails, which can't work without a real address
+    throw new Error("Sign-up needs one Supabase setting changed by the game's owner: turn off \"Confirm email\" (see SUPABASE.md).");
   }
-  return { needsConfirm: true };   // Supabase sent a confirmation email
+  saveSession(res);
+  await loadProfile();
+  emit();
 }
 
-export async function logIn(email, password) {
-  const s = await call('/auth/v1/token?grant_type=password', { method: 'POST', body: { email, password }, auth: false });
+export async function logIn(nameOrEmail, password) {
+  const s = await call('/auth/v1/token?grant_type=password', { method: 'POST', body: { email: loginEmail(nameOrEmail), password }, auth: false });
   saveSession(s);
   await loadProfile();
   emit();
 }
 
-// "Forgot password?": Supabase emails a link back to this page (see readAuthLink).
-export async function requestPasswordReset(email) {
-  email = String(email || '').trim();
-  if (!/^\S+@\S+\.\S+$/.test(email)) throw new Error('Type the email address of your account first.');
-  const back = location.origin + location.pathname;
-  await call(`/auth/v1/recover?redirect_to=${encodeURIComponent(back)}`, { method: 'POST', body: { email }, auth: false });
-}
+// Change password while logged in (also how a player finishes after the owner reset it).
 export async function setNewPassword(password) {
   if (String(password || '').length < 6) throw new Error('The password needs at least 6 characters.');
   await call('/auth/v1/user', { method: 'PUT', body: { password } });

@@ -415,3 +415,31 @@ begin
     execute format('grant execute on function public.%s to authenticated', f);
   end loop;
 end $$;
+
+-- ---------- username-only accounts + owner password reset ----------
+-- Players sign up with a username and password only; the game gives Supabase a made-up email
+-- (name@players.siteline.invalid) that never receives mail, so "Confirm email" must be OFF.
+-- Anyone who signed up while it was still on gets confirmed here.
+update auth.users set email_confirmed_at = now()
+  where email like '%@players.siteline.invalid' and email_confirmed_at is null;
+
+-- Reset a player's password. ONLY you can run this, here in the SQL Editor
+-- (players and admin accounts can't). Replace the name and the temporary password, then Run:
+--     select public.owner_reset_password('PlayerName', 'temporary123');
+-- Tell the player the temporary password; they log in and press "Change password".
+create extension if not exists pgcrypto with schema extensions;
+create or replace function public.owner_reset_password(p_username text, p_password text) returns text
+language plpgsql security definer set search_path = public, extensions as $$
+declare uid uuid; uname text;
+begin
+  if char_length(coalesce(p_password, '')) < 6 then raise exception 'Use a temporary password of at least 6 characters.'; end if;
+  select id, username into uid, uname from public.profiles where lower(username) = lower(trim(p_username));
+  if uid is null then raise exception 'No player is called "%".', trim(p_username); end if;
+  update auth.users
+    set encrypted_password = extensions.crypt(p_password, extensions.gen_salt('bf')),
+        email_confirmed_at = coalesce(email_confirmed_at, now()),
+        updated_at = now()
+    where id = uid;
+  return format('Password reset for %s. Tell them the temporary password; they log in and press "Change password".', uname);
+end $$;
+revoke all on function public.owner_reset_password(text, text) from public, anon, authenticated;
