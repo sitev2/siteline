@@ -3,11 +3,16 @@
 // through iconHTML() / setIconText(), which escape everything else, so names and chat stay plain text.
 const S = 'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
 const F = 'fill="currentColor" stroke="none"';
+const L = (w) => `fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"`;
 
 const PATHS = {
   chat: `<path ${S} d="M4 5h16v11H10l-5 4v-4H4z"/>`,
   cart: `<path ${S} d="M3 4h2.5l2.2 10h10.1L20 7H6.4"/><circle ${S} cx="9" cy="19" r="1.4"/><circle ${S} cx="16.5" cy="19" r="1.4"/>`,
-  bomb: `<circle ${F} cx="10" cy="14.5" r="6.5"/><path ${F} d="M13.2 7.6l2-2 2.8 2.8-2 2z"/><path ${S} d="M17 6.5c.6-1.6 1.8-2.6 3.4-2.6M20.5 1.2v1.3M22.8 3.6h-1.3"/>`,
+  // the bomb as it looks in the game: four blocks with a strap, the timer box on top (screen + keypad), wires
+  bomb: `<rect ${L(1.6)} x="2" y="10.5" width="20" height="9.5" rx="1.2"/><path ${L(1.1)} d="M7 10.5v9.5M12 10.5v9.5M17 10.5v9.5"/>`
+    + `<path ${F} d="M2 14.2h20v2.2H2z"/><rect ${F} x="10" y="4" width="10.5" height="6.5" rx=".7"/>`
+    + `<path fill="#000" fill-opacity=".75" d="M11.3 5.3h5.6v1.9h-5.6zM11.4 8.3h1.4v1.1h-1.4zM13.6 8.3h1.4v1.1h-1.4zM15.8 8.3h1.4v1.1h-1.4zM18.1 5.3h1.2v4.1h-1.2z"/>`
+    + `<path ${L(1.1)} d="M10 5.8c-3.4 0-4.8 1.7-4.8 4.7M10 8.2c-2 0-3 .9-3 2.3"/>`,
   blast: `<path ${S} d="M12 2.5l1.8 5.3 5-2.6-2.4 5 5.1 1.8-5.1 1.8 2.4 5-5-2.6-1.8 5.3-1.8-5.3-5 2.6 2.4-5-5.1-1.8 5.1-1.8-2.4-5 5 2.6z"/>`,
   spoon: `<ellipse ${S} cx="15.5" cy="8.5" rx="3.4" ry="4.8" transform="rotate(45 15.5 8.5)"/><path ${S} d="M12.8 11.2L4 20"/>`,
   wrench: `<path ${S} d="M15 3.5a5 5 0 0 0-4.7 6.7L3.8 16.7a1.9 1.9 0 0 0 2.7 2.7l6.5-6.5A5 5 0 0 0 19.7 8l-3 3-3-1-1-3 3-3a5 5 0 0 0-.7-.5z"/>`,
