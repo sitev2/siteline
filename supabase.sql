@@ -307,7 +307,19 @@ language sql security definer set search_path = public stable as $$
     group by from_id) u;
 $$;
 
--- heartbeat again, now also reporting unread messages and saving the room code you're in
+-- the newest unread messages to me (up to 5), so the game can show them during a match.
+-- Does NOT mark them read: they stay unread until you open the chat.
+create or replace function public.unread_latest() returns json
+language sql security definer set search_path = public stable as $$
+  select coalesce(json_agg(json_build_object('id', m.id, 'from', m.from_id, 'name', p.username, 'body', m.body) order by m.id), '[]'::json)
+  from (select * from public.messages
+        where to_id = auth.uid() and read_at is null and created_at > now() - interval '7 days'
+        order by id desc limit 5) m
+  join public.profiles p on p.id = m.from_id;
+$$;
+revoke all on function public.unread_latest() from public, anon, authenticated;
+
+-- heartbeat again, now also reporting unread messages (with the newest ones' text) and saving the room code you're in
 -- (friends see it and get a "Join" button, so they can jump into your game without an invite)
 alter table public.profiles add column if not exists room text;
 drop function if exists public.heartbeat(text);
@@ -322,6 +334,7 @@ begin
   return json_build_object(
     'requests', (select count(*) from public.friends where friend_id = me and not accepted),
     'unread', public.unread_counts(),
+    'latest', public.unread_latest(),
     'invites', coalesce((
       select json_agg(json_build_object('id', i.id, 'from', p.username, 'code', i.code) order by i.id)
       from public.game_invites i join public.profiles p on p.id = i.from_id
