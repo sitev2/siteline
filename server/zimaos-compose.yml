@@ -1,0 +1,40 @@
+# SITELINE game server as a ZimaOS app (see server/ZIMAOS.txt for the click-by-click steps).
+# ZimaOS: + (top right) → Install a customized app → Import → paste ALL of this →
+# replace PASTE-YOUR-TAILSCALE-AUTH-KEY-HERE below → Submit / Install.
+#
+#  - "game" downloads the game from GitHub, runs the game server and keeps it up to date
+#    (it installs updates only while nobody is playing).
+#  - "tailscale" gives it a public https address (Tailscale Funnel), like
+#    https://siteline.your-tailnet.ts.net, without changing your router.
+name: siteline
+services:
+  game:
+    image: node:22
+    container_name: siteline-game
+    restart: unless-stopped
+    environment:
+      PORT: "8787"
+    volumes:
+      - /DATA/AppData/siteline/game:/app
+    ports:
+      - "8787:8787"        # http://<ZimaOS address>:8787 shows "SITELINE server is running." on your home network
+    command: ["sh", "-c", "[ -d /app/.git ] || git clone --depth 1 https://github.com/sitev2/siteline.git /app; exec sh /app/server/docker-run.sh"]
+
+  tailscale:
+    image: tailscale/tailscale:stable
+    container_name: siteline-tailscale
+    hostname: siteline
+    restart: unless-stopped
+    depends_on:
+      - game
+    environment:
+      TS_AUTHKEY: "PASTE-YOUR-TAILSCALE-AUTH-KEY-HERE"
+      TS_HOSTNAME: siteline
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "true"
+      TS_SERVE_CONFIG: /config/serve.json
+      # share the game server on https://siteline.<your tailnet>.ts.net (Funnel = reachable from the internet)
+      SERVE_JSON: '{"TCP":{"443":{"HTTPS":true}},"Web":{"$${TS_CERT_DOMAIN}:443":{"Handlers":{"/":{"Proxy":"http://game:8787"}}}},"AllowFunnel":{"$${TS_CERT_DOMAIN}:443":true}}'
+    volumes:
+      - /DATA/AppData/siteline/tailscale:/var/lib/tailscale
+    command: ["/bin/sh", "-c", "mkdir -p /config && printf '%s' \"$$SERVE_JSON\" > /config/serve.json && exec /usr/local/bin/containerboot"]

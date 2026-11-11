@@ -108,7 +108,9 @@ Node + `ws`. `server/server.mjs` imports the root `server.js` and `config.js`, s
 to the rules, maps or weapons also need the home server updated: the owner re-downloads
 the repo ZIP and restarts `server/start.bat`. On Linux (`server/LINUX.txt`, `server/install-linux.sh`: systemd service +
 Tailscale Funnel) it updates itself: every (re)start runs `git pull`, and a timer restarts it nightly at 04:30.
-The same server can run on Render (build `cd server && npm install`, start `node server/server.mjs`; free plan sleeps,
+On ZimaOS (owner's plan; `server/ZIMAOS.txt`) it is a custom app from `server/zimaos-compose.yml`: `node:22` container running
+`server/docker-run.sh` (clones the repo, checks GitHub every 30 min, restarts for an update only when "Players online: 0") + a
+`tailscale/tailscale` container (userspace, Funnel via TS_SERVE_CONFIG → http://game:8787). The same server can run on Render (build `cd server && npm install`, start `node server/server.mjs`; free plan sleeps,
 the menu's Wake server row handles that). Say so whenever a change touches
 `server.js`, `world.js`, `maps.js`, `weapons.js` or `config.js`.
 

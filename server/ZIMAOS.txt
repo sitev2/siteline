@@ -1,0 +1,72 @@
+SITELINE GAME SERVER — ZIMAOS SETUP
+===================================
+
+Runs the game server as a ZimaOS app, with a public https address from Tailscale Funnel
+(no router changes). The app downloads the game from GitHub by itself and installs game
+updates on its own: it checks every half hour and restarts only when nobody is playing.
+Takes about 20 minutes. (Menu names can differ slightly between versions.)
+
+
+PART 1 — TAILSCALE (on any computer, in a browser)
+--------------------------------------------------
+1. Go to https://login.tailscale.com and sign up / log in (Google, Microsoft or GitHub is fine).
+   If it asks you to add a device first, you can skip that.
+
+2. Turn on HTTPS addresses:
+   Admin console → DNS (top menu) → scroll to "HTTPS Certificates" → Enable HTTPS.
+
+3. Check Funnel is allowed (it usually is on new accounts):
+   Admin console → Access controls. The text should contain "funnel", for example:
+       "nodeAttrs": [ { "target": ["autogroup:member"], "attr": ["funnel"] } ],
+   If there is no "funnel" anywhere, paste that line just after the first {  and click Save.
+
+4. Make a key for the server:
+   Admin console → Settings → Keys → "Generate auth key…" → leave the switches off → Generate key.
+   Copy the key (it starts with  tskey-auth- ). You only need it once.
+
+
+PART 2 — ZIMAOS
+---------------
+5. Open the app file on GitHub:
+       https://github.com/sitev2/siteline/blob/main/server/zimaos-compose.yml
+   Click the "Copy raw file" button (two squares, top right of the file).
+
+6. Open your ZimaOS dashboard in a browser → click  +  (top right) → "Install a customized app"
+   → "Import" → paste everything into the box.
+
+7. In the pasted text, find   PASTE-YOUR-TAILSCALE-AUTH-KEY-HERE   and replace it with your key
+   (keep the quotes around it). Then Submit / Install.
+
+8. Wait 3–5 minutes the first time: ZimaOS downloads about 1 GB (Node.js + Tailscale), then the
+   app downloads the game.
+
+9. Check it on your home network: open  http://<your ZimaOS address>:8787  (the same address you
+   use for the ZimaOS dashboard, with :8787 at the end). It should say "SITELINE server is running."
+
+
+PART 3 — THE PUBLIC ADDRESS
+---------------------------
+10. Tailscale admin console → Machines. A machine called "siteline" appears.
+    Click the  …  next to it → "Disable key expiry" (otherwise it logs out after a few months).
+
+11. Its address is shown there, like  siteline.tail1234.ts.net. Your server is at
+        https://siteline.tail1234.ts.net
+    Test it on your phone with Wi-Fi OFF: it should say "SITELINE server is running."
+    (The first time can take a minute while the certificate is made.)
+
+12. Send the address to whoever looks after the game code, so it goes into the server list in
+    config.js (home server first, Render as backup). The game link becomes:
+        wss://siteline.tail1234.ts.net
+
+
+GOOD TO KNOW
+------------
+- Logs: ZimaOS dashboard → the SITELINE app → its settings / logs (siteline-game shows the server,
+  siteline-tailscale shows the address). "update found: it will be installed when nobody is
+  playing" is normal.
+- Updates are automatic. To update right away, restart the app in ZimaOS (it updates on start).
+- Files live in /DATA/AppData/siteline (game files + Tailscale login). Deleting that folder and
+  restarting makes it start fresh (you'd need a new Tailscale key).
+- Only the game server is shared to the internet, nothing else on the ZimaOS box.
+- If https://….ts.net doesn't work but :8787 does: check steps 2–3 (HTTPS + Funnel), then look at
+  the siteline-tailscale log.
