@@ -77,7 +77,7 @@ async function beat() {
     } else {
       for (const id of fresh) {
         const f = friends.find(x => x.id === id);
-        hooks.toast(`💬 New message from ${f ? f.username : 'a friend'}`, 4000);
+        hooks.toast(`[[chat]] New message from ${f ? f.username : 'a friend'}`, 4000);
       }
     }
     updateBadge();

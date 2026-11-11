@@ -357,7 +357,6 @@ body.touch.in-game #touch { display: block; }
 #btn-swap { width: 54px; height: 54px; right: calc(200px + var(--sar)); bottom: calc(206px + var(--sab)); font-size: 1.4rem; }
 #btn-use { width: 72px; height: 72px; right: calc(110px + var(--sar)); bottom: calc(214px + var(--sab)); background: rgba(240,160,64,.35); border-color: var(--accent); font-size: 1.8rem; animation: pulse 1.2s infinite; }
 #btn-buy { width: 50px; height: 50px; left: calc(184px + var(--sal)); top: calc(12px + var(--sat)); font-size: 1.3rem; }
-#btn-crouch { width: 58px; height: 58px; right: calc(224px + var(--sar)); bottom: calc(38px + var(--sab)); font-size: 1.5rem; }
 #btn-drop { width: 44px; height: 44px; right: calc(32px + var(--sar)); bottom: calc(262px + var(--sab)); font-size: 1.2rem; }
 #touch button.on { background: rgba(240,160,64,.38); border-color: var(--accent); }
 #btn-use.pick { animation: none; background: rgba(255,255,255,.22); border-color: rgba(255,255,255,.7); }
@@ -379,12 +378,11 @@ body.touch #money { font-size: 1.1rem; }
 body.touch #vitals { transform: translateX(-62%); }
 body.touch #hp, body.touch #armor, body.touch #ammo { padding: 4px 9px; gap: 6px; }
 body.touch #weapon-name, body.touch #fire-mode { display: none; }
-body.touch #bomb-icon, body.touch #kit-icon { padding: 4px 6px; font-size: 0; }
-body.touch #bomb-icon::before { content: '💣'; font-size: 1.1rem; }
-body.touch #kit-icon::before { content: '🔧'; font-size: 1.1rem; }
+body.touch #bomb-icon, body.touch #kit-icon { padding: 4px 6px; font-size: 1.1rem; }
+body.touch #bomb-icon .lbl, body.touch #kit-icon .lbl { display: none; }
 body.touch .hpbar { width: 64px; }
 body.touch #hint { bottom: calc(76px + var(--sab)); }
-/* small phones: keep health / ammo clear of the crouch and jump buttons, money clear of the score, hints above the buttons */
+/* small phones: keep health / ammo clear of the jump button, money clear of the score, hints above the buttons */
 @media (max-width: 760px) {
   body.touch #vitals { left: calc(8px + var(--sal)); transform: none; gap: 5px; }
   body.touch #econ { left: calc(134px + var(--sal)); top: calc(64px + var(--sat)); }
@@ -583,3 +581,11 @@ li.online .fwho small { color: #8fe0a2; }
 .admin-table .fdot { display: inline-block; vertical-align: middle; }
 .acct-newpass { display: grid; gap: 10px; padding: 12px; border: 1px solid rgba(240,160,64,.4); border-radius: 12px; }
 #btn-acct-forgot, #btn-acct-changepass { justify-self: start; }
+
+/* ---------- icons (icons.js): white line icons instead of emojis ---------- */
+.ico { width: 1.1em; height: 1.1em; vertical-align: -0.2em; color: #fff; flex: none; }
+i[data-icon] { font-style: normal; display: inline-flex; align-items: center; vertical-align: middle; }
+i[data-icon] .ico { vertical-align: 0; }
+#touch button .ico { width: 55%; height: 55%; }
+#touch button i[data-icon] { width: 100%; height: 100%; justify-content: center; }
+#touch button i[data-icon] .ico { width: 55%; height: 55%; }

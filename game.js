@@ -1,7 +1,7 @@
 // The in-game client: rendering, local player, remote players, effects, HUD.
 import * as THREE from 'three';
 import {
-  World, EYE, EYE_CROUCH, PLAYER_RADIUS, PLAYER_HEIGHT, GRAVITY, CELL, TUCK, bodyHeight, hitScale,
+  World, EYE, PLAYER_RADIUS, PLAYER_HEIGHT, GRAVITY, CELL,
   rayVsPlayer, penFactor, blastField, blastDamage, blastDistance,
 } from './world.js';
 import { resolveMap } from './maps.js';
@@ -19,6 +19,7 @@ import * as sfx from './audio.js';
 import { Input } from './input.js';
 import { Hud, TEAM_NAMES } from './hud.js';
 import { BuyMenu } from './buy.js';
+import { icon } from './icons.js';
 
 const BOMB_STATES = ['none', 'carried', 'dropped', 'planted', 'defused', 'exploded'];
 const INTERP_DELAY = 110; // ms
@@ -34,9 +35,7 @@ const AIR_ACCEL = 12;
 const AIR_CAP = 30 * U;         // air-strafing can only add a little speed per tick
 const MAX_SPEED = 1.3 * TOP_SPEED * U;   // hard cap so bunny-hop chains stay short
 const WALK = 0.52;
-const CROUCH = 0.34;            // crouch-walking: about a third of running speed
 const WADE = 0.72;              // knee-deep canal water (canal map)
-const DUCK_TIME = 0.2;          // seconds to crouch fully (or stand back up)
 const BOOST_R = 0.5;            // stand on a teammate whose head is this close (horizontally)
 const STEP_SPEED = 140 * U;     // faster than this on the ground = audible footsteps
 const BLAST_SPEED = 45;         // m/s the shockwave travels (matches the server's delay)
@@ -149,7 +148,7 @@ export class Game {
       burst: false, burstLeft: 0, burstNext: 0,
       peakY: 0, airTime: 0, jumpAt: -1, landedAt: -1,
       using: false, useCooldown: 0,
-      duck: 0, eyeOff: EYE, standingOn: null, mateLast: null,
+      eyeOff: EYE, standingOn: null, mateLast: null,
       deathTime: 0, spectate: null, killedBy: '', stepTimer: 0, clickedEmpty: false, kills: 0, deaths: 0,
     };
     this.round = 0;
@@ -279,7 +278,7 @@ export class Game {
         rem = {
           id: r.id, name: r.name, team: r.team, dummy: r.dummy, buf: [], alive: false, hp: 100, w: STARTER_PISTOL[r.team] || 'glock',
           kills: 0, deaths: 0, rp: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0 }, model: null, stepTimer: 0, deadT: 0, use: 0,
-          armor: 0, money: 0, vy: 0, fallFrom: null, duck: 0, speed: 0, vel: { x: 0, y: 0, z: 0 },
+          armor: 0, money: 0, vy: 0, fallFrom: null, speed: 0, vel: { x: 0, y: 0, z: 0 },
         };
         this.remotes.set(r.id, rem);
       }
@@ -455,7 +454,7 @@ export class Game {
     this.roundElapsed = m.bs;
     const now = performance.now();
     for (const p of m.p) {
-      const [id, x, y, z, yaw, pitch, alive, hp, w, kills, deaths, teamIdx, use, ping, armor, flags, money, duck] = p;
+      const [id, x, y, z, yaw, pitch, alive, hp, w, kills, deaths, teamIdx, use, ping, armor, flags, money] = p;
       if (id === this.myId) {
         this.me.hp = hp;
         this.me.kills = kills; this.me.deaths = deaths; this.me.ping = ping;
@@ -468,7 +467,7 @@ export class Game {
       if (!r) continue;
       const last = r.buf[r.buf.length - 1];
       if (last && Math.hypot(last.x - x, last.z - z) > 6) r.buf.length = 0;
-      r.buf.push({ t: now, x, y, z, yaw, pitch, duck: duck || 0 });
+      r.buf.push({ t: now, x, y, z, yaw, pitch });
       if (r.buf.length > 30) r.buf.shift();
       if (r.alive && !alive) r.deadT = now;
       if (!r.alive && alive) this.ragdolls.remove(id);   // respawned (practice)
@@ -502,8 +501,8 @@ export class Game {
     }
     this.bomb.state = 'none';
     this.clearBlast();
-    const buyKey = this.settings.touch ? 'Tap 🛒 to buy' : `Press ${this.key('buy')} to buy`;
-    this.hud.center(`Round ${m.round}`, m.carrier === this.myId ? `You have the bomb 💣 · ${buyKey}` : buyKey, '#fff', 3);
+    const buyKey = this.settings.touch ? 'Tap [[cart]] to buy' : `Press ${this.key('buy')} to buy`;
+    this.hud.center(`Round ${m.round}`, m.carrier === this.myId ? `You have the bomb [[bomb]] · ${buyKey}` : buyKey, '#fff', 3);
     this.toggleBuy(false);
   }
 
@@ -534,9 +533,8 @@ export class Game {
     Object.assign(this.me, {
       alive: true, hp: 100, yaw, pitch: 0, spectate: null, zoom: 0, rezoom: 0, recoilIdx: 0, recP: 0, recY: 0,
       fireInacc: 0, hurtP: 0, hurtY: 0, tag: 0, landPen: 0, landSlow: 0, using: false, burstLeft: 0, reloading: 0,
-      onGround: true, jumpAt: -1, duck: 0, eyeOff: EYE, standingOn: null, mateLast: null, swingAt: -10,
+      onGround: true, jumpAt: -1, eyeOff: EYE, standingOn: null, mateLast: null, swingAt: -10,
     });
-    this.input.crouchToggle = false;
     this.ragdolls.remove(this.myId);
     Object.assign(this.me.pos, { x, y, z });
     Object.assign(this.me.vel, { x: 0, y: 0, z: 0 });
@@ -602,11 +600,11 @@ export class Game {
       model = this.myModel;
       pos = me.pos; vel = me.vel; yaw = me.yaw; pitch = me.pitch;
       setModelWeapon(model, me.weapon);
-      animateModel(model, 0.016, { speed: Math.hypot(me.vel.x, me.vel.z), pitch, duck: m.duck != null ? m.duck : me.duck });
+      animateModel(model, 0.016, { speed: Math.hypot(me.vel.x, me.vel.z), pitch });
     } else {
       const r = this.remotes.get(id);
       model = r.model; pos = r.rp; vel = r.vel; yaw = r.rp.yaw;
-      animateModel(model, 0.016, { speed: r.speed, pitch: r.rp.pitch, duck: m.duck != null ? m.duck : r.duck });
+      animateModel(model, 0.016, { speed: r.speed, pitch: r.rp.pitch });
     }
     model.gunHolder.visible = false;      // the gun drops separately
     model.root.position.set(pos.x, pos.y, pos.z);
@@ -662,7 +660,7 @@ export class Game {
     const r = this.remotes.get(m.id);
     if (!r || !r.buf.length) return;
     if (r.model) modelSwing(r.model, !!m.stab);
-    const eye = r.rp.y + EYE + (EYE_CROUCH - EYE) * (r.duck || 0) - 0.2;
+    const eye = r.rp.y + EYE - 0.2;
     const pos = { x: r.rp.x - Math.sin(r.rp.yaw) * 0.6, y: eye, z: r.rp.z - Math.cos(r.rp.yaw) * 0.6 };
     const o = { pos, occ: this.occlusion(pos.x, pos.y, pos.z) };
     sfx.playSwing(o);
@@ -893,7 +891,7 @@ export class Game {
       f.spot.intensity = lit ? 9 : 0;
       f.group.visible = lit;
       if (!lit) continue;
-      const eye = r.rp.y + EYE + (EYE_CROUCH - EYE) * (r.duck || 0) - 0.15;
+      const eye = r.rp.y + EYE - 0.15;
       const cy = Math.cos(r.rp.pitch);
       const dx = -Math.sin(r.rp.yaw) * cy, dy = Math.sin(r.rp.pitch), dz = -Math.cos(r.rp.yaw) * cy;
       const x = r.rp.x + dx * 0.35, y = eye + dy * 0.35, z = r.rp.z + dz * 0.35;
@@ -1296,46 +1294,15 @@ export class Game {
     const out = [];
     for (const r of this.remotes.values()) {
       if (!r.alive || !this.isMate(r) || !r.buf.length) continue;
-      out.push({ id: r.id, x: r.rp.x, z: r.rp.z, r: BOOST_R, top: r.rp.y + bodyHeight(r.duck) });
+      out.push({ id: r.id, x: r.rp.x, z: r.rp.z, r: BOOST_R, top: r.rp.y + PLAYER_HEIGHT });
     }
     return out;
-  }
-
-  // Crouch (hold C / tap the crouch button). In the air, crouching pulls your feet up
-  // (a crouch-jump reaches ~65 units instead of ~54). You can't stand up under a low ceiling.
-  updateCrouch(dt) {
-    const me = this.me, inp = this.input;
-    const planting = me.using && this.bomb.state === 'carried';
-    const want = (inp.crouch || planting) && me.alive ? 1 : 0;
-    const p = me.pos;
-    if (!me.onGround) {
-      if (want && me.duck < 1) {
-        // tuck the legs up if there's head room
-        const ceil = this.world.ceilingAt(p.x, p.z, PLAYER_RADIUS, p.y);
-        const lift = Math.min(TUCK * (1 - me.duck), Math.max(0, ceil - (p.y + bodyHeight(1))));
-        p.y += lift; me.eyeOff -= lift;
-        me.duck = 1;
-      } else if (!want && me.duck > 0) {
-        // legs back down, unless that would push them into a ledge
-        const drop = TUCK * me.duck;
-        if (!this.world.blocked(p.x, p.z, PLAYER_RADIUS, p.y - drop, 0, PLAYER_HEIGHT)) { p.y -= drop; me.eyeOff += drop; me.duck = 0; }
-      }
-    } else if (want) me.duck = Math.min(1, me.duck + dt / DUCK_TIME);
-    else if (me.duck > 0) {
-      const next = Math.max(0, me.duck - dt / DUCK_TIME);
-      // standing up needs head room
-      if (!this.world.blocked(p.x, p.z, PLAYER_RADIUS, p.y, 0.05, bodyHeight(next))) me.duck = next;
-    }
-    // the camera glides to the new eye height
-    const target = EYE + (EYE_CROUCH - EYE) * me.duck;
-    me.eyeOff += (target - me.eyeOff) * Math.min(1, dt * 18);
   }
 
   updateMovement(dt, frozen) {
     const me = this.me, inp = this.input, now = this.clock;
     const w = itemDef(me.weapon);
     if (inp.consume('jump')) me.jumpAt = now;   // remembered briefly so a press just before landing counts
-    this.updateCrouch(dt);
 
     const mx = frozen ? 0 : inp.move.x, my = frozen ? 0 : inp.move.y;
     const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw);
@@ -1344,7 +1311,7 @@ export class Game {
     const wl = Math.hypot(wx, wz);
     const amount = Math.min(1, wl);
     if (wl > 0) { wx /= wl; wz /= wl; }
-    const gait = me.duck > 0.5 ? CROUCH : inp.walk ? WALK : 1;
+    const gait = inp.walk ? WALK : 1;
     const wading = me.pos.y < 0.3 && this.world.waterAt(me.pos.x, me.pos.z) > 0;   // knee-deep canal water
     const maxSpeed = runSpeed(w, me.zoom > 0) * gait * (1 - 0.45 * me.tag) * (1 - me.landSlow) * (wading ? WADE : 1);
     const wish = maxSpeed * amount;
@@ -1393,14 +1360,14 @@ export class Game {
       const mate = plats.find(pl => pl.id === me.standingOn);
       if (mate && me.mateLast) {
         const dx = mate.x - me.mateLast.x, dz = mate.z - me.mateLast.z;
-        if (Math.hypot(dx, dz) < 1 && !this.world.blocked(me.pos.x + dx, me.pos.z + dz, PLAYER_RADIUS, me.pos.y, 0.1, bodyHeight(me.duck))) {
+        if (Math.hypot(dx, dz) < 1 && !this.world.blocked(me.pos.x + dx, me.pos.z + dz, PLAYER_RADIUS, me.pos.y, 0.1, PLAYER_HEIGHT)) {
           me.pos.x += dx; me.pos.z += dz;
         }
       }
       me.mateLast = mate ? { x: mate.x, z: mate.z } : null;
     }
     const wasGround = me.onGround;
-    me.onGround = this.world.move(me.pos, v, dt, PLAYER_RADIUS, me.onGround, bodyHeight(me.duck), plats);
+    me.onGround = this.world.move(me.pos, v, dt, PLAYER_RADIUS, me.onGround, PLAYER_HEIGHT, plats);
     const under = me.onGround ? plats.find(pl => Math.abs(pl.top - me.pos.y) < 0.02 && (me.pos.x - pl.x) ** 2 + (me.pos.z - pl.z) ** 2 < pl.r * pl.r) : null;
     if ((under && under.id) !== me.standingOn) { me.standingOn = under ? under.id : null; me.mateLast = under ? { x: under.x, z: under.z } : null; }
     if (!me.onGround) {
@@ -1414,9 +1381,9 @@ export class Game {
     me.landPen = Math.max(0, me.landPen - dt * 3);
 
     const speed = Math.hypot(v.x, v.z);
-    // wading can't be done quietly: even walking or crouching splashes
+    // wading can't be done quietly: even walking splashes
     const inWater = me.onGround && me.pos.y < 0.3 && this.world.waterAt(me.pos.x, me.pos.z) > 0;
-    if (me.onGround && (inWater ? speed > 0.8 : speed > STEP_SPEED && !inp.walk && me.duck < 0.5)) {
+    if (me.onGround && (inWater ? speed > 0.8 : speed > STEP_SPEED && !inp.walk)) {
       me.stepTimer -= dt;
       if (me.stepTimer <= 0) {
         me.stepTimer = inWater ? 0.42 : 0.34;
@@ -1443,7 +1410,7 @@ export class Game {
       me.landPen = Math.min(2, 1 + fall * 0.3);
     }
     this.vmLand = Math.min(1, 0.4 + fall * 0.25);
-    if (fall > 0.4 && !this.input.walk && me.duck < 0.5) sfx.playLand({ surface: this.surfaceAt(me.pos.x, me.pos.y, me.pos.z), hard: Math.min(1, fall / 3) });
+    if (fall > 0.4 && !this.input.walk) sfx.playLand({ surface: this.surfaceAt(me.pos.x, me.pos.y, me.pos.z), hard: Math.min(1, fall / 3) });
   }
 
   updateWeapon(dt, frozen) {
@@ -1513,8 +1480,7 @@ export class Game {
       const k = Math.exp(-dt * 7);
       me.recP *= k; me.recY *= k;
     }
-    // crouching recovers accuracy faster (it doesn't change the recoil pattern)
-    me.fireInacc *= Math.exp(-dt * 3 / w.recover * (me.duck > 0.5 ? 1.6 : 1));
+    me.fireInacc *= Math.exp(-dt * 3 / w.recover);
     const hk = Math.exp(-dt * 9);
     me.hurtP *= hk; me.hurtY *= hk;
   }
@@ -1565,7 +1531,7 @@ export class Game {
       if (tr.pen.length) stop = Math.min(stop, tr.pen[0][0]);
       for (const r of this.remotes.values()) {
         if (!r.alive || !r.buf.length) continue;
-        const h = rayVsPlayer(ex, ey, ez, dir.x, dir.y, dir.z, r.rp.x, r.rp.y, r.rp.z, r.rp.yaw, hitScale(r.duck));
+        const h = rayVsPlayer(ex, ey, ez, dir.x, dir.y, dir.z, r.rp.x, r.rp.y, r.rp.z, r.rp.yaw);
         if (h && h.t <= a.range && h.t < stop && (!best || h.t < best.t)) best = { ...h, id: r.id, dir };
       }
       if (best) break;
@@ -1685,7 +1651,7 @@ export class Game {
       let best = null;
       for (const r of this.remotes.values()) {
         if (!r.alive || !r.buf.length) continue;
-        const h = rayVsPlayer(ex, ey, ez, dir.x, dir.y, dir.z, r.rp.x, r.rp.y, r.rp.z, r.rp.yaw, hitScale(r.duck));
+        const h = rayVsPlayer(ex, ey, ez, dir.x, dir.y, dir.z, r.rp.x, r.rp.y, r.rp.z, r.rp.yaw);
         if (h && h.t < wallT && (!best || h.t < best.t)) best = { ...h, id: r.id };
       }
       const t = best ? best.t : wallT;
@@ -1711,7 +1677,7 @@ export class Game {
     if (w.id === 'mag7') { this.cancelReloadSfx(); this.boltSfx = sfx.pumpSequence(w.id); }
     // springy view-model recoil: harder-hitting guns kick more
     const R = this.vmRec || (this.vmRec = { z: 0, zv: 0, p: 0, pv: 0, r: 0, rv: 0 });
-    const s = Math.min(1.7, 0.45 + (w.damage * w.pellets) / 70) * (me.duck > 0.5 ? 0.85 : 1);
+    const s = Math.min(1.7, 0.45 + (w.damage * w.pellets) / 70);
     R.zv += 0.65 * s; R.pv += 0.3 * s; R.rv += (Math.random() - 0.5) * 1.6 * s;   // mostly a push back; the climb comes from the real recoil
     this.vmKick = 1;
     this.vmFlash.visible = !me.zoom && !silenced;
@@ -1780,7 +1746,6 @@ export class Game {
       r.rp.z = s0.z + (s1.z - s0.z) * k;
       r.rp.yaw = angleLerp(s0.yaw, s1.yaw, k);
       r.rp.pitch = s0.pitch + (s1.pitch - s0.pitch) * k;
-      r.duck = (s0.duck || 0) + ((s1.duck || 0) - (s0.duck || 0)) * k;
       const speed = dt > 0 ? Math.hypot(r.rp.x - px, r.rp.z - pz) / dt : 0;
       const vy = dt > 0 ? (r.rp.y - py) / dt : 0;
       if (dt > 0) {
@@ -1800,7 +1765,7 @@ export class Game {
         const fx = -Math.sin(r.rp.yaw), fz = -Math.cos(r.rp.yaw);
         animateModel(m, dt, {
           speed: r.speed, fwd: r.vel.x * fx + r.vel.z * fz, side: r.vel.x * -fz + r.vel.z * fx,
-          pitch: r.rp.pitch, duck: r.duck, air: Math.abs(r.vel.y) > 1.2, use: !!r.use,
+          pitch: r.rp.pitch, air: Math.abs(r.vel.y) > 1.2, use: !!r.use,
         });
       }
       if (m.label) m.label.visible = r.alive;
@@ -1838,7 +1803,7 @@ export class Game {
       const target = me.spectate && this.remotes.get(me.spectate);
       const body = this.ragdolls.chestOf(this.myId);
       if (target && target.alive && since > 2) {
-        x = target.rp.x; y = target.rp.y + EYE + (EYE_CROUCH - EYE) * target.duck; z = target.rp.z; yaw = target.rp.yaw; pitch = target.rp.pitch;
+        x = target.rp.x; y = target.rp.y + EYE; z = target.rp.z; yaw = target.rp.yaw; pitch = target.rp.pitch;
       } else if (body) {
         if (target && !target.alive) me.spectate = null;
         // watch your own body fall from a little way behind where you were looking
@@ -1949,8 +1914,8 @@ export class Game {
       const airY = me.onGround ? 0 : Math.max(-0.025, Math.min(0.025, -me.vel.y * 0.004));
       vm.position.set(
         H[0] + Math.sin(b) * 0.011 * bobAmt + P[0] + Math.sin(t * 1.1) * 0.003 * breathe + SW.x * 0.25,
-        H[1] - Math.abs(Math.cos(b)) * 0.009 * bobAmt - rel * 0.015 + P[1] - this.vmLand * 0.035 + Math.sin(t * 2.2) * 0.002 * breathe - SW.y * 0.2 + airY - me.duck * 0.012,
-        H[2] + R.z + P[2] + me.duck * 0.01,
+        H[1] - Math.abs(Math.cos(b)) * 0.009 * bobAmt - rel * 0.015 + P[1] - this.vmLand * 0.035 + Math.sin(t * 2.2) * 0.002 * breathe - SW.y * 0.2 + airY,
+        H[2] + R.z + P[2],
       );
       // the camera shows half the recoil; the gun takes the other half so it keeps pointing where the
       // next bullet goes (converted between the two cameras' fields of view)
@@ -2044,33 +2009,32 @@ export class Game {
     const canBuy = this.canBuy();
     let hint = '';
     if (me.using) hint = '';
-    else if (use === 'plant') hint = touch ? 'Hold ✋ to plant the bomb' : `Hold ${this.key('use')} to plant the bomb`;
+    else if (use === 'plant') hint = touch ? 'Hold [[hand]] to plant the bomb' : `Hold ${this.key('use')} to plant the bomb`;
     else if (use === 'defuse') {
       const left = tl;
-      hint = (touch ? 'Hold ✋ to defuse' : `Hold ${this.key('use')} to defuse`) + (left < b.need ? ' — not enough time!' : '');
+      hint = (touch ? 'Hold [[hand]] to defuse' : `Hold ${this.key('use')} to defuse`) + (left < b.need ? ' — not enough time!' : '');
     } else if (use === 'look') hint = 'Look at the bomb to defuse it';
     else if (pick) {
       const cur = me.inv[WEAPONS[pick.w].slot];
-      hint = `${touch ? 'Tap ✋' : `Press ${this.key('use')}`} to ${cur ? `swap your ${itemName(cur)} for` : 'pick up'} the ${itemName(pick.w)}`;
+      hint = `${touch ? 'Tap [[hand]]' : `Press ${this.key('use')}`} to ${cur ? `swap your ${itemName(cur)} for` : 'pick up'} the ${itemName(pick.w)}`;
     } else if (me.alive && me.melee && me.weapon !== me.melee && this.clock < (this.spoonHintUntil || 0)) {
       const rm = reverseMap(this.settings.keys), code = Object.keys(rm).find(c => rm[c] === 'w3');
-      hint = touch ? '🥄 Tap ⇄ for the spoon' : code ? `🥄 Press ${keyLabel(code)} for the spoon` : '🥄 Scroll the mouse wheel for the spoon';
-    } else if (me.alive && this.phase === 'freeze') hint = touch ? 'Tap 🛒 to buy' : `Press ${this.key('buy')} to buy`;
-    else if (me.alive && this.dm && this.clock - (this.spawnedAt || 0) < 3) hint = touch ? 'Tap 🛒 to change guns' : `Press ${this.key('buy')} to change guns`;
+      hint = touch ? '[[spoon]] Tap [[swap]] for the spoon' : code ? `[[spoon]] Press ${keyLabel(code)} for the spoon` : '[[spoon]] Scroll the mouse wheel for the spoon';
+    } else if (me.alive && this.phase === 'freeze') hint = touch ? 'Tap [[cart]] to buy' : `Press ${this.key('buy')} to buy`;
+    else if (me.alive && this.dm && this.clock - (this.spawnedAt || 0) < 3) hint = touch ? 'Tap [[cart]] to change guns' : `Press ${this.key('buy')} to change guns`;
     hud.hint(hint);
     const useBtn = document.getElementById('btn-use');
     useBtn.classList.toggle('hidden', use !== 'plant' && use !== 'defuse' && !pick);
     useBtn.classList.toggle('pick', !!pick && use !== 'plant' && use !== 'defuse');
     const altBtn = document.getElementById('btn-alt');
     altBtn.classList.toggle('hidden', !w.alt);
-    const altLabel = w.alt === 'scope' ? '◎' : w.alt === 'stab' ? '🥄' : '≡';
-    if (altBtn.textContent !== altLabel) altBtn.textContent = altLabel;
+    const altLabel = w.alt === 'scope' ? 'scope' : w.alt === 'stab' ? 'spoon' : 'burst';
+    if (altBtn.dataset.icon !== altLabel) { altBtn.dataset.icon = altLabel; altBtn.innerHTML = icon(altLabel); }
     document.getElementById('btn-swap').classList.toggle('hidden', !(me.inv.primary && me.inv.secondary) && !this.owns('c4') && !me.melee);
     const lightBtn = document.getElementById('btn-light');
     lightBtn.classList.toggle('hidden', !this.night);
     lightBtn.classList.toggle('on', !!me.light);
     document.getElementById('btn-drop').classList.toggle('hidden', !me.alive || this.dm || me.weapon === me.melee || (!!WEAPONS[me.weapon] && !(me.inv.primary && me.inv.secondary)));
-    document.getElementById('btn-crouch').classList.toggle('on', this.input.crouchToggle);
     hud.buyButton(canBuy && !touch && !this.buyOpen && !this.dm);
     document.getElementById('btn-buy').classList.toggle('hidden', !canBuy);
     this.buyMenu.update({
@@ -2154,7 +2118,7 @@ export class Game {
     const r = v => Math.round(v * 100) / 100;
     this.transport.send({
       t: 'st', rd: this.round, x: r(me.pos.x), y: r(me.pos.y), z: r(me.pos.z),
-      yaw: r(me.yaw), pitch: r(me.pitch), w: me.weapon, u: me.using ? 1 : 0, c: r(me.duck),
+      yaw: r(me.yaw), pitch: r(me.pitch), w: me.weapon, u: me.using ? 1 : 0,
       am: [me.inv.primary, me.inv.secondary].flatMap(id => { const a = this.ammoOf(id); return id ? [a.mag, a.res] : [0, 0]; }),
     });
   }

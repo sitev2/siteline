@@ -5,6 +5,7 @@ import { STEPS as NET_STEPS, runNetTest, summarise as netVerdict, resultsText as
 import { logEntries, logText, entryText, clearLog } from './netlog.js';
 import { CONFIG } from './config.js';
 import { Game } from './game.js';
+import { fillIcons, setIconText } from './icons.js';
 import { MAPS, mapsFor, isDmMap, dmVariant, resolveMap } from './maps.js';
 import { initAudio, setVolume, setAmbienceVolume, playClick } from './audio.js';
 import { World } from './world.js';
@@ -71,7 +72,7 @@ function hideScreens() { for (const s of screens) $(s).classList.add('hidden'); 
 export function toast(text, ms = 3200) {
   const el = document.createElement('div');
   el.className = 'toast';
-  el.textContent = text;
+  setIconText(el, text);
   $('toasts').appendChild(el);
   setTimeout(() => el.remove(), ms);
 }
@@ -1216,6 +1217,7 @@ function stopPageZoom() {
 
 // ---------- wire up ----------
 function init() {
+  fillIcons();   // white icons (icons.js) into every <i data-icon> in the page
   $('name').value = settings.name || '';
   const params = new URLSearchParams(location.search);
   const invite = normaliseCode(params.get('join'));
@@ -1288,7 +1290,7 @@ function init() {
     roomCode: () => app.code,
     toast,
     // a friend's message: the usual pop-up, now with what they wrote
-    friendMessage: (name, text) => toast(`💬 New message from ${name}: ${text}`, 6000),
+    friendMessage: (name, text) => toast(`[[chat]] New message from ${name}: ${text}`, 6000),
     openAccount: () => { renderAccount(); show('account'); },
     isOpen: () => !$('friends').classList.contains('hidden'),
   });

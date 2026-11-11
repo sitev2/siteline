@@ -3,7 +3,7 @@
 
 export const ACTIONS = [
   ['moveF', 'Move forward'], ['moveB', 'Move back'], ['moveL', 'Move left'], ['moveR', 'Move right'],
-  ['jump', 'Jump'], ['walk', 'Walk (quiet)'], ['crouch', 'Crouch'],
+  ['jump', 'Jump'], ['walk', 'Walk (quiet)'],
   ['reload', 'Reload'], ['alt', 'Scope / burst mode'], ['use', 'Plant / defuse / pick up'],
   ['buy', 'Buy menu'], ['inspect', 'Inspect weapon'], ['flashlight', 'Flashlight'], ['drop', 'Drop weapon'],
   ['chatAll', 'All chat'], ['chatTeam', 'Team chat'],
@@ -13,7 +13,7 @@ export const ACTIONS = [
 
 export const DEFAULT_KEYS = {
   moveF: 'KeyW', moveB: 'KeyS', moveL: 'KeyA', moveR: 'KeyD',
-  jump: 'Space', walk: 'ShiftLeft', crouch: 'KeyC',
+  jump: 'Space', walk: 'ShiftLeft',
   reload: 'KeyR', alt: 'KeyQ', use: 'KeyE',
   buy: 'KeyB', inspect: 'KeyF', flashlight: 'KeyL', drop: 'KeyG',
   chatAll: 'KeyY', chatTeam: 'KeyU',
@@ -23,7 +23,7 @@ export const DEFAULT_KEYS = {
 
 export function keyMap(keys) { return { ...DEFAULT_KEYS, ...(keys || {}) }; }
 
-// code → action (both Shift keys walk, both Ctrl keys crouch if Ctrl is chosen, and so on)
+// code → action (both Shift keys walk, both Ctrl keys do the same if Ctrl is chosen, and so on)
 export function reverseMap(keys) {
   const k = keyMap(keys), out = {};
   for (const [act, code] of Object.entries(k)) {
