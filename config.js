@@ -25,10 +25,15 @@ export const CONFIG = {
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
   ],
-  // Your own game server (see the server folder / README). Put its secure
-  // address here, e.g. 'wss://gamebox.tail1234.ts.net'. When set, every online
-  // game goes through it. Leave empty to use peer-to-peer rooms instead.
-  // You can also test a server with ?server=wss://... in the page address.
+  // Your own game servers (see the server folder), best first. Hosting uses the
+  // first one that answers; if none does, it makes a direct (peer-to-peer) room.
+  // Paste each address with wss:// in front, e.g.
+  //   { name: 'Home', url: 'wss://gamebox.tail1234.ts.net' },
+  //   { name: 'Render', url: 'wss://siteline-server.onrender.com' },
+  servers: [
+  ],
+  // Test one server on its own with ?server=wss://... in the page address
+  // (then only that server is used).
   serverUrl: params.get('server') || '',
 
   // Relay (TURN) for school, office and mobile networks that block direct
