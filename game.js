@@ -14,7 +14,7 @@ import { keyMap, keyLabel, reverseMap } from './keys.js';
 import { radialTexture } from './textures.js';
 import { resolveGraphics } from './graphics.js';
 import { PostFX } from './post.js';
-import { inspectPose, drawPose, swingPose, poseViewModel, inspectDuration } from './anim.js';
+import { inspectPose, inspectTrick, drawPose, swingPose, poseViewModel } from './anim.js';
 import * as sfx from './audio.js';
 import { Input } from './input.js';
 import { Hud, TEAM_NAMES } from './hud.js';
@@ -1899,17 +1899,32 @@ export class Game {
       const drawK = draw;
       // pull-out (draw) and inspect poses for this weapon
       const dp = drawPose(w.type, drawK);
-      let ip = null;
+      let ip = null, trick = null;
       if (me.inspectAt >= 0) {
         ip = inspectPose(me.weapon, w.type, this.clock - me.inspectAt);
         if (!ip || !me.alive) { ip = null; me.inspectAt = -1; }
+        else {
+          trick = inspectTrick(me.weapon, w.type, this.clock - me.inspectAt);
+          this.vmInspect = { vm, ip, trick, at: this.clock };
+        }
+      }
+      // an inspect cut short (shooting, reloading…) blends back in a moment instead of snapping
+      if (!ip && this.vmInspect) {
+        const L = this.vmInspect, f = 1 - (this.clock - L.at) / 0.13;
+        if (L.vm !== vm || f <= 0 || !me.alive) this.vmInspect = null;
+        else {
+          const e = f * f * (3 - 2 * f), wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+          ip = L.ip.map((v, i) => (i < 3 ? v : wrap(v)) * e);
+          if (L.trick) trick = { ...L.trick, oneHand: L.trick.oneHand * e, spin: wrap(L.trick.spin) * e, wrist: L.trick.wrist * e };
+        }
       }
       let P = ip ? dp.map((v, i) => v + ip[i]) : dp;
       // swinging the spoon
       const sp = w.type === 'melee' ? swingPose(me.swingStab, this.clock - me.swingAt, me.swingDir) : null;
       if (sp) P = P.map((v, i) => v + sp[i]);
       // breathing while standing still
-      const breathe = (1 - bobAmt) * (ip ? 0 : 1);
+      this.vmBreathe = (this.vmBreathe ?? 1) + ((ip ? 0 : 1) - (this.vmBreathe ?? 1)) * Math.min(1, dt * 4);
+      const breathe = (1 - bobAmt) * this.vmBreathe;
       const t = this.clock;
       // where each kind of gun sits on screen: x, y, z, then the turn the arms are posed for (the elbows
       // are anchored to it). The gun itself is NOT turned: its barrel stays parallel to the view so it
@@ -1936,8 +1951,6 @@ export class Game {
       // hands and moving parts: holding, reloading, slides, bolts and pumps
       const am = WEAPONS[me.weapon] ? this.ammoOf(me.weapon) : null;
       const sinceShot = this.clock - me.lastFire;
-      const ik = ip && me.weapon === 'deagle' ? (this.clock - me.inspectAt) / inspectDuration('deagle', 'pistol') : 0;
-      const oneHand = ik ? Math.min(1, Math.max(0, (ik - 0.6) / 0.08)) * Math.min(1, Math.max(0, (1 - ik) / 0.06)) : 0;
       poseViewModel(vm, {
         reload: me.reloading > 0 && am && w.reloadType !== 'shell' ? 1 - me.reloading / w.reload : -1,
         shell: me.reloading > 0 && am && w.reloadType === 'shell' ? 1 - me.reloading / w.reload : -1,
@@ -1946,9 +1959,8 @@ export class Game {
         fireT: sinceShot,
         hold: H,
         dt,
-        // the Deagle spin is one-handed, and the gun spins round the trigger finger
-        oneHand: oneHand,
-        spin: oneHand ? Math.atan2(Math.sin(ip[5]), Math.cos(ip[5])) * oneHand : 0,
+        // the Deagle spin: one-handed, the gun turns forwards round the trigger finger
+        trick,
         bolt: w.bolt && sinceShot < w.interval ? sinceShot / w.interval : -1,
         pump: me.weapon === 'mag7' && sinceShot > 0.12 && sinceShot < 0.12 + w.interval * 0.7 ? (sinceShot - 0.12) / (w.interval * 0.7) : -1,
       });
