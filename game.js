@@ -927,7 +927,8 @@ export class Game {
   setupFlashlights() {
     this.flash = new Map();   // (my own flashlight state is me.light, off at the start)
     if (!this.night && !this.br) return;
-    this.myLight = new THREE.SpotLight('#fff1d2', 0, 38, 0.36, 0.55, 1.1);
+    // (the Backrooms' flashlight reaches further and wider: it is what you have in the dark areas)
+    this.myLight = this.br ? new THREE.SpotLight('#fff1d2', 0, 48, 0.44, 0.6, 1.0) : new THREE.SpotLight('#fff1d2', 0, 38, 0.36, 0.55, 1.1);
     this.myLight.castShadow = false;
     this.scene.add(this.myLight, this.myLight.target);
     this.beamTex = radialTexture('rgba(255,244,214,1)', 'rgba(255,230,180,0)');
@@ -936,7 +937,7 @@ export class Game {
   flashlightFor(r) {
     let f = this.flash.get(r.id);
     if (f) return f;
-    const spot = new THREE.SpotLight('#fff1d2', 0, 32, 0.36, 0.55, 1.1);
+    const spot = this.br ? new THREE.SpotLight('#fff1d2', 0, 42, 0.44, 0.6, 1.0) : new THREE.SpotLight('#fff1d2', 0, 32, 0.36, 0.55, 1.1);
     const L = 8;
     const geo = new THREE.ConeGeometry(1.9, L, 20, 1, true);
     geo.translate(0, -L / 2, 0);
@@ -969,7 +970,7 @@ export class Game {
     if (!this.night && !this.br) return;
     const me = this.me, cam = this.camera;
     const on = me.alive && me.light;
-    this.myLight.intensity = on ? 9 : 0;
+    this.myLight.intensity = on ? (this.br ? 16 : 9) : 0;
     if (on) {
       const fwd = TMP.set(0, 0, -1).applyQuaternion(cam.quaternion);
       this.myLight.position.copy(cam.position).addScaledVector(fwd, 0.2).y -= 0.12;
@@ -979,7 +980,7 @@ export class Game {
       if (!r.model) continue;
       const f = this.flashlightFor(r);
       const lit = r.alive && r.light && r.model.root.visible;
-      f.spot.intensity = lit ? 9 : 0;
+      f.spot.intensity = lit ? (this.br ? 14 : 9) : 0;
       f.group.visible = lit;
       if (!lit) continue;
       const eye = r.rp.y + EYE - 0.15;
