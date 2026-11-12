@@ -412,14 +412,19 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
   // per-area tint so it isn't the same everywhere (low frequency grime)
   const grime = (x, z) => 0.9 + 0.12 * hash2(Math.floor(x / 3) + 101, Math.floor(z / 3) + 57) + 0.04 * hash2(Math.floor(x) + 7, Math.floor(z) + 3);
   const EXPO = 1.05, AMB = 0.035;
-  // inside a dark area even the light that spills in from next door fades out (smoothly, over 2.5 m)
+  // a dark area's own lights are dead, and even the light that spills in from next door fades out. The fade runs
+  // from 2 m before its edge to 4 m inside, in steps the eye sees as even (the light drops by the same factor
+  // every few cm, not by the same amount), so there is no line where the dark begins (owner: "blend more")
   const zones = (plan.darkZones || []).map(d => ({ x0: at(d.x) + 0.5, z0: at(d.z) + 0.5, x1: at(d.x + d.w), z1: at(d.z + d.d) }));
+  const DARK_MIN = 0.02, FADE_OUT = 2, FADE_IN = 4;             // (nearly pitch black: bring a flashlight)
   const darkK = (x, z) => {
     let k = 1;
     for (const d of zones) {
-      const inside = Math.min(x - d.x0, d.x1 - x, z - d.z0, d.z1 - z);
-      // (nearly pitch black: bring a flashlight); no hard line where the dark begins
-      if (inside > 0) { const f = Math.min(1, inside / 2.5); k = Math.min(k, 1 - 0.975 * f * f * (3 - 2 * f)); }
+      const ox = Math.max(d.x0 - x, 0, x - d.x1), oz = Math.max(d.z0 - z, 0, z - d.z1);
+      const inside = ox || oz ? -Math.hypot(ox, oz) : Math.min(x - d.x0, d.x1 - x, z - d.z0, d.z1 - z);
+      if (inside <= -FADE_OUT) continue;
+      const f = Math.min(1, (inside + FADE_OUT) / (FADE_OUT + FADE_IN));
+      k = Math.min(k, Math.pow(DARK_MIN, f * f * (3 - 2 * f)));
     }
     return k;
   };
