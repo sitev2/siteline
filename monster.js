@@ -35,6 +35,14 @@ export class MonsterBrain {
     this.lv = BR_LEVELS[brLevel(this.world.def.level)].monster;      // the difficulty
     this.chaseSpeed = BR.sprint * this.lv.speed;
     this.nav = server.navGrid();
+    // It can't open doors: the walking-grid spots in each doorway, so its routes go round the shut ones
+    const w = this.world, nav = this.nav;
+    this.doorOf = new Int16Array(nav.n).fill(-1);
+    w.doors.forEach((d, k) => {
+      const cells = new Set(d.cells);
+      for (let i = 0; i < nav.n; i++) if (cells.has(Math.floor(nav.z[i] / 0.5) * w.w + Math.floor(nav.x[i] / 0.5))) this.doorOf[i] = k;
+    });
+    this.shutNode = (i) => this.doorOf[i] >= 0 && !w.doors[this.doorOf[i]].open;
     this.vel = { x: 0, y: 0, z: 0 };
     this.onGround = true;
     this.state = 'wait';
@@ -62,7 +70,7 @@ export class MonsterBrain {
     const p = this.p, sp = Math.hypot(this.vel.x, this.vel.z);
     const mode = this.state === 'skin' ? 'skin' : this.state === 'reveal' ? 'reveal' : now < (this.grabUntil || 0) ? 'grab'
       : this.state === 'peek' ? `peek:${this.peekSide || 1}`
-        : now < this.pauseUntil ? (this.opening ? 'idle' : 'listen')
+        : now < this.pauseUntil ? 'listen'
           : sp < 0.3 ? 'idle'
             : this.state === 'chase' || this.state === 'pursue' ? 'run'
               : this.state === 'stalk' || this.state === 'peekGo' ? 'stalk'
@@ -83,13 +91,16 @@ export class MonsterBrain {
       this.move(null, 0, dt);
       if (now >= this.revealEnd) {
         const t = this.target;
-        if (t && t.alive && !t.escaped) { this.state = 'chase'; this.lostAt = now; this.s.monsterAlert(p, t); } else { this.state = 'wander'; this.target = null; }
+        if (t && t.alive && !t.escaped) {
+          this.state = 'chase'; this.lostAt = now; this.s.monsterAlert(p, t);
+          this.last = { x: t.x, z: t.z, vx: 0, vz: 0, t: now, id: t.id }; this.lastClue = now;
+        } else { this.state = 'wander'; this.target = null; }
         this.goal = null; this.path = null;
       }
       return;
     }
     if (now >= this.thinkAt) { this.thinkAt = now + 0.12; this.think(now); }
-    if (now < this.pauseUntil) { p.use = false; if (this.opening) this.doors(now, null); this.move(null, 0, dt); return; }
+    if (now < this.pauseUntil) { p.use = false; this.move(null, 0, dt); return; }
     if (this.state === 'peek') { this.peekHold(dt, now); this.move(null, 0, dt); return; }
 
     let speed = MONSTER.wander, goal = this.goal;
@@ -132,26 +143,26 @@ export class MonsterBrain {
     this.goal = { x: x + (Math.random() - 0.5) * 2, y: 0, z: z + (Math.random() - 0.5) * 2 };
   }
 
-  // a shut door right in front of it: it stops, rattles the handle, then opens it
+  // A shut door right in front of it. It can't open doors (owner's rule): chasing, it pounds on it once
+  // (everyone near hears it rattle), then goes the long way round; otherwise it just turns away. Every door is
+  // somewhere with another way round (brmap.js), so a door never shuts it out for good.
   doors(now, dir) {
     const p = this.p, w = this.world;
-    if (this.opening) {
-      if (now >= this.opening.at) { this.s.toggleDoor(this.opening.i, true, p); this.opening = null; }
-      return true;
-    }
     if (!dir) return false;
     for (let i = 0; i < w.doors.length; i++) {
       const d = w.doors[i];
       if (d.kind !== 'way' || d.open) continue;
       const dx = d.cx - p.x, dz = d.cz - p.z, dist = Math.hypot(dx, dz);
       if (dist > 1.5 || (dx * dir[0] + dz * dir[1]) / (dist || 1) < 0.3) continue;
-      // wearing someone: it just opens it, like a person would
-      if (this.state === 'skin') { this.s.toggleDoor(i, true, p); return false; }
-      const wait = this.state === 'chase' ? 0.7 : 1.2;
-      this.opening = { i, at: now + wait };
-      this.pauseUntil = now + wait;
-      this.s.broadcast({ t: 'doorRattle', i });
-      return true;
+      this.path = null; this.repathAt = 0;
+      if (this.state === 'chase' && now > (this.bangAt || 0)) {
+        this.bangAt = now + 5;
+        this.grabUntil = now + 0.6;              // (its arms up, pounding)
+        this.pauseUntil = now + 0.6;
+        this.s.broadcast({ t: 'doorRattle', i });
+        return true;
+      }
+      return false;
     }
     return false;
   }
@@ -237,7 +248,8 @@ export class MonsterBrain {
     } else if (this.state === 'chase' || this.state === 'stalk') {
       // lost sight: run on to where they were heading
       // (on easier difficulties it gives up on you sooner and guesses less far ahead)
-      if (this.state === 'stalk' || now - this.lostAt > this.lv.lose) {
+      if (!this.last) { this.state = 'wander'; this.target = null; this.goal = null; }
+      else if (this.state === 'stalk' || now - this.lostAt > this.lv.lose) {
         const L = this.last, lead = this.lv.lead;
         let gx = L.x + L.vx * lead, gz = L.z + L.vz * lead;
         const i = this.nav.nearest(gx, 0, gz);
@@ -268,7 +280,7 @@ export class MonsterBrain {
   // It has just caught q. If nobody else saw (and 1 time in 3) it takes their skin and wears it: everyone else
   // still sees q, walking about. It goes to the nearest player like a teammate would, stands with them a
   // moment too long, then changes back and goes for them. Small clues give it away to a careful player:
-  // it never turns a flashlight on or leaves a note, its head twitches now and then, and it stares.
+  // it never turns a flashlight on, leaves a note or opens a door, its head twitches now and then, and it stares.
   canWear(q) {
     if (this.state === 'skin' || this.state === 'reveal' || Math.random() >= SKIN_CHANCE) return false;
     const others = this.humans().filter(o => o !== q);
@@ -282,7 +294,7 @@ export class MonsterBrain {
     const now = this.lastNow || 0;
     this.skin = { id: q.id, since: now, target: null, pickAt: 0, close: 0, away: 0, hold: 1.6 + Math.random() * 2.6, twitchAt: now + 3 + Math.random() * 5, twitchUntil: 0, twitch: 0 };
     this.state = 'skin';
-    this.goal = null; this.path = null; this.target = null; this.opening = null;
+    this.goal = null; this.path = null; this.target = null;
     this.pauseUntil = 0; this.grabUntil = 0;
     this.vel.x = this.vel.z = 0;
   }
@@ -493,7 +505,7 @@ export class MonsterBrain {
     const key = `${Math.round(goal.x)},${Math.round(goal.z)}`;
     if (!this.path || key !== this.pathKey || now > this.repathAt) {
       this.pathKey = key;
-      this.path = nav.path(nav.nearest(p.x, p.y, p.z), nav.nearest(goal.x, 0, goal.z), 20000);
+      this.path = nav.path(nav.nearest(p.x, p.y, p.z), nav.nearest(goal.x, 0, goal.z), 20000, this.shutNode);
       this.pathIdx = 0;
       this.repathAt = now + (this.state === 'chase' ? 0.5 : this.state === 'pursue' || this.state === 'stalk' ? 1 : 4);
       if (!this.path) { this.goal = null; return null; }
@@ -512,10 +524,11 @@ export class MonsterBrain {
   }
 
   straight(ax, az, bx, bz) {
-    const d = Math.hypot(bx - ax, bz - az), n = Math.ceil(d / 0.25);
+    const d = Math.hypot(bx - ax, bz - az), n = Math.ceil(d / 0.25), w = this.world;
     for (let i = 1; i <= n; i++) {
-      const k = i / n;
-      if (!this.nav.standable(ax + (bx - ax) * k, 0, az + (bz - az) * k)) return false;
+      const k = i / n, x = ax + (bx - ax) * k, z = az + (bz - az) * k;
+      if (!this.nav.standable(x, 0, z)) return false;
+      if (w.cellSpans(Math.floor(x / 0.5), Math.floor(z / 0.5)).some(sp => sp.m === '_door')) return false;     // a shut door
     }
     return true;
   }

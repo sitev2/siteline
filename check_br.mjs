@@ -1,5 +1,6 @@
 // Checks Backrooms mazes: for many random seeds, a player can always walk from the start to the
-// exit without falling down a pit, and the monster can always reach the players.
+// exit without falling down a pit, and the monster can always reach the players — even with every
+// door shut (it can't open doors).
 // Usage: node check_br.mjs [how many seeds = 40] [print one seed's map] [easy|normal|hard = all three]
 import { resolveMap } from './maps.js';
 import { World, CELL } from './world.js';
@@ -16,6 +17,8 @@ for (let k = 0; k < runs; k++) {
   // player walk check: a 0.72 m wide player, standing on the floor (its middle never over a pit)
   const free = (ix, iz) => !w.cellSpans(ix, iz).some(s => s.y0 < 1.8 && s.y1 > 0.42);
   const fits = (ix, iz) => { for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) if (!free(ix + dx, iz + dz)) return false; return !w.pitCell(ix, iz); };
+  // every door shut: the monster can't open doors, so everything must still be reachable without them
+  w.doors.forEach((d, i) => w.setDoor(i, false));
   const s = w.spawns.atk[0], e = w.exit;
   const start = [Math.floor(s.x / CELL), Math.floor(s.z / CELL)];
   const goal = [Math.floor((e.x + e.nx * 0.8) / CELL), Math.floor((e.z + e.nz * 0.8) / CELL)];
@@ -32,13 +35,16 @@ for (let k = 0; k < runs; k++) {
     }
   }
   // monster: its walking grid reaches the start from its own room
+  w.doors.forEach((d, i) => w.setDoor(i, true));          // (its walking grid is made with them open…)
   const nav = new NavGrid(w);
+  w.doors.forEach((d, i) => w.setDoor(i, false));         // (…and it steers round the shut ones)
+  const doorCell = new Set(w.doors.flatMap(d => d.cells));
   const m = w.spawns.def[0];
-  const path = nav.path(nav.nearest(m.x, 0, m.z), nav.nearest(s.x, 0, s.z));
+  const path = nav.path(nav.nearest(m.x, 0, m.z), nav.nearest(s.x, 0, s.z), 30000, j => doorCell.has(Math.floor(nav.z[j] / CELL) * w.w + Math.floor(nav.x[j] / CELL)));
   const spawnsOk = w.spawns.atk.every(p => !w.isPit(p.x, p.z) && fits(Math.floor(p.x / CELL), Math.floor(p.z / CELL)));
   const ok = found && !!path && spawnsOk;
   if (!ok) bad++;
-  console.log(`${ok ? 'OK  ' : 'FAIL'} seed ${seed} ${level}: exit ${found ? 'reachable' : 'NOT reachable'}, monster ${path ? `path ${path.length} steps` : 'NO path'}, spawns ${spawnsOk ? 'ok' : 'BAD'}, pits ${w.pits.length}, built in ${ms} ms`);
+  console.log(`${ok ? 'OK  ' : 'FAIL'} seed ${seed} ${level}: exit ${found ? 'reachable' : 'NOT reachable'}, monster ${path ? `path ${path.length} steps` : 'NO path'}, spawns ${spawnsOk ? 'ok' : 'BAD'}, doors ${w.doors.length} (all shut), pits ${w.pits.length}, built in ${ms} ms`);
   if (show) {
     // a rough picture: # wall, o pillar, . floor, _ pit, S start, E exit, M monster
     const rows = [];
