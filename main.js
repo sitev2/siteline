@@ -23,10 +23,9 @@ import { WEAPONS } from './weapons.js';
 const $ = (id) => document.getElementById(id);
 const screens = ['menu', 'lobby', 'settings', 'practice', 'account', 'nettest', 'friends', 'admin'];
 
-// The Backrooms isn't released yet (the owner's call): only the owner's test account sees its lobby and
-// practice buttons (friends who join that account's room play along). true = everyone sees it again.
-// (The lock is only in the page: it hides the mode, it isn't real security.)
-const BACKROOMS_OPEN = false;
+// The Backrooms is open to everyone (the owner made it public). Set this to false to show it only to the
+// test accounts below again (friends who join their room play along; the lock is only in the page).
+const BACKROOMS_OPEN = true;
 const BACKROOMS_TESTERS = ['test123'];
 function backroomsAllowed() {
   if (BACKROOMS_OPEN) return true;

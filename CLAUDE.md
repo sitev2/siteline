@@ -98,10 +98,9 @@ The only folder is `server/` (the optional home game server).
 - Maps: 2v2 `outpost`, `foundry`, `frostline`, `canal`, `flame` (one bomb site each, plus `dm` spawns for 3-player deathmatch);
   deathmatch `quarry`, `railyard` (`mode: 'dm'`, small/large variants via `build(b, size)`; `resolveMap()` in `maps.js`)
 - Deathmatch rules: `RULES.dm` in `config.js`; server phase `'dm'`, everyone on team `'ffa'` during the match
-- The Backrooms (`settings.mode = 'br'`; server phase `'br'`, `this.br`): **not released yet (owner's call)**: only the owner's test
-  account `test123` sees its lobby and Practice buttons (`BACKROOMS_TESTERS` / `backroomsAllowed()` / `hideBackrooms()` in `main.js`,
-  re-checked on login/logout); friends who join that account's room play along. `BACKROOMS_OPEN = true` shows it to everyone again.
-  The lock is only in the page (not real security; the owner was told). 1–4 players co-op,
+- The Backrooms (`settings.mode = 'br'`; server phase `'br'`, `this.br`): **public** (the owner made it public after testing):
+  `BACKROOMS_OPEN = true` in `main.js`. Setting it to false hides the lobby and Practice buttons from everyone but the test accounts
+  (`BACKROOMS_TESTERS` = `test123`; `backroomsAllowed()` / `hideBackrooms()`, re-checked on login/logout). 1–4 players co-op,
   no guns (`p.w = 'none'`, empty hands), find the exit door. Three difficulties (`BR_LEVELS` in `brmap.js`: easy / normal / hard; lobby
   `#lobby-level` → `settings.level`, Practice uses `#p-level`): bridge width over pit rooms (1.5 / 1 / 0.5 m), extra bridges, ceiling holes
   (8 / 11 / 14), dark areas (2 / 3 / 4), arrows, and the monster (`lv`): chase speed = your sprint × 1.05 / 1.10 / 1.15 (owner's choice),
