@@ -447,7 +447,7 @@ body.br-mode #ammo, body.br-mode #econ, body.br-mode #armor, body.br-mode #radar
 body.br-mode #hp, body.br-mode #team-label { display: none !important; }
 body.br-mode #touch #btn-fire, body.br-mode #touch #btn-fire-left, body.br-mode #touch #btn-reload, body.br-mode #touch #btn-alt,
 body.br-mode #touch #btn-swap, body.br-mode #touch #btn-drop, body.br-mode #touch #btn-inspect, body.br-mode #touch #btn-buy,
-body.br-mode #touch #btn-use, body.br-mode #touch #btn-light { display: none !important; }
+body.br-mode #touch #btn-light { display: none !important; }
 #practice .panel { display: grid; gap: 12px; }
 #practice .p-range, #practice .p-match, #practice .p-count, #practice .p-botopt, #practice .p-behavior { display: none; }
 #practice.m-range.bots-on .p-behavior { display: grid; }

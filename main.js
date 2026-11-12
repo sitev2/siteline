@@ -827,6 +827,7 @@ function startGame(msg) {
     practice: !!msg.practice,
     mode: msg.mode,
     variant: msg.variant,
+    doors: msg.doors,
     night: !!(msg.settings && msg.settings.night),
     settings,
     quality: resolvedQuality(),

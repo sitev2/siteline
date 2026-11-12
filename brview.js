@@ -140,6 +140,22 @@ function doorTexture(renderer) {
   return tex(c, renderer, false);
 }
 
+// the bricked-up doorway behind a door to nowhere
+function bricksTexture(renderer) {
+  const [c, ctx] = canvas(128, 256), R = rng(77);
+  ctx.fillStyle = '#5e574a'; ctx.fillRect(0, 0, 128, 256);
+  for (let row = 0; row * 16 < 256; row++) {
+    const off = (row % 2) * 16;
+    for (let col = -1; col * 32 < 128; col++) {
+      const v = 120 + Math.floor(R() * 30);
+      ctx.fillStyle = `rgb(${v},${v - 8},${v - 22})`;
+      ctx.fillRect(col * 32 + off + 2, row * 16 + 2, 28, 12);
+    }
+  }
+  noise(ctx, 128, 256, 1500, ['#3e3a30', '#8a8270'], 0.3, R, 1.4);
+  return tex(c, renderer, false);
+}
+
 // a wall power outlet: off-white plate, two slots, one screw
 function outletTexture(renderer) {
   const [c, ctx] = canvas(64, 104);
@@ -448,60 +464,83 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     if (tint) o.material.color.multiply(tint);
     o.position.set(x, y, z); o.rotation.y = ry; group.add(o); return o;
   };
-  // doorways: a painted frame round the gap, and the door itself standing open against the wall
-  for (const d of plan.doorways || []) {
-    const v = d.dir === 'v';
-    const line = Math.round((v ? at(d.x + 1) : at(d.z + 1)) / CELL);       // the wall's cell column / row
-    const from = Math.round(at(v ? d.z : d.x) / CELL), to = Math.round(at((v ? d.z : d.x) + 1) / CELL);
-    let lo = Infinity, hi = -Infinity;
-    for (let k = from; k <= to; k++) { const b = v ? bot(line, k) : bot(k, line); if (b > 0 && b < Infinity) { lo = Math.min(lo, k); hi = Math.max(hi, k); } }
-    if (lo === Infinity) continue;
-    const g0 = lo * CELL, g1 = (hi + 1) * CELL, mid = (g0 + g1) / 2, wl = line * CELL + CELL / 2;   // gap along the wall, wall middle
-    const DH = BR.door, depth = CELL + 0.06;
-    const tint = spotLight(v ? wl + 0.3 : mid, 1.2, v ? mid : wl + 0.3, v ? 1 : 0, v ? 0 : 1);
-    const at3 = (u, y, w) => (v ? [w, y, u] : [u, y, w]);
-    for (const u of [g0 - 0.04, g1 + 0.04]) { const p = at3(u, DH / 2, wl); box(v ? depth : 0.08, DH, v ? 0.08 : depth, frameM, p[0], p[1], p[2], 0, tint); }
-    { const p = at3(mid, DH + 0.04, wl); box(v ? depth : g1 - g0 + 0.16, 0.08, v ? g1 - g0 + 0.16 : depth, frameM, p[0], p[1], p[2], 0, tint); }
-    // double doors, hinged at both sides of the gap and swung open flat against the wall
-    const side = RO() < 0.5 ? 1 : -1, dw = (g1 - g0) / 2 - 0.02;
-    for (const hinge of [g0, g1]) {
-      const leaf = new THREE.Mesh(new THREE.BoxGeometry(dw, DH - 0.04, 0.045), new THREE.MeshBasicMaterial({ map: doorTex }));
+  // Every door (world.doors) swings on a hinge: doorways have double doors, doors to nowhere a single one.
+  // A leaf's local x runs from its hinge to its free edge; its angle turns it about the hinge.
+  const leaves = [];                       // per door: [{ pivot, shut, open: [angle when swung to + side, to - side], now, to }]
+  const dirAngle = (dx, dz) => Math.atan2(-dz, dx);       // the y rotation that points local +x along (dx, dz)
+  const brickTex = bricksTexture(renderer);
+  world.doors.forEach((d, i) => {
+    const list = [];
+    if (d.kind === 'way') {
+      const v = d.v, g0 = v ? d.z0 : d.x0, g1 = v ? d.z1 : d.x1, wl = v ? d.cx : d.cz, mid = (g0 + g1) / 2;
+      const DH = BR.door, depth = CELL + 0.06;
+      const tint = spotLight(v ? wl + 0.3 : mid, 1.2, v ? mid : wl + 0.3, v ? 1 : 0, v ? 0 : 1);
+      const at3 = (u, y, w) => (v ? [w, y, u] : [u, y, w]);
+      // a painted frame round the gap
+      for (const u of [g0 - 0.04, g1 + 0.04]) { const p = at3(u, DH / 2, wl); box(v ? depth : 0.08, DH, v ? 0.08 : depth, frameM, p[0], p[1], p[2], 0, tint); }
+      { const p = at3(mid, DH + 0.04, wl); box(v ? depth : g1 - g0 + 0.16, 0.08, v ? g1 - g0 + 0.16 : depth, frameM, p[0], p[1], p[2], 0, tint); }
+      // double doors hinged at both sides of the gap
+      const dw = (g1 - g0) / 2 - 0.02;
+      for (const [hinge, toward] of [[g0, 1], [g1, -1]]) {
+        const pivot = new THREE.Group();
+        const p = at3(hinge, 0, wl);
+        pivot.position.set(p[0], 0, p[2]);
+        const leaf = new THREE.Mesh(new THREE.BoxGeometry(dw, DH - 0.04, 0.045), new THREE.MeshBasicMaterial({ map: doorTex }));
+        leaf.material.color.copy(tint);
+        leaf.position.set(dw / 2, (DH - 0.04) / 2, 0);
+        pivot.add(leaf);
+        group.add(pivot);
+        const shut = v ? dirAngle(0, toward) : dirAngle(toward, 0);
+        // open: turned a quarter, so the free edge points into one room or the other
+        const nx = v ? 1 : 0, nz = v ? 0 : 1;
+        list.push({ pivot, shut, open: [dirAngle(nx, nz), dirAngle(-nx, -nz)] });
+      }
+    } else {
+      const nx = d.nx, nz = d.nz, px = d.cx, pz = d.cz;
+      const tint = spotLight(px, 1.1, pz, nx, nz);
+      const ry = Math.atan2(nx, nz);
+      // the bricked-up hole you find behind it, then the frame and the door itself
+      const back = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 2.04), new THREE.MeshBasicMaterial({ map: brickTex }));
+      back.material.color.copy(tint).multiplyScalar(0.8);
+      back.position.set(px + nx * 0.004, 1.02, pz + nz * 0.004); back.rotation.y = ry; group.add(back);
+      for (const s of [-1, 1]) box(0.07, 2.12, 0.06, frameM, px + nx * 0.03 + (d.v ? 0 : s * 0.5), 1.06, pz + nz * 0.03 + (d.v ? s * 0.5 : 0), ry, tint);
+      box(1.07, 0.07, 0.06, frameM, px + nx * 0.03, 2.12, pz + nz * 0.03, ry, tint);
+      // hinge on the left edge (seen from the room), the door lying flat over the bricks when shut
+      const tx = d.v ? 0 : 1, tz = d.v ? 1 : 0;              // along the wall
+      const sgn = d.v ? -nx : nz;                              // which way along the wall is "left" from the room
+      const hx = px + nx * 0.025 - tx * 0.46 * sgn, hz = pz + nz * 0.025 - tz * 0.46 * sgn;
+      const pivot = new THREE.Group();
+      pivot.position.set(hx, 0, hz);
+      const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.92, 2.05, 0.04), new THREE.MeshBasicMaterial({ map: doorTex }));
       leaf.material.color.copy(tint);
-      leaf.geometry.translate(dw / 2, 0, 0);
-      const p = at3(hinge, (DH - 0.04) / 2, wl + side * (CELL / 2 + 0.03));
-      leaf.position.set(p[0], p[1], p[2]);
-      // lying along the wall, pointing away from the gap, not quite shut against it
-      const away = hinge === g0 ? -1 : 1;
-      leaf.rotation.y = (v ? (away > 0 ? -Math.PI / 2 : Math.PI / 2) : (away > 0 ? 0 : Math.PI)) + side * (v ? 1 : -1) * 0.14 * away;
-      group.add(leaf);
+      leaf.position.set(0.46, 1.025, 0);
+      pivot.add(leaf);
+      group.add(pivot);
+      const shut = dirAngle(tx * sgn, tz * sgn);
+      // swings 100° out into the room: try both ways, keep the one whose free edge ends up in front of the wall
+      const out = [shut + 1.75, shut - 1.75].find(a => Math.cos(a) * nx + -Math.sin(a) * nz > 0);
+      list.push({ pivot, shut, open: [out, null] });
     }
-  }
-  // closed doors set into some walls: they never open
-  const blank = [];
-  for (let z = 0; z < N && blank.length < 9; z++) for (let x = 0; x < N && blank.length < 9; x++) {
-    for (const v of [true, false]) {
-      if (RO() > 0.05) continue;
-      if (v ? (x >= N - 1 || !plan.vWall[z][x]) : (z >= N - 1 || !plan.hWall[z][x])) continue;
-      if ((plan.doorways || []).some(d => d.x === x && d.z === z && d.dir === (v ? 'v' : 'h'))) continue;
-      const side = RO() < 0.5 ? 1 : -1;
-      const line = v ? at(x + 1) : at(z + 1), mid = (v ? at(z) : at(x)) + 2.25;
-      const face = line + (side > 0 ? CELL : 0);                 // the wall cell is [line, line + 0.5)
-      const ox = v ? Math.floor((face + side * 0.25) / CELL) : Math.floor(mid / CELL), oz = v ? Math.floor(mid / CELL) : Math.floor((face + side * 0.25) / CELL);
-      if (bot(ox, oz) !== Infinity || isPit(ox, oz)) continue;
-      blank.push({ v, side, face, mid });
+    for (const L of list) { L.now = L.to = d.open ? L.open[0] : L.shut; L.pivot.rotation.y = L.now; }
+    leaves[i] = list;
+  });
+  // open / shut a door (swing: +1 opens towards +x / +z, −1 the other way); instant: no animation (joining a game)
+  const turnTo = (a, b) => { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return a + d; };
+  group.userData.setDoor = (i, open, swing = 1, instant = false) => {
+    for (const L of leaves[i] || []) {
+      const target = !open ? L.shut : (L.open[1] == null || swing >= 0 ? L.open[0] : L.open[1]);
+      L.to = turnTo(L.now, target);
+      if (instant) { L.now = L.to; L.pivot.rotation.y = L.now; }
     }
-  }
-  for (const b of blank) {
-    const nx = b.v ? b.side : 0, nz = b.v ? 0 : b.side;
-    const px = b.v ? b.face : b.mid, pz = b.v ? b.mid : b.face;
-    const tint = spotLight(px, 1.1, pz, nx, nz);
-    const ry = b.v ? (b.side > 0 ? Math.PI / 2 : -Math.PI / 2) : (b.side > 0 ? 0 : Math.PI);
-    const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.92, 2.05, 0.04), new THREE.MeshBasicMaterial({ map: doorTex }));
-    leaf.material.color.copy(tint);
-    leaf.position.set(px + nx * 0.02, 1.025, pz + nz * 0.02); leaf.rotation.y = ry; group.add(leaf);
-    for (const s of [-1, 1]) box(0.07, 2.12, 0.06, frameM, px + nx * 0.03 + (b.v ? 0 : s * 0.5), 1.06, pz + nz * 0.03 + (b.v ? s * 0.5 : 0), ry, tint);
-    box(1.07, 0.07, 0.06, frameM, px + nx * 0.03, 2.12, pz + nz * 0.03, ry, tint);
-  }
+  };
+  const animateDoors = (dt) => {
+    for (const list of leaves) for (const L of list || []) {
+      if (L.now === L.to) continue;
+      const step = dt * 5.5, d = L.to - L.now;
+      L.now = Math.abs(d) <= step ? L.to : L.now + Math.sign(d) * step;
+      L.pivot.rotation.y = L.now;
+    }
+  };
 
   // ---------- power outlets ----------
   if (outlets.length) {
@@ -603,6 +642,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
   let t = 0;
   group.userData.update = (dt, dread = 0) => {
     t += dt;
+    animateDoors(dt);
     // a fluorescent tube that won't stay on: mostly on, with stutters and short blackouts
     const s = Math.sin(t * 13.1) + Math.sin(t * 31.7) * 0.6 + Math.sin(t * 2.3) * 1.4;
     const on = s > -1.2 ? 1 : 0.08;

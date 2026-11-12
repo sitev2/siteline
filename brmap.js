@@ -138,11 +138,11 @@ export function planMaze(seed) {
     if (R() < 0.5) {
       if (x >= N - 1 || vWall[z][x] || !plain(x, z) || !plain(x + 1, z)) continue;
       if (doorways.some(d => d.dir === 'v' && d.x === x && d.z === z)) continue;
-      doorways.push({ dir: 'v', x, z });
+      doorways.push({ dir: 'v', x, z, open: R() < 0.65 });
     } else {
       if (z >= N - 1 || hWall[z][x] || !plain(x, z) || !plain(x, z + 1)) continue;
       if (doorways.some(d => d.dir === 'h' && d.x === x && d.z === z)) continue;
-      doorways.push({ dir: 'h', x, z });
+      doorways.push({ dir: 'h', x, z, open: R() < 0.65 });
     }
   }
   // 7. pitfalls: holes in the floor, never in the start, exit or monster rooms or next to the start
@@ -160,7 +160,18 @@ export function planMaze(seed) {
     const ox = pick(-1, 1) * off, oz = pick(-1, 1) * off;
     pits.push({ x, z, size, ox, oz });
   }
-  return { seed, N, vWall, hWall, halls, pitRooms, doorways, start: { x: sx, z: sz }, exit, monster: mon, pits, flicker: R() };
+  // 8. doors set into walls that only open onto more wall (in ordinary rooms with no hole in the floor)
+  const blankDoors = [];
+  for (let tries = 0; blankDoors.length < 9 && tries < 300; tries++) {
+    const x = pick(0, N - 1), z = pick(0, N - 1), v = R() < 0.5, side = R() < 0.5 ? 1 : -1;
+    if (v ? (x >= N - 1 || !vWall[z][x]) : (z >= N - 1 || !hWall[z][x])) continue;
+    // the room the door faces
+    const rx = v ? x + (side > 0 ? 1 : 0) : x, rz = v ? z : z + (side > 0 ? 1 : 0);
+    if (inPitRoom(rx, rz) || pits.some(p => p.x === rx && p.z === rz)) continue;
+    if (blankDoors.some(d => d.x === x && d.z === z && d.v === v)) continue;
+    blankDoors.push({ v, x, z, side });
+  }
+  return { seed, N, vWall, hWall, halls, pitRooms, doorways, blankDoors, start: { x: sx, z: sz }, exit, monster: mon, pits, flicker: R() };
 }
 
 // Where the holes go along one side of a pit room (length in metres, walls take the first 0.5 m):
@@ -176,6 +187,7 @@ export function holeRow(len) {
 
 // metres: the corner of room (x, z)
 const at = i => BR.border + i * BR.cell;
+const CELL = 0.5;
 
 // The map definition the World is built from (same shape as the maps in maps.js).
 // Every maze is checked before it is used: a player can walk from the start to the exit without
@@ -242,16 +254,25 @@ function mazeDef(seed) {
         b.wall(at(x) - T, wz - T, at(x + 1) + T, wz + T, H, 'wallpaper');
       }
       // doorways: a wall with a door-sized gap (1.5 m wide, 2.2 m high) in the middle
-      for (const d of plan.doorways) {
+      // (each one has a door that can be opened and shut: b.door; closed doors only block the way once the game applies them)
+      plan.doorways.forEach((d, i) => {
         if (d.dir === 'v') {
           const wx = at(d.x + 1), c = at(d.z) + C / 2;
           b.wall(wx - T, at(d.z) - T, wx + T, at(d.z + 1) + T, H, 'wallpaper');
           b.cut(wx - T, c - 0.75, wx + T, c + 0.75, 0, BR.door);
+          b.door({ kind: 'way', v: true, open: d.open, plan: i }, wx - T, c - 0.75, wx + T, c + 0.75);
         } else {
           const wz = at(d.z + 1), c = at(d.x) + C / 2;
           b.wall(at(d.x) - T, wz - T, at(d.x + 1) + T, wz + T, H, 'wallpaper');
           b.cut(c - 0.75, wz - T, c + 0.75, wz + T, 0, BR.door);
+          b.door({ kind: 'way', v: false, open: d.open, plan: i }, c - 0.75, wz - T, c + 0.75, wz + T);
         }
+      });
+      // doors to nowhere: on the face of a wall (the wall cell is [line, line + 0.5)), always shut to start with
+      for (const d of plan.blankDoors) {
+        const line = d.v ? at(d.x + 1) : at(d.z + 1), mid = (d.v ? at(d.z) : at(d.x)) + 2.25;
+        const face = line + (d.side > 0 ? CELL : 0);
+        b.door({ kind: 'blank', v: d.v, side: d.side, open: false, cx: d.v ? face : mid, cz: d.v ? mid : face });
       }
       // pit rooms: the floor is a grid of square holes
       for (const r of plan.pitRooms) {

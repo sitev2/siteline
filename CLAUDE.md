@@ -107,10 +107,17 @@ The only folder is `server/` (the optional home game server).
   cell [line, line + 0.5) east/south of each room line. `backroomsMap` checks every maze (`mazeOk`: player start→exit, monster→start with
   3×3 clearance) and deterministically tries seed variations if one fails. `node check_br.mjs 300` checks many seeds. The NavGrid treats a
   hole next to a cell as no wall (walk along its edge). Free pillars never sit next to a hole.
+  Doors open and shut (`b.door` → `world.doors`; kind 'way' = double doors in a doorway, 'blank' = a door on a wall face that opens onto
+  bricks). The world is built with every door open (so mazes/NavGrid treat doors as passable); the host then shuts the ones that start
+  shut (`world.setDoor(i, open)` adds/removes '_door' spans in the gap). Players: E / hand button within ~1.9 m (`Game.doorTarget`,
+  `{t:'door', i}`); host `toggleDoor` (range 2.4 m, 0.45 s cooldown, won't shut on anyone standing in the gap) broadcasts
+  `{t:'door', i, open, swing}` (swings away from whoever moved it); door states travel in the start message (`doors`). The monster stops
+  at a shut door on its way, rattles it (`doorRattle`, 0.7 s chasing / 1.2 s otherwise) and opens it; it hears doors within 14 m.
+  `brview.js` `group.userData.setDoor` animates the leaves on hinges.
   `brview.js` draws it with baked lighting (per-vertex light from every ceiling panel with 2D wall shadows, soft edges, bounce, AO;
   MeshBasic + vertex colours, so it's cheap), canvas textures (chevron wallpaper, carpet, ceiling tiles, panels, doors, outlets, own EXIT
   sign), pits, skirting boards (the board on the x-facing face runs past outside corners and gets an end cap, so corners close), the wall
-  above doorways, door frames + open double doors, closed doors that never open, wall outlets, flicker + "dread" dimming when the monster
+  above doorways, door frames, doors, wall outlets, flicker + "dread" dimming when the monster
   is near (`group.userData.update`). Hand-held camera sway in `Game.updateCamera` (Backrooms only, more when running or near the
   monster), strength = `settings.camShake` (Settings → General "Camera shake in the Backrooms", default 0.5, 0 = off). `monster.js` = the monster's brain on the host (player
   id `'monster'`, team `'monster'` = snapshot team index 3, `use` = chasing): waits `MONSTER.wake` s; states chase (aims ahead of a running

@@ -59,7 +59,7 @@ export class MonsterBrain {
     if (now - this.started < MONSTER.wake) { p.use = false; return; }
     if (this.state === 'wait') this.state = 'wander';
     if (now >= this.thinkAt) { this.thinkAt = now + 0.12; this.think(now); }
-    if (now < this.pauseUntil) { p.use = false; this.move(null, 0, dt); return; }
+    if (now < this.pauseUntil) { p.use = false; if (this.opening) this.doors(now, null); this.move(null, 0, dt); return; }
 
     let speed = MONSTER.wander, goal = this.goal;
     if (this.state === 'chase' && this.target) {
@@ -73,16 +73,53 @@ export class MonsterBrain {
         if (this.nav.standable(ax, 0, az)) goal = { x: ax, y: 0, z: az };
       }
       // close and in plain view, with nothing in the way: straight at them
-      if (d < 3 && this.sees(t) && this.straight(p.x, p.z, t.x, t.z)) { this.move([(t.x - p.x) / d, (t.z - p.z) / d], speed, dt); this.tryGrab(now); return; }
+      if (d < 3 && this.sees(t) && this.straight(p.x, p.z, t.x, t.z)) {
+        const dir = [(t.x - p.x) / d, (t.z - p.z) / d];
+        if (this.doors(now, dir)) { this.move(null, 0, dt); return; }
+        this.move(dir, speed, dt); this.tryGrab(now); return;
+      }
     } else if (this.state === 'stalk' && this.target) {
       speed = MONSTER.stalk;
       goal = { x: this.target.x, y: 0, z: this.target.z };
     } else if (this.state === 'pursue') speed = MONSTER.chase;
     else if (this.state === 'search') speed = MONSTER.search;
     const dir = goal ? this.navigate(goal, now) : null;
+    if (this.doors(now, dir)) { this.move(null, 0, dt); return; }
     if (!dir) this.arrived(now);
     this.move(dir, speed, dt);
     this.tryGrab(now);
+  }
+
+  // a door banged somewhere: go and look if it's close enough to hear
+  hearNoise(x, z, range) {
+    const p = this.p;
+    if (this.state === 'chase' || this.state === 'wait' || Math.hypot(x - p.x, z - p.z) > range) return;
+    this.last = { x, z, vx: 0, vz: 0, t: this.thinkAt, id: null };
+    this.lastClue = this.thinkAt;
+    this.state = 'search'; this.searchPts = []; this.pauseUntil = 0;
+    this.goal = { x: x + (Math.random() - 0.5) * 2, y: 0, z: z + (Math.random() - 0.5) * 2 };
+  }
+
+  // a shut door right in front of it: it stops, rattles the handle, then opens it
+  doors(now, dir) {
+    const p = this.p, w = this.world;
+    if (this.opening) {
+      if (now >= this.opening.at) { this.s.toggleDoor(this.opening.i, true, p); this.opening = null; }
+      return true;
+    }
+    if (!dir) return false;
+    for (let i = 0; i < w.doors.length; i++) {
+      const d = w.doors[i];
+      if (d.kind !== 'way' || d.open) continue;
+      const dx = d.cx - p.x, dz = d.cz - p.z, dist = Math.hypot(dx, dz);
+      if (dist > 1.5 || (dx * dir[0] + dz * dir[1]) / (dist || 1) < 0.3) continue;
+      const wait = this.state === 'chase' ? 0.7 : 1.2;
+      this.opening = { i, at: now + wait };
+      this.pauseUntil = now + wait;
+      this.s.broadcast({ t: 'doorRattle', i });
+      return true;
+    }
+    return false;
   }
 
   // reached where it was going

@@ -576,6 +576,25 @@ const MON = {
     normalize(x, 0.95);
   }),
 };
+// doors: a latch and a creak opening, a thud and a latch shutting, a handle rattled hard (it is coming through)
+const DOOR = {
+  open: () => buf(1.0, (x, sr) => {
+    click(x, sr, 0, 2600, 5, 0.6); click(x, sr, 0.02, 1500, 4, 0.4);
+    for (let i = 0; i < 0.7 * sr; i++) { const t = i / sr, f = 210 + 90 * Math.sin(t * 5) + 40 * t; x[Math.floor(0.08 * sr) + i] += Math.sign(Math.sin(6.283 * f * t)) * Math.sin(Math.PI * t / 0.7) * 0.12; }
+    biquad(x, 'bandpass', 900, 1.5, sr); normalize(x, 0.6);
+  }),
+  shut: () => buf(0.7, (x, sr) => { thump(x, sr, 0, 110, 60, 0.12, 1); noiseHit(x, sr, 0, 'lowpass', 700, 0.7, 0.05, 0.6); click(x, sr, 0.03, 2200, 5, 0.5); normalize(x, 0.8); }),
+  rattle: () => buf(1.3, (x, sr) => {
+    for (let k = 0; k < 7; k++) { const at = k * 0.13 + Math.random() * 0.04; click(x, sr, at, 1900 + Math.random() * 900, 4, 0.7); click(x, sr, at + 0.03, 1200, 3, 0.4); if (k % 3 === 0) thump(x, sr, at, 120, 80, 0.06, 0.6); }
+    normalize(x, 0.75);
+  }),
+};
+export function playDoor(pos, kind, occ = 0) {
+  const key = `door:${kind}`;
+  if (!cache.has(key)) cache.set(key, DOOR[kind]());
+  play(cache.get(key), { pos, gain: kind === 'rattle' ? 1.3 : 0.9, ref: 2.5, roll: 1.0, air: 40, occ, wet: 0.5, rate: 0.92 + Math.random() * 0.16, important: kind === 'rattle' });
+}
+
 const monSound = (k) => { const key = `mon:${k}#${k === 'step' ? Math.floor(Math.random() * 3) : 0}`; if (!cache.has(key)) cache.set(key, MON[k]()); return cache.get(key); };
 export function playMonsterStep(pos, occ = 0, chase = false) {
   play(monSound('step'), { pos, gain: chase ? 1.4 : 1.0, ref: 3, roll: 1.1, air: 40, occ, wet: 0.5, rate: 0.85 + Math.random() * 0.25 });
