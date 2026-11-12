@@ -21,6 +21,7 @@ import { Hud, TEAM_NAMES } from './hud.js';
 import { BuyMenu } from './buy.js';
 import { icon } from './icons.js';
 import { BackroomsFX } from './brfx.js';
+import { BR } from './brmap.js';
 
 const BOMB_STATES = ['none', 'carried', 'dropped', 'planted', 'defused', 'exploded'];
 const INTERP_DELAY = 110; // ms
@@ -223,7 +224,10 @@ export class Game {
     if (this.dm) this.hud.center('Deathmatch', `Everyone for themselves — first to ${RULES.dm.killLimit} kills`, TEAM_COLORS.ffa.css, 4);
     document.body.classList.toggle('br-mode', this.br);
     if (this.br) {
-      this.hud.center('The Backrooms', 'Find the exit. Walk to stay quiet: it hears you run.', '#e8dc8a', 6);
+      this.hud.center('The Backrooms', 'Find the exit. Walking is quiet: it hears you sprint.', '#e8dc8a', 6);
+      // the jump button becomes a hold-to-sprint button (no jumping in here)
+      const jb = document.getElementById('btn-jump');
+      jb.innerHTML = icon('run'); jb.setAttribute('aria-label', 'Sprint');
       this.brHintUntil = 14;
     }
   }
@@ -231,6 +235,7 @@ export class Game {
   destroy() {
     this.running = false;
     document.body.classList.remove('br-mode');
+    if (this.br) { const jb = document.getElementById('btn-jump'); jb.innerHTML = icon('jump'); jb.setAttribute('aria-label', 'Jump'); }
     if (this.fx) this.fx.destroy();
     sfx.stopAmbience();
     this.cancelReloadSfx();
@@ -1339,10 +1344,12 @@ export class Game {
 
     if (this.br) {
       // no guns, no bomb: just moving (any weapon keys do nothing)
-      for (const a of ['reload', 'alt', 'w1', 'w2', 'w3', 'w5', 'next', 'prev', 'swap', 'drop', 'inspect', 'click', 'buy']) inp.consume(a);
+      for (const a of ['reload', 'alt', 'w1', 'w2', 'w3', 'w5', 'next', 'prev', 'swap', 'drop', 'click', 'buy']) inp.consume(a);
       // N / the note button: write or draw a note; nothing else happens while the note is open
       if (inp.consume('note') && this.fx) this.fx.openEditor();
-      if (this.fx && this.fx.editing) { inp.consume('use'); if (inp.consume('escape')) this.fx.closeEditor(); return; }
+      if (this.fx && this.fx.editing) { inp.consume('use'); inp.consume('inspect'); if (inp.consume('escape')) this.fx.closeEditor(); return; }
+      // F (the inspect key) is the flashlight in here, as well as L
+      if (inp.consume('inspect')) this.toggleFlashlight();
       // E / the hand button: open or shut the door in front of you
       if (inp.consume('use')) { const i = this.doorTarget(); if (i >= 0) this.transport.send({ t: 'door', i }); }
       this.updateMovement(dt, false);
@@ -1362,6 +1369,9 @@ export class Game {
     this.updateWeapon(dt, frozen);
   }
 
+  // Backrooms: Shift (the walk key) or holding the run button on a phone sprints
+  sprinting() { return !!(this.input.walk || this.input.jumpHeld); }
+
   // CS-style ground friction + acceleration, air-strafing and bunny-hop timing
   // Teammates' heads you could stand on: [{ x, z, r, top, id }]
   boostPlatforms() {
@@ -1376,7 +1386,8 @@ export class Game {
   updateMovement(dt, frozen) {
     const me = this.me, inp = this.input, now = this.clock;
     const w = itemDef(me.weapon);
-    if (inp.consume('jump')) me.jumpAt = now;   // remembered briefly so a press just before landing counts
+    // (no jumping in the Backrooms)
+    if (inp.consume('jump') && !this.br) me.jumpAt = now;   // remembered briefly so a press just before landing counts
 
     const mx = frozen ? 0 : inp.move.x, my = frozen ? 0 : inp.move.y;
     const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw);
@@ -1387,7 +1398,9 @@ export class Game {
     if (wl > 0) { wx /= wl; wz /= wl; }
     const gait = inp.walk ? WALK : 1;
     const wading = me.pos.y < 0.3 && this.world.waterAt(me.pos.x, me.pos.z) > 0;   // knee-deep canal water
-    const maxSpeed = runSpeed(w, me.zoom > 0) * gait * (1 - 0.45 * me.tag) * (1 - me.landSlow) * (wading ? WADE : 1);
+    // the Backrooms: you walk (quietly) unless you hold Shift / the run button to sprint
+    const maxSpeed = this.br ? (this.sprinting() ? BR.sprint : BR.walk)
+      : runSpeed(w, me.zoom > 0) * gait * (1 - 0.45 * me.tag) * (1 - me.landSlow) * (wading ? WADE : 1);
     const wish = maxSpeed * amount;
     const v = me.vel;
 
@@ -1457,7 +1470,7 @@ export class Game {
     const speed = Math.hypot(v.x, v.z);
     // wading can't be done quietly: even walking splashes
     const inWater = me.onGround && me.pos.y < 0.3 && this.world.waterAt(me.pos.x, me.pos.z) > 0;
-    if (me.onGround && (inWater ? speed > 0.8 : speed > STEP_SPEED && !inp.walk)) {
+    if (me.onGround && (inWater ? speed > 0.8 : speed > STEP_SPEED && (this.br || !inp.walk))) {
       me.stepTimer -= dt;
       if (me.stepTimer <= 0) {
         me.stepTimer = inWater ? 0.42 : 0.34;
@@ -2160,9 +2173,9 @@ export class Game {
       hint = '';
       const di = this.doorTarget(), door = di >= 0 ? this.world.doors[di] : null;
       if (door) hint = `${touch ? 'Tap [[hand]]' : `Press ${this.key('use')}`} to ${door.open ? 'shut' : 'open'} the door`;
-      else if (me.alive && this.clock < (this.brHintUntil || 0)) hint = touch ? 'Push the stick only part way to walk quietly' : `Hold ${this.key('walk')} to walk quietly`;
+      else if (me.alive && this.clock < (this.brHintUntil || 0)) hint = touch ? 'Hold [[run]] to sprint, but it hears you' : `Hold ${this.key('walk')} to sprint, but it hears you`;
       else if (me.alive && this.clock < (this.brHintUntil || 0) + 9) hint = touch ? 'Tap [[note]] to leave a note for the others' : `Press ${this.key('note')} to leave a note for the others`;
-      else if (me.alive && this.clock < (this.brHintUntil || 0) + 16 && this.fx && this.fx.dim < 0.3) hint = touch ? 'Dark in here: tap [[light]] for your flashlight' : `Dark in here: press ${this.key('flashlight')} for your flashlight`;
+      else if (me.alive && this.clock < (this.brHintUntil || 0) + 16 && this.fx && this.fx.dim < 0.3) hint = touch ? 'Dark in here: tap [[light]] for your flashlight' : `Dark in here: press ${this.key('inspect')} for your flashlight`;
       else if (me.alive && this.world.exit && Math.hypot(this.world.exit.x - me.pos.x, this.world.exit.z - me.pos.z) < 6) hint = 'The exit! Go through the door';
       else if (!me.alive && me.escaped) hint = 'You got out. Watching the others…';
     }

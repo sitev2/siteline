@@ -44,6 +44,7 @@ export class BackroomsFX {
     this.scene = game.scene;
     this.notes = new Map();           // id → { note, mesh }
     this.events = [];                 // snatch animations in progress
+    this.heads = [];                  // heads the ceiling spat back out: { wait, x, z, name, obj, v, spin }
     this.hallu = null;                // a hallucination being shown
     this.halluAt = 60 + Math.random() * 40;
     this.editing = false;
@@ -85,6 +86,66 @@ export class BackroomsFX {
     const pos = { x: m.x, y: m.kind === 'corner' ? 1.2 : H, z: m.z };
     sfx.playBR(m.kind === 'corner' ? 'corner' : 'ceiling', me ? null : pos, me ? 0 : g.occlusion(pos.x, pos.y, pos.z), me ? 1.2 : 1);
     if (me) { g.shake = 2; this.mine = ev; }
+    // 2.5 s later the thing in the ceiling spits your head back out (the suit's hood, visor and all)
+    if (m.kind === 'ceiling') {
+      const ro = (g.roster || []).find(p => p.id === m.id);
+      this.heads.push({ wait: 2.5, x: m.x, z: m.z, name: me ? g.settings.name : ro ? ro.name : '' });
+    }
+  }
+
+  // the heads: wait, drop out of the hole, bounce and roll to a stop on the carpet (and stay there)
+  updateHeads(dt) {
+    const g = this.g, w = g.world, R = 0.14;
+    for (const h of this.heads) {
+      if (!h.obj) {
+        h.wait -= dt;
+        if (h.wait > 0) continue;
+        const model = makePlayerModel('atk', h.name, false, 'hazmat');
+        const head = model.rag.head.seg;
+        head.parent.remove(head);
+        head.position.set(0, 0, 0);
+        h.obj = new THREE.Group();
+        h.obj.add(head);
+        h.obj.position.set(h.x, H - 0.1, h.z);
+        h.obj.rotation.set(Math.random() * 6, Math.random() * 6, Math.random() * 6);
+        this.scene.add(h.obj);
+        const a = Math.random() * Math.PI * 2, sp = 0.7 + Math.random() * 0.8;
+        h.v = { x: Math.cos(a) * sp, y: -2.2, z: Math.sin(a) * sp };
+        h.spin = new THREE.Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).multiplyScalar(9);
+        h.bounces = 0;
+        const pos = { x: h.x, y: H, z: h.z };
+        sfx.playBR('spit', pos, g.occlusion(pos.x, pos.y, pos.z), 1.1);
+        continue;
+      }
+      if (h.still) continue;
+      const o = h.obj.position, v = h.v;
+      v.y -= 9.8 * dt;
+      // roll off walls and pillars
+      const nx = o.x + v.x * dt, nz = o.z + v.z * dt;
+      if (w.blocked(nx, o.z, R, 0.05)) v.x *= -0.4; else o.x = nx;
+      if (w.blocked(o.x, nz, R, 0.05)) v.z *= -0.4; else o.z = nz;
+      o.y += v.y * dt;
+      h.obj.rotation.x += h.spin.x * dt; h.obj.rotation.y += h.spin.y * dt; h.obj.rotation.z += h.spin.z * dt;
+      if (o.y < R && v.y < 0) {
+        o.y = R;
+        if (h.bounces++ < 3 && v.y < -1) {
+          const pos = { x: o.x, y: 0.1, z: o.z };
+          sfx.playBR('thud', pos, g.occlusion(pos.x, pos.y, pos.z), Math.min(1, -v.y / 5));
+        }
+        v.y = -v.y * 0.3;
+        if (v.y < 0.4) v.y = 0;
+        v.x *= 0.75; v.z *= 0.75;
+        h.spin.multiplyScalar(0.6);
+      }
+      // on the floor it rolls to a stop, settling on the back of the hood with the visor staring up
+      if (o.y <= R + 0.001 && v.y === 0) {
+        v.x *= Math.pow(0.2, dt * 6); v.z *= Math.pow(0.2, dt * 6);
+        h.spin.set(0, 0, 0);
+        if (!h.rest) h.rest = new THREE.Quaternion().setFromEuler(new THREE.Euler(1.05 + Math.random() * 0.35, Math.random() * Math.PI * 2, (Math.random() - 0.5) * 0.5, 'YXZ'));
+        h.obj.quaternion.slerp(h.rest, Math.min(1, dt * 5));
+        if (Math.hypot(v.x, v.z) < 0.05 && h.obj.quaternion.angleTo(h.rest) < 0.02) { h.still = true; h.obj.quaternion.copy(h.rest); }
+      }
+    }
   }
 
   // advance the snatch animations; returns where the victim's body is (or null when it's gone)
@@ -337,6 +398,7 @@ export class BackroomsFX {
   update(dt) {
     const g = this.g;
     this.updateSnatches(dt);
+    this.updateHeads(dt);
     if (!g.paused) this.hallucinate(dt);
     this.readNote();
     // people (and it) are only as bright as the place you are in

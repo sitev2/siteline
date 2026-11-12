@@ -4,18 +4,49 @@ import { World } from './world.js';
 // every player and the home server all build exactly the same one. No three.js in here.
 //
 // The maze sits on a grid of 4 m rooms. A random spanning tree makes sure everything is connected,
-// then extra walls are knocked out for loops, some blocks become bigger rooms, some become halls of
-// repeating pillars, and pitfalls (holes in the floor) are dropped in. The exit is a door in the
-// outer wall, as far from the start as possible.
+// then extra walls are knocked out for loops, some blocks become bigger rooms, one becomes a hall of
+// repeating pillars, and two pit rooms (all hole but for narrow bridges) are set across the way to the
+// exit. The exit is a door in the outer wall, as far from the start as possible; big black arrows on
+// some walls point roughly the right way.
 
 export const BR = {
-  cells: 18,          // rooms across (4 m each)
+  cells: 20,          // rooms across (4 m each)
   cell: 4,            // metres per room
   border: 1,          // solid edge around the maze
   ceiling: 2.9,       // ceiling height
   wall: 0.5,          // wall thickness
   door: 2.2,          // doorway height
+  walk: 3.2,          // m/s: how fast you walk (the normal speed in here; quiet)
+  sprint: 5.3,        // m/s: holding Shift (or the run button): loud, it hears you
 };
+
+// The three difficulties. Maze: how wide the bridges over the pit rooms are (m) and how many extra ones
+// there are, how many ceiling holes, dark areas and arrows. Monster: how much faster than your sprint it
+// runs, how far it sees (sight; once chasing you, chaseSight), how wide it looks (fov, radians each side),
+// how long it keeps after you once you are out of sight (lose, s) and how far ahead it guesses (lead, s),
+// how far it hears running / walking, how many places it searches and when it wakes up (s).
+export const BR_LEVELS = {
+  easy: {
+    bridge: 1.5, extra: 0.35, holes: 8, dark: 2, arrows: 0.45,
+    monster: { speed: 1.05, sight: 16, chaseSight: 13, fov: 1.0, lose: 0.25, lead: 0.7, hear: 11, hearWalk: 2.5, search: 3, wake: 30 },
+  },
+  normal: {
+    bridge: 1, extra: 0.2, holes: 11, dark: 3, arrows: 0.3,
+    monster: { speed: 1.10, sight: 22, chaseSight: 19, fov: 1.2, lose: 0.55, lead: 1.2, hear: 14, hearWalk: 3, search: 4, wake: 20 },
+  },
+  hard: {
+    bridge: 0.5, extra: 0.1, holes: 14, dark: 4, arrows: 0.18,
+    monster: { speed: 1.15, sight: 28, chaseSight: 28, fov: 1.3, lose: 0.9, lead: 1.6, hear: 16, hearWalk: 3.5, search: 5, wake: 15 },
+  },
+};
+export const brLevel = (lv) => (BR_LEVELS[lv] ? lv : 'normal');
+
+// The map variant carries the maze's seed and the difficulty: "12345:hard" (a plain number = normal)
+export function brVariant(seed, level) { return `${seed >>> 0}:${brLevel(level)}`; }
+export function parseBrVariant(v) {
+  const [a, b] = String(v == null ? '' : v).split(':');
+  return { seed: (Math.floor(Number(a)) >>> 0) || 1, level: brLevel(b) };
+}
 
 // small, fast, seeded random numbers (same seed → same maze everywhere)
 export function rng(seed) {
@@ -28,9 +59,10 @@ export function rng(seed) {
   };
 }
 
-// Plan the maze (pure data): walls between rooms, pillar halls, pits, start, exit, monster start.
-export function planMaze(seed) {
-  const R = rng(seed), N = BR.cells;
+// Plan the maze (pure data): walls between rooms, the pillar hall, pit rooms, doors, start, exit, monster
+// start, arrows. `level` is the difficulty (BR_LEVELS).
+export function planMaze(seed, level = 'normal') {
+  const R = rng(seed), N = BR.cells, L = BR_LEVELS[brLevel(level)];
   const pick = (a, b) => a + Math.floor(R() * (b - a + 1));
   // vWall[z][x]: wall between room (x, z) and (x + 1, z); hWall[z][x]: between (x, z) and (x, z + 1)
   const vWall = Array.from({ length: N }, () => new Array(N - 1).fill(true));
@@ -39,34 +71,40 @@ export function planMaze(seed) {
     if (dx) vWall[z][Math.min(x, x + dx)] = false;
     else hWall[Math.min(z, z + dz)][x] = false;
   };
+  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const inside = (x, z) => x >= 0 && z >= 0 && x < N && z < N;
+  // is there a wall between room (x, z) and the next one in direction (dx, dz)? (the outer wall counts)
+  const wallTo = (x, z, dx, dz) => {
+    const nx = x + dx, nz = z + dz;
+    if (!inside(nx, nz)) return true;
+    return dx ? vWall[z][Math.min(x, nx)] : hWall[Math.min(z, nz)][x];
+  };
   // 1. random spanning tree (everything connected)
   const seen = Array.from({ length: N }, () => new Array(N).fill(false));
   const stack = [[pick(0, N - 1), pick(0, N - 1)]];
   seen[stack[0][1]][stack[0][0]] = true;
-  const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   while (stack.length) {
     const [x, z] = stack[stack.length - 1];
-    const next = DIRS.map(([dx, dz]) => [x + dx, z + dz, dx, dz]).filter(([nx, nz]) => nx >= 0 && nz >= 0 && nx < N && nz < N && !seen[nz][nx]);
+    const next = DIRS.map(([dx, dz]) => [x + dx, z + dz, dx, dz]).filter(([nx, nz]) => inside(nx, nz) && !seen[nz][nx]);
     if (!next.length) { stack.pop(); continue; }
     const [nx, nz, dx, dz] = next[Math.floor(R() * next.length)];
     open(x, z, dx, dz);
     seen[nz][nx] = true;
     stack.push([nx, nz]);
   }
-  // 2. loops: knock out a share of the remaining walls
-  for (let z = 0; z < N; z++) for (let x = 0; x < N - 1; x++) if (vWall[z][x] && R() < 0.18) vWall[z][x] = false;
-  for (let z = 0; z < N - 1; z++) for (let x = 0; x < N; x++) if (hWall[z][x] && R() < 0.18) hWall[z][x] = false;
-  // 3. bigger rooms and pillar halls: clear every wall inside a block
+  // 2. loops: knock out a share of the remaining walls (fewer loops = longer ways round)
+  for (let z = 0; z < N; z++) for (let x = 0; x < N - 1; x++) if (vWall[z][x] && R() < 0.14) vWall[z][x] = false;
+  for (let z = 0; z < N - 1; z++) for (let x = 0; x < N; x++) if (hWall[z][x] && R() < 0.14) hWall[z][x] = false;
+  // 3. bigger rooms and one pillar hall: clear every wall inside a block
   const clearBlock = (x0, z0, w, d) => {
     for (let z = z0; z < z0 + d; z++) for (let x = x0; x < x0 + w - 1; x++) vWall[z][x] = false;
     for (let z = z0; z < z0 + d - 1; z++) for (let x = x0; x < x0 + w; x++) hWall[z][x] = false;
   };
-  const halls = [];
   const overlaps = (a, b) => a.x < b.x + b.w + 1 && b.x < a.x + a.w + 1 && a.z < b.z + b.d + 1 && b.z < a.z + a.d + 1;
-  for (let tries = 0; halls.length < 3 && tries < 60; tries++) {
-    const h = { w: pick(4, 6), d: pick(4, 6) };
-    h.x = pick(0, N - h.w); h.z = pick(0, N - h.d);
-    if (halls.some(o => overlaps(o, h))) continue;
+  const halls = [];
+  {
+    const h = { w: pick(3, 5), d: pick(3, 5) };
+    h.x = pick(1, N - h.w - 1); h.z = pick(1, N - h.d - 1);
     halls.push(h);
     clearBlock(h.x, h.z, h.w, h.d);
   }
@@ -76,7 +114,7 @@ export function planMaze(seed) {
   }
   const inHall = (x, z) => halls.find(h => x >= h.x && x < h.x + h.w && z >= h.z && z < h.z + h.d);
 
-  // distances between rooms through the openings (for the start, exit and monster)
+  // distances between rooms through the openings (for the start, exit, monster, pit rooms and arrows)
   const walk = (sx, sz) => {
     const dist = Array.from({ length: N }, () => new Array(N).fill(-1));
     const q = [[sx, sz]]; dist[sz][sx] = 0;
@@ -84,9 +122,7 @@ export function planMaze(seed) {
       const [x, z] = q[i];
       for (const [dx, dz] of DIRS) {
         const nx = x + dx, nz = z + dz;
-        if (nx < 0 || nz < 0 || nx >= N || nz >= N || dist[nz][nx] >= 0) continue;
-        const blocked = dx ? vWall[z][Math.min(x, nx)] : hWall[Math.min(z, nz)][x];
-        if (blocked) continue;
+        if (!inside(nx, nz) || dist[nz][nx] >= 0 || wallTo(x, z, dx, dz)) continue;
         dist[nz][nx] = dist[z][x] + 1;
         q.push([nx, nz]);
       }
@@ -96,10 +132,11 @@ export function planMaze(seed) {
   // 4. start in a corner room, the exit in the outer wall as far away as possible
   const corners = [[0, 0], [N - 1, 0], [0, N - 1], [N - 1, N - 1]];
   const [sx, sz] = corners[Math.floor(R() * 4)];
-  const dist = walk(sx, sz);
+  let dist = walk(sx, sz);
   let exit = null, far = -1;
   for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
     if (x !== 0 && z !== 0 && x !== N - 1 && z !== N - 1) continue;      // edge rooms only
+    if (Math.abs(x - sx) + Math.abs(z - sz) < N) continue;                // never on the start's side of the maze
     const d = dist[z][x] + R() * 3;
     if (d > far) { far = d; exit = { x, z }; }
   }
@@ -116,80 +153,105 @@ export function planMaze(seed) {
     const score = -Math.abs(d - maxD * 0.55) + R() * 2 + (Math.hypot(x - sx, z - sz) > N * 0.4 ? 4 : -20);
     if (score > best) { best = score; mon = { x, z }; }
   }
-  // 5. pit rooms: a big room whose floor is a grid of square holes with narrow walkways between them
-  const pitRooms = [];
+  // 5. pit rooms, set across the way to the exit: the floor is almost all hole, with narrow bridges between
+  // the middles of its rooms (a random tree of them, so the way across winds) and out to each way in.
   const special = (x, z) => (Math.abs(x - sx) <= 1 && Math.abs(z - sz) <= 1) || (x === exit.x && z === exit.z) || (x === mon.x && z === mon.z);
-  for (let tries = 0; pitRooms.length < 2 && tries < 80; tries++) {
-    const r = { w: pick(3, 4), d: pick(3, 4) };
-    r.x = pick(0, N - r.w); r.z = pick(0, N - r.d);
-    if (halls.some(o => overlaps(o, r)) || pitRooms.some(o => overlaps(o, r))) continue;
-    let bad = false;
-    for (let z = r.z; z < r.z + r.d && !bad; z++) for (let x = r.x; x < r.x + r.w; x++) if (special(x, z)) bad = true;
-    if (bad) continue;
-    pitRooms.push(r);
-    clearBlock(r.x, r.z, r.w, r.d);
-  }
-  const inPitRoom = (x, z) => pitRooms.find(r => x >= r.x && x < r.x + r.w && z >= r.z && z < r.z + r.d);
-  // 6. doorways: some openings between ordinary rooms get a wall back with a door-sized gap in it
-  const doorways = [];
-  const plain = (x, z) => !inHall(x, z) && !inPitRoom(x, z);
-  for (let tries = 0; doorways.length < 14 && tries < 400; tries++) {
-    const x = pick(0, N - 1), z = pick(0, N - 1);
-    if (R() < 0.5) {
-      if (x >= N - 1 || vWall[z][x] || !plain(x, z) || !plain(x + 1, z)) continue;
-      if (doorways.some(d => d.dir === 'v' && d.x === x && d.z === z)) continue;
-      doorways.push({ dir: 'v', x, z, open: R() < 0.65 });
-    } else {
-      if (z >= N - 1 || hWall[z][x] || !plain(x, z) || !plain(x, z + 1)) continue;
-      if (doorways.some(d => d.dir === 'h' && d.x === x && d.z === z)) continue;
-      doorways.push({ dir: 'h', x, z, open: R() < 0.65 });
+  // the way from the start to the exit, room by room
+  const route = [];
+  {
+    const back = walk(exit.x, exit.z);
+    let x = sx, z = sz;
+    route.push([x, z]);
+    for (let g = 0; g < N * N && !(x === exit.x && z === exit.z); g++) {
+      const nxt = DIRS.find(([dx, dz]) => inside(x + dx, z + dz) && !wallTo(x, z, dx, dz) && back[z + dz][x + dx] === back[z][x] - 1);
+      if (!nxt) break;
+      x += nxt[0]; z += nxt[1];
+      route.push([x, z]);
     }
   }
-  // 7. pitfalls: holes in the floor, never in the start, exit or monster rooms or next to the start
-  const pits = [];
-  const nPits = pick(9, 13);
-  for (let tries = 0; pits.length < nPits && tries < 300; tries++) {
+  const pitRooms = [];
+  for (const frac of [0.38, 0.7]) {
+    for (let tries = 0; tries < 40; tries++) {
+      const k = Math.max(0, Math.min(route.length - 1, Math.round(route.length * frac) + pick(-3, 3)));
+      const [cx, cz] = route[k];
+      const r = { w: pick(2, 3), d: pick(2, 3) };
+      if (r.w * r.d < 6) r[R() < 0.5 ? 'w' : 'd'] = 3;
+      r.x = cx - pick(0, r.w - 1); r.z = cz - pick(0, r.d - 1);
+      if (r.x < 0 || r.z < 0 || r.x + r.w > N || r.z + r.d > N) continue;
+      if (halls.some(o => overlaps(o, r)) || pitRooms.some(o => overlaps(o, r))) continue;
+      let bad = false;
+      for (let z = r.z; z < r.z + r.d && !bad; z++) for (let x = r.x; x < r.x + r.w; x++) if (special(x, z)) bad = true;
+      if (bad) continue;
+      pitRooms.push(r);
+      break;
+    }
+  }
+  for (const r of pitRooms) {
+    clearBlock(r.x, r.z, r.w, r.d);
+    // bridges between neighbouring room middles: a random tree, plus a few extra
+    const links = [];
+    const id = (i, j) => j * r.w + i;
+    const linked = new Set([id(pick(0, r.w - 1), pick(0, r.d - 1))]);
+    const cand = [];
+    for (let j = 0; j < r.d; j++) for (let i = 0; i < r.w; i++) {
+      if (i < r.w - 1) cand.push([i, j, 1, 0]);
+      if (j < r.d - 1) cand.push([i, j, 0, 1]);
+    }
+    while (linked.size < r.w * r.d) {
+      const opts = cand.filter(([i, j, di, dj]) => linked.has(id(i, j)) !== linked.has(id(i + di, j + dj)));
+      const c = opts[Math.floor(R() * opts.length)];
+      links.push(c); linked.add(id(c[0], c[1])); linked.add(id(c[0] + c[2], c[1] + c[3]));
+    }
+    for (const c of cand) if (!links.includes(c) && R() < L.extra) links.push(c);
+    r.links = links.map(([i, j, di, dj]) => [i, j, di]);      // [i, j, 1] = east to (i + 1, j), [i, j, 0] = south to (i, j + 1)
+    r.bridge = L.bridge;
+  }
+  const inPitRoom = (x, z) => pitRooms.find(r => x >= r.x && x < r.x + r.w && z >= r.z && z < r.z + r.d);
+  // where the bridges reach the edge of each pit room: every way in from a room next to it
+  for (const r of pitRooms) {
+    r.ways = [];
+    for (let j = 0; j < r.d; j++) for (let i = 0; i < r.w; i++) {
+      const x = r.x + i, z = r.z + j;
+      for (const [dx, dz, side] of [[-1, 0, 'w'], [1, 0, 'e'], [0, -1, 'n'], [0, 1, 's']]) {
+        if (inPitRoom(x + dx, z + dz) === r || wallTo(x, z, dx, dz)) continue;
+        r.ways.push([i, j, side]);
+      }
+    }
+  }
+  // 6. doorways: a few openings between ordinary rooms get a wall back with a door in it
+  const doorways = [];
+  const plain = (x, z) => !inHall(x, z) && !inPitRoom(x, z);
+  for (let tries = 0; doorways.length < 6 && tries < 400; tries++) {
     const x = pick(0, N - 1), z = pick(0, N - 1);
-    if (Math.abs(x - sx) + Math.abs(z - sz) < 3) continue;
-    if ((x === exit.x && z === exit.z) || (x === mon.x && z === mon.z) || inPitRoom(x, z)) continue;
-    if (pits.some(p => Math.abs(p.x - x) + Math.abs(p.z - z) < 2)) continue;
-    const size = inHall(x, z) ? (R() < 0.5 ? 2.5 : 2) : (R() < 0.5 ? 1.5 : 2);
-    // a small hole sits off-centre a little (so it isn't always in the same place); the edge of a
-    // hole stays at least 1.25 m from the middle of the room, clear of walls and pillars
-    const off = size <= 1.5 ? 0.5 : 0;
-    const ox = pick(-1, 1) * off, oz = pick(-1, 1) * off;
-    pits.push({ x, z, size, ox, oz });
+    if (doorways.some(d => Math.abs(d.x - x) + Math.abs(d.z - z) < 3)) continue;      // spread out
+    if (R() < 0.5) {
+      if (x >= N - 1 || vWall[z][x] || !plain(x, z) || !plain(x + 1, z)) continue;
+      doorways.push({ dir: 'v', x, z, open: R() < 0.6 });
+    } else {
+      if (z >= N - 1 || hWall[z][x] || !plain(x, z) || !plain(x, z + 1)) continue;
+      doorways.push({ dir: 'h', x, z, open: R() < 0.6 });
+    }
   }
-  // 8. doors set into walls that only open onto more wall (in ordinary rooms with no hole in the floor)
-  const blankDoors = [];
-  for (let tries = 0; blankDoors.length < 9 && tries < 300; tries++) {
-    const x = pick(0, N - 1), z = pick(0, N - 1), v = R() < 0.5, side = R() < 0.5 ? 1 : -1;
-    if (v ? (x >= N - 1 || !vWall[z][x]) : (z >= N - 1 || !hWall[z][x])) continue;
-    // the room the door faces
-    const rx = v ? x + (side > 0 ? 1 : 0) : x, rz = v ? z : z + (side > 0 ? 1 : 0);
-    if (inPitRoom(rx, rz) || pits.some(p => p.x === rx && p.z === rz)) continue;
-    if (blankDoors.some(d => d.x === x && d.z === z && d.v === v)) continue;
-    blankDoors.push({ v, x, z, side });
-  }
-  // 9. dark areas: blocks of rooms whose lights are all dead (bring a flashlight); never the start or the exit
+  // 7. dark areas: blocks of rooms whose lights are all dead (bring a flashlight); never the start or the
+  // exit, and (except on hard) never over a pit room
   const darkZones = [];
-  for (let tries = 0; darkZones.length < 3 && tries < 80; tries++) {
+  for (let tries = 0; darkZones.length < L.dark && tries < 120; tries++) {
     const r = { w: pick(2, 4), d: pick(2, 4) };
     r.x = pick(0, N - r.w); r.z = pick(0, N - r.d);
     if (darkZones.some(o => overlaps(o, r))) continue;
+    if (level !== 'hard' && pitRooms.some(o => overlaps(o, r))) continue;
     let bad = false;
     for (let z = r.z; z < r.z + r.d && !bad; z++) for (let x = r.x; x < r.x + r.w; x++) if (Math.abs(x - sx) <= 1 && Math.abs(z - sz) <= 1 || (x === exit.x && z === exit.z)) bad = true;
     if (!bad) darkZones.push(r);
   }
-  const inDark = (x, z) => darkZones.some(r => x >= r.x && x < r.x + r.w && z >= r.z && z < r.z + r.d);
-  // 10. ceiling holes: a missing or pushed-aside ceiling tile (0.6 m tiles), off the middle of a room so it
+  // 8. ceiling holes: a missing or pushed-aside ceiling tile (0.6 m tiles), off the middle of a room so it
   // isn't under the light. Something lives up there: walk under one and it takes you.
   const holes = [];
   const T = 0.6;
-  for (let tries = 0; holes.length < 13 && tries < 400; tries++) {
+  for (let tries = 0; holes.length < L.holes && tries < 400; tries++) {
     const x = pick(0, N - 1), z = pick(0, N - 1);
     if (Math.abs(x - sx) <= 1 && Math.abs(z - sz) <= 1) continue;
-    if ((x === exit.x && z === exit.z) || inPitRoom(x, z) || pits.some(p => p.x === x && p.z === z)) continue;
+    if ((x === exit.x && z === exit.z) || inPitRoom(x, z)) continue;
     if (holes.some(h => Math.abs(h.rx - x) + Math.abs(h.rz - z) < 2)) continue;
     // a tile about 1.1 m from the middle of the room, to one side
     const cx = BR.border + x * BR.cell + 2.25, cz = BR.border + z * BR.cell + 2.25;
@@ -197,18 +259,39 @@ export function planMaze(seed) {
     const tx = Math.floor((cx + Math.cos(ang) * 1.1) / T) * T, tz = Math.floor((cz + Math.sin(ang) * 1.1) / T) * T;
     holes.push({ rx: x, rz: z, x: tx + T / 2, z: tz + T / 2, size: T, kind: R() < 0.5 ? 'missing' : 'shifted', dir: pick(0, 3) });
   }
-  return { seed, N, vWall, hWall, halls, pitRooms, doorways, blankDoors, darkZones, holes, start: { x: sx, z: sz }, exit, monster: mon, pits, flicker: R() };
+  // 9. big black arrows sprayed on walls: in some of the rooms where the way splits, pointing roughly the
+  // right way (towards the next room on the shortest way to the exit), on a wall that runs that way
+  dist = walk(exit.x, exit.z);
+  const arrows = [];
+  for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+    if ((x === exit.x && z === exit.z) || inPitRoom(x, z) || dist[z][x] < 2) continue;
+    const ways = DIRS.filter(([dx, dz]) => !wallTo(x, z, dx, dz));
+    const atStart = x === sx && z === sz;
+    if (!atStart && (ways.length < 3 || R() > L.arrows)) continue;
+    const go = ways.filter(([dx, dz]) => dist[z + dz][x + dx] === dist[z][x] - 1);
+    if (!go.length) continue;
+    const [dx, dz] = go[Math.floor(R() * go.length)];
+    // a solid wall of this room running the same way (its normal is across the way to go)
+    const walls = (dx ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]]).filter(([wx, wz]) => wallTo(x, z, wx, wz));
+    if (!walls.length) continue;
+    const [wx, wz] = walls[Math.floor(R() * walls.length)];
+    arrows.push({ x, z, wx, wz, dx, dz, tilt: (R() - 0.5) * 0.18, s: 0.9 + R() * 0.3 });
+  }
+  return {
+    seed, level: brLevel(level), N, vWall, hWall, halls, pitRooms, doorways, blankDoors: [], darkZones, holes, arrows,
+    start: { x: sx, z: sz }, exit, monster: mon, pits: [], flicker: R(),
+  };
 }
 
-// Where the holes go along one side of a pit room (length in metres, walls take the first 0.5 m):
-// equal walkways of at least 1 m between square holes. Returns [start, size] of each hole.
-export function holeRow(len) {
-  const inner = len - 0.5;
-  for (const s of [2.5, 2]) for (let n = 6; n >= 2; n--) {
-    const b = (inner - s * n) / (n + 1);
-    if (b >= 1 && b <= 1.6 && Math.abs(b * 2 - Math.round(b * 2)) < 1e-9) return Array.from({ length: n }, (_, i) => [0.5 + b + i * (s + b), s]);
-  }
-  return [[0.5 + (inner - 2) / 2, 2]];
+// The tiles of a pit room along one side: where each bridge runs and where the holes are.
+// Returns { lines: [[a, b], ...] (the bridge strip through the middle of each room, in metres),
+// lo: the room's inner edge (after the wall), hi: its far edge }.
+export function pitStrips(r0, n, bridge) {
+  const at0 = BR.border + r0 * BR.cell;
+  const rel = Math.floor((2.25 - bridge / 2) / 0.5) * 0.5;       // on the 0.5 m grid, about the middle
+  const lines = [];
+  for (let i = 0; i < n; i++) lines.push([at0 + i * BR.cell + rel, at0 + i * BR.cell + rel + bridge]);
+  return { lines, lo: at0 + 0.5, hi: at0 + n * BR.cell };
 }
 
 // metres: the corner of room (x, z)
@@ -219,10 +302,12 @@ const CELL = 0.5;
 // Every maze is checked before it is used: a player can walk from the start to the exit without
 // falling, and the monster (which needs more room) can reach the start. If not, a variation of the
 // seed is tried instead; every computer makes the same choice, so everyone still gets the same maze.
-export function backroomsMap(seed) {
+export function backroomsMap(variant) {
+  const { seed, level } = parseBrVariant(variant);
   for (let k = 0; k < 12; k++) {
-    const def = mazeDef(k ? ((seed * 7919 + k * 104729) >>> 0) || 1 : seed);
-    def.variant = seed;
+    const def = mazeDef(k ? ((seed * 7919 + k * 104729) >>> 0) || 1 : seed, level);
+    def.variant = variant;
+    def.level = level;
     if (k === 11 || mazeOk(def)) return def;
   }
 }
@@ -254,8 +339,8 @@ function mazeOk(def) {
   return !!e && reach(s.x, s.z, e.x + e.nx * 0.8, e.z + e.nz * 0.8) && reach(m.x, m.z, s.x, s.z);
 }
 
-function mazeDef(seed) {
-  const plan = planMaze(seed);
+function mazeDef(seed, level) {
+  const plan = planMaze(seed, level);
   const N = BR.cells, C = BR.cell, H = BR.ceiling, T = BR.wall / 2;
   const size = BR.border * 2 + N * C;
   return {
@@ -294,16 +379,41 @@ function mazeDef(seed) {
           b.door({ kind: 'way', v: false, open: d.open, plan: i }, c - 0.75, wz - T, c + 0.75, wz + T);
         }
       });
-      // doors to nowhere: on the face of a wall (the wall cell is [line, line + 0.5)), always shut to start with
-      for (const d of plan.blankDoors) {
-        const line = d.v ? at(d.x + 1) : at(d.z + 1), mid = (d.v ? at(d.z) : at(d.x)) + 2.25;
-        const face = line + (d.side > 0 ? CELL : 0);
-        b.door({ kind: 'blank', v: d.v, side: d.side, open: false, cx: d.v ? face : mid, cz: d.v ? mid : face });
-      }
-      // pit rooms: the floor is a grid of square holes
+      // pit rooms: all hole except the bridges (pitStrips): a strip through the middle of each of its rooms,
+      // the links between them (plan.links) and out to every way in (plan.ways)
       for (const r of plan.pitRooms) {
-        const X0 = at(r.x), Z0 = at(r.z);
-        for (const [hx, sx] of holeRow(r.w * C)) for (const [hz, sz] of holeRow(r.d * C)) b.pit(X0 + hx, Z0 + hz, X0 + hx + sx, Z0 + hz + sz);
+        const X = pitStrips(r.x, r.w, r.bridge), Z = pitStrips(r.z, r.d, r.bridge);
+        // along one side: hole, bridge line 0, hole, line 1, ..., hole
+        const segs = S => {
+          const out = [];
+          let a = S.lo;
+          S.lines.forEach(([l0, l1], i) => { out.push({ line: false, a, b: l0, i }); out.push({ line: true, a: l0, b: l1, i }); a = l1; });
+          out.push({ line: false, a, b: S.hi, i: S.lines.length });
+          return out;
+        };
+        const link = (i, j, east) => r.links.some(([a, c, e]) => a === i && c === j && e === (east ? 1 : 0));
+        const way = (i, j, side) => r.ways.some(([a, c, s]) => a === i && c === j && s === side);
+        for (const sx of segs(X)) for (const sz of segs(Z)) {
+          let floor;
+          if (sx.line && sz.line) floor = true;                       // the middle of one of its rooms
+          else if (sx.line) { const i = sx.i, j = sz.i; floor = j === 0 ? way(i, 0, 'n') : j === r.d ? way(i, r.d - 1, 's') : link(i, j - 1, false); }
+          else if (sz.line) { const i = sx.i, j = sz.i; floor = i === 0 ? way(0, j, 'w') : i === r.w ? way(r.w - 1, j, 'e') : link(i - 1, j, true); }
+          else floor = false;
+          if (!floor && sx.b > sx.a && sz.b > sz.a) b.pit(sx.a, sz.a, sx.b, sz.b);
+        }
+        // an open west / north side has no wall in its first 0.5 m: hole there too, either side of the bridge
+        // (and in the corner where no wall meets it)
+        for (const [i, j, side] of r.ways) {
+          if (side === 'w') {
+            const x0 = at(r.x), zl = Z.lines[j], z = r.z + j;
+            const top = j > 0 && r.x > 0 && !plan.vWall[z - 1][r.x - 1] && !plan.hWall[z - 1][r.x - 1] ? at(z) : at(z) + 0.5;
+            b.pit(x0, top, x0 + 0.5, zl[0]); b.pit(x0, zl[1], x0 + 0.5, at(z + 1));
+          } else if (side === 'n') {
+            const z0 = at(r.z), xl = X.lines[i], x = r.x + i;
+            const left = i > 0 && r.z > 0 && !plan.hWall[r.z - 1][x - 1] && !plan.vWall[r.z - 1][x - 1] ? at(x) : at(x) + 0.5;
+            b.pit(left, z0, xl[0], z0 + 0.5); b.pit(xl[1], z0, at(x + 1), z0 + 0.5);
+          }
+        }
       }
       // pillar halls: a square pillar at every room corner inside the hall
       for (const h of plan.halls) {
@@ -318,19 +428,12 @@ function mazeDef(seed) {
       for (let z = 1; z < N; z++) for (let x = 1; x < N; x++) {
         if (plan.halls.some(h => x >= h.x && x <= h.x + h.w && z >= h.z && z <= h.z + h.d)) continue;
         if (plan.pitRooms.some(h => x >= h.x && x <= h.x + h.w && z >= h.z && z <= h.z + h.d)) continue;
-        // never right next to a hole in the floor (it would leave a gap too narrow to get past)
-        if (plan.pits.some(p => (p.x === x || p.x === x - 1) && (p.z === z || p.z === z - 1))) continue;
         const touching = (plan.vWall[z - 1] && plan.vWall[z - 1][x - 1]) || (plan.vWall[z] && plan.vWall[z][x - 1])
           || (plan.hWall[z - 1] && (plan.hWall[z - 1][x - 1] || plan.hWall[z - 1][x]));
-        if (!touching && R() < 0.35) b.wall(at(x) - 0.5, at(z) - 0.5, at(x) + 0.5, at(z) + 0.5, H, 'pillar');
+        if (!touching && R() < 0.12) b.wall(at(x) - 0.5, at(z) - 0.5, at(x) + 0.5, at(z) + 0.5, H, 'pillar');
       }
       // the ceiling over everything (drawn by brview.js, so it is an invisible span here)
       b.roof(BR.border, BR.border, size - BR.border, size - BR.border, H, '_ceiling');
-      // pitfalls
-      for (const p of plan.pits) {
-        const cx = at(p.x) + C / 2 + p.ox, cz = at(p.z) + C / 2 + p.oz, s = p.size / 2;
-        b.pit(cx - s, cz - s, cx + s, cz + s);
-      }
       // players start in their corner room, the monster in its own
       const sx = at(plan.start.x) + C / 2, sz = at(plan.start.z) + C / 2;
       const toMid = Math.atan2(-(size / 2 - sx), -(size / 2 - sz));

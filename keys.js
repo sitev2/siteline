@@ -3,9 +3,9 @@
 
 export const ACTIONS = [
   ['moveF', 'Move forward'], ['moveB', 'Move back'], ['moveL', 'Move left'], ['moveR', 'Move right'],
-  ['jump', 'Jump'], ['walk', 'Walk (quiet)'],
+  ['jump', 'Jump'], ['walk', 'Walk quietly (sprint in the Backrooms)'],
   ['reload', 'Reload'], ['alt', 'Scope / burst mode'], ['use', 'Plant / defuse / pick up'],
-  ['buy', 'Buy menu'], ['inspect', 'Inspect weapon'], ['flashlight', 'Flashlight'], ['drop', 'Drop weapon'],
+  ['buy', 'Buy menu'], ['inspect', 'Inspect weapon (flashlight in the Backrooms)'], ['flashlight', 'Flashlight'], ['drop', 'Drop weapon'],
   ['chatAll', 'All chat'], ['chatTeam', 'Team chat'], ['note', 'Leave a note (Backrooms)'],
   ['w1', 'Main gun'], ['w2', 'Pistol'], ['w5', 'Bomb'],
   ['score', 'Scoreboard'], ['menu', 'Menu'],

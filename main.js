@@ -21,7 +21,11 @@ import { initAdmin, openAdmin } from './admin.js';
 import { WEAPONS } from './weapons.js';
 
 const $ = (id) => document.getElementById(id);
-const screens = ['menu', 'lobby', 'settings', 'howto', 'practice', 'account', 'nettest', 'friends', 'admin'];
+const screens = ['menu', 'lobby', 'settings', 'practice', 'account', 'nettest', 'friends', 'admin'];
+
+// The Backrooms is hidden for now (the owner's call): no lobby button, no practice button.
+// Set this to true to bring it back; everything else about it still works.
+const BACKROOMS_OPEN = false;
 
 // ---------- settings ----------
 const STORE = 'siteline-settings';
@@ -122,6 +126,8 @@ function makeLocalServer(practice) {
 // Every message from the host (or local server) to this player lands here.
 function deliver(msg) {
   if (!msg || typeof msg !== 'object') return;
+  // while a game is being built (beginGame) everything else waits its turn, so nothing is lost
+  if (app.starting && msg.t !== 'ping') { app.starting.push(msg); return; }
   switch (msg.t) {
     case 'welcome':
       if (app.mode === 'client') rememberRoom();
@@ -140,7 +146,7 @@ function deliver(msg) {
       return;
     case 'start':
       loading(null);
-      startGame(msg);
+      beginGame(msg);
       return;
     case 'lobby':
       endGame();
@@ -539,6 +545,15 @@ function updatePauseInvite() {
   if (show) $('pause-code').textContent = app.code;
 }
 
+// the Backrooms buttons go while it is hidden (BACKROOMS_OPEN); the other buttons close up
+function hideBackrooms() {
+  if (BACKROOMS_OPEN) return;
+  for (const el of document.querySelectorAll('[data-mode="br"], [data-pmode="br"]')) el.remove();
+  $('lobby').querySelector('.mode-pick').classList.remove('three');
+  $('practice').querySelector('.mode-pick').classList.replace('four', 'three');
+  if (settings.practice.kind === 'br') settings.practice.kind = 'range';
+}
+
 // ---------- practice menu ----------
 function practiceMaps(kind, count) {
   return kind === 'dm' ? mapsFor('dm', 1 + count) : Object.keys(MAPS).filter(id => !isDmMap(id));
@@ -572,6 +587,7 @@ function renderPracticeMenu() {
   $('p-behavior').value = P.behavior;
   $('p-side').value = P.side;
   $('p-level').value = P.level;
+  $('p-level-label').textContent = P.kind === 'br' ? 'Difficulty' : 'Bot difficulty';
   $('p-night').checked = !!P.night;
 }
 
@@ -599,6 +615,8 @@ function bindPracticeMenu() {
 }
 
 function cleanup() {
+  app.starting = null;
+  gameLoading(null);
   endGame();
   if (app.server) { app.server.destroy(); app.server = null; }
   if (app.hostNet) { app.hostNet.destroy(); app.hostNet = null; }
@@ -716,6 +734,8 @@ function renderLobby() {
   $('lobby').classList.toggle('br', br);
   $('lobby-night').checked = !!app.lobby.night;
   $('lobby-night').disabled = !isLeader();
+  $('lobby-level').value = app.lobby.level || 'normal';
+  $('lobby-level').disabled = !isLeader();
   for (const b of document.querySelectorAll('.mode-btn[data-mode]')) {
     b.classList.toggle('selected', b.dataset.mode === (app.lobby.mode || 'wingman'));
     b.disabled = !isLeader();
@@ -813,6 +833,59 @@ async function shareInvite() {
 }
 
 // ---------- game ----------
+// The loading screen: building a map (and baking the Backrooms' lighting) can take a moment, so the
+// screen says what is loading and the bar moves on as each step is done.
+const MODE_NAMES = { wingman: '2v2 Bomb', dm: 'Deathmatch', br: 'Co-op escape' };
+const nextPaint = () => new Promise(r => {
+  let done = false;
+  const go = () => { if (!done) { done = true; setTimeout(r, 0); } };
+  requestAnimationFrame(go);
+  setTimeout(go, 300);          // (a hidden tab draws nothing: don't wait for it)
+});
+function gameLoading(step, frac, msg = null) {
+  const el = $('game-loading');
+  if (step == null) {
+    if (el.classList.contains('hidden')) return;
+    el.classList.add('fade');
+    setTimeout(() => { if (el.classList.contains('fade')) el.classList.add('hidden'); }, 380);
+    return;
+  }
+  if (msg) {
+    const def = msg.map === 'backrooms' ? { name: 'The Backrooms' } : MAPS[msg.map];
+    const lv = msg.mode === 'br' && typeof msg.variant === 'string' ? msg.variant.split(':')[1] : '';
+    $('gl-title').textContent = def ? def.name : 'Loading';
+    $('gl-sub').textContent = [msg.practice ? 'Practice' : '', MODE_NAMES[msg.mode] || '', lv ? lv[0].toUpperCase() + lv.slice(1) : ''].filter(Boolean).join(' · ');
+    el.dataset.mode = msg.mode || '';
+    $('gl-fill').style.transition = 'none'; $('gl-fill').style.width = '0';
+    void el.offsetWidth;
+    $('gl-fill').style.transition = '';
+  }
+  el.classList.remove('hidden', 'fade');
+  $('gl-step').textContent = step;
+  $('gl-fill').style.width = `${Math.round(frac * 100)}%`;
+}
+async function beginGame(msg) {
+  const queue = app.starting = [];
+  gameLoading(msg.mode === 'br' ? 'Building the maze…' : 'Building the map…', 0.15, msg);
+  await nextPaint(); await nextPaint();
+  if (app.starting !== queue) return;            // left before it was ready
+  try {
+    gameLoading(msg.mode === 'br' ? 'Wiring the lights…' : 'Lighting the map…', 0.45);
+    startGame(msg);
+  } catch (e) {
+    app.starting = null;
+    gameLoading(null);
+    throw e;
+  }
+  app.starting = null;
+  gameLoading('Getting ready…', 0.85);
+  for (const m of queue) deliver(m);             // what arrived meanwhile (your spawn, other players…)
+  await nextPaint(); await nextPaint();          // the first pictures are drawn (graphics warmed up)
+  if (!app.game) { gameLoading(null); return; }
+  gameLoading('Ready', 1);
+  setTimeout(() => gameLoading(null), 250);
+}
+
 function startGame(msg) {
   endGame();
   hideScreens();
@@ -1250,6 +1323,7 @@ function stopPageZoom() {
 // ---------- wire up ----------
 function init() {
   fillIcons();   // white icons (icons.js) into every <i data-icon> in the page
+  hideBackrooms();
   $('name').value = settings.name || '';
   const params = new URLSearchParams(location.search);
   const invite = normaliseCode(params.get('join'));
@@ -1271,7 +1345,6 @@ function init() {
   $('code').addEventListener('input', e => { e.target.value = normaliseCode(e.target.value); });
   $('btn-practice').addEventListener('click', () => { renderPracticeMenu(); openSub('practice'); });
   $('btn-settings').addEventListener('click', () => openSub('settings'));
-  $('btn-howto').addEventListener('click', () => openSub('howto'));
   $('btn-nettest').addEventListener('click', openNetTest);
   $('btn-net-check').addEventListener('click', openNetTest);
   $('btn-net-dismiss').addEventListener('click', hideNetError);
@@ -1287,6 +1360,7 @@ function init() {
   $('btn-shuffle').addEventListener('click', () => sendToServer({ t: 'shuffle' }));
   for (const b of document.querySelectorAll('.mode-btn[data-mode]')) b.addEventListener('click', () => sendToServer({ t: 'settings', mode: b.dataset.mode }));
   $('lobby-night').addEventListener('change', e => sendToServer({ t: 'settings', night: e.target.checked }));
+  $('lobby-level').addEventListener('change', e => sendToServer({ t: 'settings', level: e.target.value }));
   $('btn-start').addEventListener('click', () => { initAudio(); tryFullscreen(); sendToServer({ t: 'startMatch' }); });
 
   $('btn-resume').addEventListener('click', resume);
@@ -1297,7 +1371,6 @@ function init() {
     else if (req) req.call(el).catch?.(() => toast('Full screen is not available here.'));
   });
   $('btn-pause-settings').addEventListener('click', () => openSub('settings'));
-  $('btn-pause-howto').addEventListener('click', () => openSub('howto'));
   $('btn-leave').addEventListener('click', leaveToMenu);
   $('btn-to-lobby').addEventListener('click', () => sendToServer({ t: app.botGame ? 'restart' : 'toLobby' }));
   $('btn-pause-invite').addEventListener('click', shareInvite);

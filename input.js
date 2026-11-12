@@ -12,6 +12,7 @@ export class Input {
     this.fire = false;
     this.useHeld = false;
     this.walk = false;
+    this.jumpHeld = false;        // the jump button held down (phones: sprint in the Backrooms)
     this.scoreHeld = false;
     this.pressed = new Set();     // one-shot actions consumed each frame
     this.touchMove = { x: 0, y: 0 };
@@ -104,7 +105,7 @@ export class Input {
       if (act === 'walk') this.walk = false;
     });
     this.on(window, 'blur', () => {
-      this.held.clear(); this.fire = false; this.useHeld = false; this.scoreHeld = false; this.walk = false; this.updateMove();
+      this.held.clear(); this.fire = false; this.useHeld = false; this.scoreHeld = false; this.walk = false; this.jumpHeld = false; this.updateMove();
     });
 
     // mouse
@@ -156,6 +157,7 @@ export class Input {
         if (act === 'fire') { this.fire = true; this.press('click'); info.kind = 'look'; }
         else if (act === 'use') { this.useHeld = true; this.press('use'); info.kind = 'hold'; }
         else if (act === 'score') { this.scoreHeld = true; info.kind = 'hold'; }
+        else if (act === 'jump') { this.jumpHeld = true; this.press('jump'); info.kind = 'hold'; }   // (held: sprint in the Backrooms)
         else { this.press(act); info.kind = 'tap'; }
       } else if (e.clientX < window.innerWidth * 0.42 && ![...this.pointers.values()].some(p => p.kind === 'joy')) {
         info.kind = 'joy';
@@ -196,6 +198,7 @@ export class Input {
         if (act === 'fire') this.fire = [...this.pointers.values()].some(p => p.btn && p.btn.dataset.act === 'fire');
         if (act === 'use') this.useHeld = false;
         if (act === 'score') this.scoreHeld = false;
+        if (act === 'jump') this.jumpHeld = false;
       }
       if (info.kind === 'joy') {
         joy.classList.remove('active');

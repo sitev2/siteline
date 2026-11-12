@@ -31,6 +31,7 @@ const PATHS = {
   burst: `<circle ${F} cx="5" cy="12" r="2.2"/><circle ${F} cx="12" cy="12" r="2.2"/><circle ${F} cx="19" cy="12" r="2.2"/>`,
   drop: `<path ${S} d="M12 3.5V15M7 10l5 5 5-5M5 20h14"/>`,
   jump: `<path ${S} d="M12 21V9M7 14l5-5 5 5M5 4h14"/>`,
+  run: `<circle ${S} cx="15.5" cy="4.5" r="2"/><path ${S} d="M13.6 8.6L11 14.2M13.6 8.6l3.2 3 2.7-.6M13.6 8.6L9.4 9.8l-2 3M11 14.2l3.6 2.4-1.4 4.6M11 14.2l-2.6 3.2H4.5"/>`,
   list: `<path ${S} d="M4 6h16M4 12h16M4 18h16"/>`,
   pause: `<path ${F} d="M6.5 4.5h4v15h-4zM13.5 4.5h4v15h-4z"/>`,
   plus: `<path ${F} d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z"/>`,

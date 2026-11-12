@@ -920,8 +920,8 @@ export const dmVariant = players => (players >= 4 ? 'large' : 'small');
 
 // The map definition to build, with a deathmatch map's size variant applied
 export function resolveMap(id, variant) {
-  // the Backrooms is a new random maze every game: the variant is its seed
-  if (id === 'backrooms') return backroomsMap(Math.floor(Number(variant)) || 1);
+  // the Backrooms is a new random maze every game: the variant is its seed and difficulty ("12345:hard")
+  if (id === 'backrooms') return backroomsMap(variant);
   const d = MAPS[id] || MAPS.outpost;
   if (!d.sizes) return d;
   const v = d.sizes[variant] ? variant : 'small';
