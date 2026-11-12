@@ -46,6 +46,16 @@ export class BackroomsFX {
     this.events = [];                 // snatch animations in progress
     this.heads = [];                  // heads the ceiling spat back out: { wait, x, z, name, obj, v, spin }
     this.shells = [];                 // a skin it wore, splitting open as it changes back: { model, t, x, z }
+    this.bodies = new Map();          // bodies it took: id → { model, mode: 'dragged' | 'lying' | 'hung' }
+    this.darkK = 0;                   // the lights dying round it (0 … 1)
+    this.heartAt = 0; this.breathAt = 0;
+    this.follow = null;               // footsteps behind you that copy yours
+    this.caught = null;               // caught by it: lifted up to its face
+    this.staticK = 0;
+    this.staticCv = $('br-static');
+    this.staticCv.width = 160; this.staticCv.height = 90;
+    this.staticCtx = this.staticCv.getContext('2d');
+    this.staticImg = this.staticCtx.createImageData(160, 90);
     this.shreds = [];                 // bits of torn suit: { mesh, v, spin, still }
     this.hallu = null;                // a hallucination being shown
     this.halluAt = 60 + Math.random() * 40;
@@ -56,6 +66,8 @@ export class BackroomsFX {
 
   destroy() {
     clearTimeout(this.blackTimer);
+    this.staticCv.classList.add('hidden');
+    FLASH.uDark.value.w = 0;
     for (const [el, ev, fn] of this.bound || []) el.removeEventListener(ev, fn);
     $('note-editor').classList.add('hidden');
     $('note-read').classList.add('hidden');
@@ -66,6 +78,8 @@ export class BackroomsFX {
     if (m.t === 'snatch') { this.onSnatch(m); return true; }
     if (m.t === 'note') { this.addNote(m.note); return true; }
     if (m.t === 'skinReveal') { this.onSkinReveal(m); return true; }
+    if (m.t === 'lure') { this.onLure(m); return true; }
+    if (m.t === 'dropBody' || m.t === 'hangBody') { this.placeBody(m); return true; }
     return false;
   }
 
@@ -196,6 +210,7 @@ export class BackroomsFX {
 
   // my own snatch: where the camera is (or null to leave it alone)
   camera(cam) {
+    if (this.caught) { const c = this.caughtCamera(); if (c) return c; }
     const ev = this.mine;
     if (!ev) return null;
     const black = $('br-black');
@@ -428,7 +443,7 @@ export class BackroomsFX {
     const alone = ![...g.remotes.values()].some(r => r.alive && r.team !== 'monster' && Math.hypot(r.rp.x - me.pos.x, r.rp.z - me.pos.z) < 10);
     const dark = this.built.lightAt && this.built.lightAt(me.pos.x, me.pos.z) < 0.25;
     this.halluAt = g.clock + (40 + Math.random() * 70) * (alone ? 0.7 : 1) * (dark ? 0.6 : 1);
-    const kinds = ['steps', 'whisper', 'knock', 'screech', 'figure', 'lights', 'figure'];
+    const kinds = ['steps', 'whisper', 'knock', 'screech', 'figure', 'lights', 'figure', 'follow', 'follow', 'breath'];
     const kind = kinds[Math.floor(Math.random() * kinds.length)];
     const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw), P = me.pos;
     const occ = (x, z) => g.occlusion(x, 1.2, z);
@@ -444,6 +459,11 @@ export class BackroomsFX {
     } else if (kind === 'screech') {
       const a = Math.random() * Math.PI * 2;
       sfx.playScreech({ x: P.x + Math.cos(a) * 25, y: 2.4, z: P.z + Math.sin(a) * 25 }, 0.8);
+    } else if (kind === 'follow') {
+      // footsteps behind you that copy yours, and stop a moment after you stop
+      this.follow = { until: g.clock + 12 + Math.random() * 8, next: 0, moved: g.clock };
+    } else if (kind === 'breath') {
+      sfx.playBR('breath', { x: P.x - fx * 0.5, y: P.y + 1.6, z: P.z - fz * 0.5 }, 0, 0.7);
     } else if (kind === 'lights') {
       if (this.built.flickerBurst) this.built.flickerBurst(P.x, P.z, 1.4);
     } else this.startVision(kind);
@@ -476,17 +496,204 @@ export class BackroomsFX {
     if (h.seen > 0.25 || d < 7 || h.t > 3 || !me.alive) { this.scene.remove(h.model.root); this.hallu = null; }
   }
 
+  // ---------- the monster, felt rather than seen ----------
+  monster() { for (const r of this.g.remotes.values()) if (r.team === 'monster') return r; return null; }
+
+  // how brightly its eyes burn: barely at all in the light, fully in the dark or in your flashlight beam
+  eyeGlow(r) {
+    const g = this.g, x = r.rp.x, z = r.rp.z;
+    if (this.caught) return 0.3;               // right in front of its face: you see the face, not just a glare
+    let l = this.built.lightAt ? this.built.lightAt(x, z) : 1;
+    l *= 1 - 0.92 * this.darkK;
+    let k = Math.max(0, Math.min(1, 1.1 - l * 1.25));
+    const me = g.me, cam = g.camera.position;
+    if (me.alive && me.light) {
+      const dx = x - cam.x, dz = z - cam.z, d = Math.hypot(dx, dz);
+      let a = Math.atan2(-dx, -dz) - me.yaw;
+      while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2;
+      if (d < 22 && Math.abs(a) < 0.35) k = 1;
+    }
+    return k;
+  }
+
+  updateDread(dt) {
+    const g = this.g, me = g.me, cam = g.camera.position, mon = this.monster();
+    const here = !!(mon && mon.alive && mon.model && mon.model.root.visible);
+    const mp = here ? mon.model.root.position : null;
+    const d = here ? Math.hypot(mp.x - cam.x, mp.z - cam.z) : Infinity;
+    // the lights die round it as it walks (and come back once it has passed), stuttering as it arrives
+    this.darkK += ((here ? 1 : 0) - this.darkK) * Math.min(1, dt * 1.6);
+    if (mp) this.darkPos = { x: mp.x, z: mp.z };
+    const stutter = here && this.darkK < 0.9 && Math.random() < 0.35 ? 0.4 : 1;
+    if (this.darkPos) FLASH.uDark.value.set(this.darkPos.x, this.darkPos.z, 7.5, this.darkK * 0.94 * stutter);
+    if (!me.alive || g.paused) { this.follow = null; }
+    // your heart: faster and louder the closer it is (even through walls)
+    if (me.alive && d < 22 && g.clock >= this.heartAt) {
+      const k = 1 - d / 22;
+      sfx.playHeart(k);
+      this.heartAt = g.clock + 1.05 - 0.68 * k;
+    }
+    // breathing right behind you when it is right behind you
+    if (me.alive && d < 4.5 && g.clock >= this.breathAt) {
+      let a = Math.atan2(-(mp.x - cam.x), -(mp.z - cam.z)) - me.yaw;
+      while (a > Math.PI) a -= Math.PI * 2; while (a < -Math.PI) a += Math.PI * 2;
+      if (Math.abs(a) > 1.6) {
+        sfx.playBR('breath', { x: cam.x + Math.sin(me.yaw) * 0.45, y: cam.y, z: cam.z + Math.cos(me.yaw) * 0.45 }, 0, 1);
+        this.breathAt = g.clock + 5;
+      }
+    }
+    // footsteps that copy yours
+    const f = this.follow;
+    if (f && me.alive) {
+      const sp = Math.hypot(me.vel.x, me.vel.z);
+      if (sp > 0.6) f.moved = g.clock;
+      if (g.clock - f.moved < 0.65 && g.clock >= f.next) {
+        const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw), x = me.pos.x - fx * 6, z = me.pos.z - fz * 6;
+        sfx.playStep({ pos: { x, y: 0.05, z }, surface: g.surfaceAt(x, 0, z), occ: g.occlusion(x, 0.3, z) });
+        f.next = g.clock + (sp > 3.5 ? 0.36 : 0.55);
+      }
+      if (g.clock > f.until) this.follow = null;
+    }
+    // grain and static on your screen when it is close (and when it has you)
+    const want = this.caught ? (this.caught.t < 1.25 ? 0.75 : 0) : here && me.alive ? Math.max(0, Math.min(1, (13 - d) / 10)) * 0.42 : 0;
+    this.staticK += (want - this.staticK) * Math.min(1, dt * 4);
+    const cv = this.staticCv;
+    if (this.staticK > 0.01) {
+      cv.classList.remove('hidden');
+      cv.style.opacity = this.staticK.toFixed(3);
+      const px = this.staticImg.data, roll = Math.random() * 90;
+      for (let i = 0; i < 160 * 90; i++) {
+        const row = Math.floor(i / 160), band = Math.abs(row - roll) < 3 ? 60 : 0;
+        const v = Math.min(255, Math.random() * 190 + band);
+        px[i * 4] = v; px[i * 4 + 1] = v; px[i * 4 + 2] = v * 1.05; px[i * 4 + 3] = 255;
+      }
+      this.staticCtx.putImageData(this.staticImg, 0, 0);
+    } else if (!cv.classList.contains('hidden')) cv.classList.add('hidden');
+    return { here, d };
+  }
+
+  // a sound it makes to draw someone over: a person's footsteps, or a door opening
+  onLure(m) {
+    const g = this.g;
+    if (m.kind === 'door') {
+      let best = null, bd = 14;
+      for (const d of g.world.doors || []) { const dd = Math.hypot(d.cx - m.x, d.cz - m.z); if (dd < bd) { bd = dd; best = d; } }
+      const p = best ? { x: best.cx, y: 1.2, z: best.cz } : { x: m.x, y: 1.2, z: m.z };
+      sfx.playDoor(p, 'open', g.occlusion(p.x, p.y, p.z));
+      return;
+    }
+    const fx = -Math.sin(m.yaw || 0), fz = -Math.cos(m.yaw || 0);
+    for (let k = 0; k < 5; k++) setTimeout(() => {
+      if (!this.g.running) return;
+      const x = m.x + fx * k * 0.7, z = m.z + fz * k * 0.7;
+      sfx.playStep({ pos: { x, y: 0.05, z }, surface: g.surfaceAt(x, 0, z), occ: g.occlusion(x, 0.3, z) });
+    }, k * 360);
+  }
+
+  // ---------- caught: lifted up face to face with it, then nothing ----------
+  caughtMe() {
+    const g = this.g;
+    this.caught = { t: 0, from: { x: g.me.pos.x, y: g.me.pos.y + EYE, z: g.me.pos.z } };
+  }
+  caughtCamera() {
+    const c = this.caught, mon = this.monster(), black = $('br-black');
+    if (c.t > 2.7 || !mon || !mon.model) {
+      this.caught = null; black.style.opacity = '0'; setTimeout(() => black.classList.add('hidden'), 400);
+      return null;
+    }
+    const head = new THREE.Vector3();
+    mon.model.head.getWorldPosition(head);
+    const hx = c.from.x - head.x, hz = c.from.z - head.z, hd = Math.hypot(hx, hz) || 1;
+    const k = smooth(Math.min(1, c.t / 0.4));
+    const tx = head.x + hx / hd * 0.42, ty = head.y + 0.03, tz = head.z + hz / hd * 0.42;
+    const x = c.from.x + (tx - c.from.x) * k, y = c.from.y + (ty - c.from.y) * k, z = c.from.z + (tz - c.from.z) * k;
+    const yaw = Math.atan2(-(head.x - x), -(head.z - z)), pitch = Math.atan2(head.y + 0.08 - y, Math.hypot(head.x - x, head.z - z));
+    if (c.t > 1.25) { black.classList.remove('hidden'); black.style.opacity = '1'; }
+    return { x, y, z, yaw, pitch, roll: Math.sin(c.t * 37) * 0.05 * (1 - k * 0.5) };
+  }
+
+  // ---------- bodies it takes away ----------
+  takeBody(m) {
+    const g = this.g, me = m.victim === g.myId, r = me ? null : g.remotes.get(m.victim);
+    const ro = (g.roster || []).find(p => p.id === m.victim);
+    const name = me ? g.settings.name : ro ? ro.name : '';
+    const model = makePlayerModel('atk', name, false, 'hazmat');
+    setModelWeapon(model, 'none');
+    animateModel(model, 0.016, { speed: 0, pitch: 0 });
+    model.root.rotation.order = 'YXZ';
+    const at = me ? g.me.pos : r ? r.rp : { x: m.from ? m.from[0] : 0, z: m.from ? m.from[2] : 0 };
+    model.root.position.set(at.x, 0.13, at.z);
+    model.root.rotation.set(Math.PI / 2, 0, 0);
+    this.scene.add(model.root);
+    const old = this.bodies.get(m.victim);
+    if (old) this.scene.remove(old.model.root);
+    this.bodies.set(m.victim, { model, mode: 'dragged', wob: Math.random() * 6 });
+  }
+
+  // let go of (dropBody) or pinned to a wall (hangBody)
+  placeBody(m) {
+    const b = this.bodies.get(m.id);
+    if (!b) return;
+    const M = b.model;
+    if (m.t === 'dropBody') {
+      b.mode = 'lying';
+      M.thighs.forEach(t => { t.rotation.x = 0; });
+      return;
+    }
+    // hung on the wall: upright, facing out of it, feet off the floor, head hanging, held up by two black spikes
+    b.mode = 'hung';
+    M.thighs.forEach(t => { t.rotation.x = 0; });
+    M.root.rotation.set(0, Math.atan2(-m.nx, -m.nz), (Math.random() - 0.5) * 0.15, 'YXZ');
+    M.root.position.set(m.x + m.nx * 0.2, 0.8, m.z + m.nz * 0.2);
+    M.neck.rotation.x = 0.65;
+    const spike = new THREE.MeshStandardMaterial({ color: '#050506', roughness: 0.9 });
+    for (const s of [-1, 1]) {
+      const pin = new THREE.Mesh(new THREE.CylinderGeometry(0.014, 0.004, 0.5, 6), spike);
+      pin.rotation.x = Math.PI / 2;
+      pin.position.set(s * 0.17, 1.38, 0.1);
+      M.root.add(pin);
+    }
+  }
+
+  updateBodies(dt) {
+    const mon = this.monster();
+    for (const [id, b] of this.bodies) {
+      if (b.mode !== 'dragged') continue;
+      if (!mon || !mon.model || mon.dragId !== id) continue;
+      // lying on its back, dragged by the leg along the floor behind it
+      const hand = new THREE.Vector3();
+      mon.model.arms[1].hand.getWorldPosition(hand);
+      const mp = mon.model.root.position;
+      let bx = hand.x - mp.x, bz = hand.z - mp.z;
+      const bl = Math.hypot(bx, bz);
+      if (bl < 0.05) { bx = Math.sin(mon.rp.yaw); bz = Math.cos(mon.rp.yaw); } else { bx /= bl; bz /= bl; }
+      const R = b.model.root;
+      const k = Math.min(1, dt * 9);
+      R.position.x += (hand.x - R.position.x) * k;
+      R.position.z += (hand.z - R.position.z) * k;
+      R.position.y = 0.13;
+      b.wob += dt * 5;
+      R.rotation.set(Math.PI / 2 - 0.12, Math.atan2(bx, bz), Math.sin(b.wob) * 0.12, 'YXZ');
+      b.model.thighs[1].rotation.x = 0.9;       // the leg it is holding, up to its hand
+    }
+  }
+
   // ---------- every frame ----------
   update(dt) {
     const g = this.g;
+    if (this.caught) this.caught.t += dt;
     this.updateSnatches(dt);
     this.updateHeads(dt);
     this.updateShells(dt);
+    this.updateBodies(dt);
+    this.updateDread(dt);
     if (!g.paused) this.hallucinate(dt);
     this.readNote();
     // people (and it) are only as bright as the place you are in
     if (this.built.lightAt && this.built.dimPeople) {
-      const l = this.built.lightAt(g.camera.position.x, g.camera.position.z);
+      let l = this.built.lightAt(g.camera.position.x, g.camera.position.z);
+      // (and the dark it brings with it)
+      if (this.darkPos) { const dd = Math.hypot(this.darkPos.x - g.camera.position.x, this.darkPos.z - g.camera.position.z); l *= 1 - 0.9 * this.darkK * Math.max(0, Math.min(1, (7.5 - dd) / 4.5)); }
       const k = Math.max(0.1, Math.min(1, 0.1 + l * 0.95));
       this.dim = this.dim == null ? k : this.dim + (k - this.dim) * Math.min(1, dt * 3);
       this.built.dimPeople(this.dim);

@@ -5,7 +5,7 @@ import { World, CELL, EYE, blastField, blastDamage } from './world.js';
 import { MAPS, resolveMap, mapsFor, isDmMap, dmVariant } from './maps.js';
 import { RULES } from './config.js';
 import { NavGrid, BotBrain, BOT_NAMES } from './bots.js';
-import { MonsterBrain, outerCorners } from './monster.js';
+import { MonsterBrain, outerCorners, SKIN_CHANCE } from './monster.js';
 import { BR_LEVELS, brLevel, brVariant } from './brmap.js';
 import { cleanChat, CHAT_LIMIT } from './filter.js';
 import {
@@ -677,7 +677,7 @@ export class Server {
     if (tgt.hp <= 0) this.kill(tgt, attacker, weapon, t.head, from, t.part);
   }
 
-  kill(tgt, attacker, weapon, head, from = null, part = 'chest') {
+  kill(tgt, attacker, weapon, head, from = null, part = 'chest', extra = null) {
     if (!tgt.alive) return;
     tgt.alive = false;
     tgt.deaths++;
@@ -694,7 +694,7 @@ export class Server {
     }
     this.broadcast({
       t: 'kill', killer: attacker ? attacker.id : null, victim: tgt.id, w: weapon, head: !!head,
-      from: from ? from.map(r2) : null, part: part || 'chest',
+      from: from ? from.map(r2) : null, part: part || 'chest', ...(extra || {}),
     });
     if (this.bomb.carrier === tgt.id && this.bomb.state === 'carried') this.dropBomb(tgt, this.throwSpot(tgt, 0.4, Math.PI));
     if (this.br) { this.brCheck(); return; }
@@ -1146,8 +1146,10 @@ export class Server {
     if (!q.alive || this.phase !== 'br') return;
     q.brDeath = 'monster';
     q.hp = 0;
-    const brain = this.bots.get('monster');
-    if (brain && !this.brSkin && brain.canWear(q)) {
+    // what it does with them (owner's numbers): 1 in 3 it takes their skin (only if nobody saw and someone is left to
+    // fool), 1 in 6 it drags the body away by the leg, 1 in 6 it hangs the body on a wall, otherwise it leaves it
+    const brain = this.bots.get('monster'), roll = Math.random();
+    if (brain && !this.brSkin && roll < SKIN_CHANCE && brain.canWear(q)) {
       // nobody saw: it takes their skin and wears it. Only they (and anyone already dead or out) are told;
       // to everyone else they are still alive and walking about (snapshot()) until it changes back.
       q.alive = false; q.use = false; q.brDeath = 'skin';
@@ -1158,7 +1160,9 @@ export class Server {
       this.brCheck();
       return;
     }
-    this.kill(q, m, 'monster', false, [m.x, m.y + 1.4, m.z]);
+    const fate = !brain ? null : roll >= 1 / 3 && roll < 0.5 ? 'drag' : roll >= 0.5 && roll < 2 / 3 ? 'hang' : null;
+    this.kill(q, m, 'monster', false, [m.x, m.y + 1.4, m.z], 'chest', fate ? { fate } : null);
+    if (fate) brain.carry(q, fate);
   }
 
   // it changes back out of the skin it was wearing: everyone sees it happen, and learns who it was

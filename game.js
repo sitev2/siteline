@@ -429,7 +429,7 @@ export class Game {
         for (const r of this.remotes.values()) if (r.team === 'monster') sfx.playScreech({ x: r.rp.x, y: r.rp.y + 2.4, z: r.rp.z }, this.occlusion(r.rp.x, r.rp.y + 2, r.rp.z));
         this.hud.center('', 'It has seen you — RUN', '#ff6b4a', 2);
         return;
-      case 'snatch': case 'note': case 'skinReveal':
+      case 'snatch': case 'note': case 'skinReveal': case 'lure': case 'dropBody': case 'hangBody':
         if (this.fx) this.fx.onMessage(m);
         return;
       case 'door': {
@@ -659,7 +659,7 @@ export class Game {
       this.me.using = false;
       this.toggleBuy(false);
       this.me.killedBy = m.w === 'monster' || m.w === 'skin' ? 'It' : m.w === 'fall' ? 'the fall' : m.w === 'ceiling' ? 'the ceiling' : m.w === 'corner' ? 'something' : killer && m.killer !== this.myId ? `${killer.name} (${itemName(m.w)}${m.head ? ', headshot' : ''})` : (m.w === 'bomb' ? 'the bomb' : '');
-      if (m.w === 'monster') { sfx.playGrab(); this.shake = 2.5; this.hud.center('', 'It got you', '#ff4a3a', 3); }
+      if (m.w === 'monster') { sfx.playGrab(); this.shake = 2.5; this.hud.center('', 'It got you', '#ff4a3a', 3); if (this.fx) this.fx.caughtMe(m); }
       if (m.w === 'skin') {
         // nobody else knows: to them you are still walking about
         this.me.skinned = true;
@@ -669,14 +669,16 @@ export class Game {
       }
       if (m.w === 'fall') this.hud.center('', 'You fell into the dark', '#cfc28a', 3);
       if (m.w === 'ceiling' || m.w === 'corner') this.hud.center('', m.w === 'ceiling' ? 'Something in the ceiling took you' : 'Something took you', '#ff4a3a', 3);
-      if (m.w !== 'fall' && m.w !== 'ceiling' && m.w !== 'corner' && m.w !== 'skin') this.spawnRagdoll(this.myId, m);
+      if (m.w !== 'fall' && m.w !== 'ceiling' && m.w !== 'corner' && m.w !== 'skin' && !m.fate) this.spawnRagdoll(this.myId, m);
     } else {
       const r = this.remotes.get(m.victim);
       if (r) {
         r.alive = false; r.deadT = performance.now();
-        if (r.model && r.buf.length && m.w !== 'fall' && m.w !== 'ceiling' && m.w !== 'corner' && m.w !== 'skin' && !r.model.monster) this.spawnRagdoll(r.id, m);
+        if (r.model && r.buf.length && m.w !== 'fall' && m.w !== 'ceiling' && m.w !== 'corner' && m.w !== 'skin' && !m.fate && !r.model.monster) this.spawnRagdoll(r.id, m);
       }
     }
+    // the monster is taking the body with it (dragged by the leg, or to be hung on a wall)
+    if (m.fate && this.fx) this.fx.takeBody(m);
   }
 
   // ---------- ragdolls ----------
@@ -1866,11 +1868,27 @@ export class Game {
       const hidden = this.me.spectate === r.id && !this.me.alive;
       // the dead are shown as ragdolls instead
       m.root.visible = !hidden && r.alive;
-      m.root.position.set(r.rp.x, r.rp.y, r.rp.z);
+      if (!m.monster) m.root.position.set(r.rp.x, r.rp.y, r.rp.z);
       if (m.monster) {
         m.root.visible = r.alive;
+        const mode = String(r.w || '').split(':');      // the host sends 'm:<mode>[:side][:dragged body id]'
+        r.mode = mode[1] || 'walk'; r.dragId = mode[3] || null;
+        // it moves wrong: like a film with frames missing, a jerk every 0.05–0.14 s and now and then a longer stall
+        m.jerkAcc = (m.jerkAcc || 0) + dt;
+        if (m.jerkAcc < (m.jerkStep || 0) && r.mode !== 'reveal') { this.monsterSounds(r, dt, speed); continue; }
+        const fdt = r.mode === 'freeze' ? 0 : m.jerkAcc;      // frozen: it holds the pose it was caught in
+        m.jerkAcc = 0;
+        m.jerkStep = Math.random() < 0.06 ? 0.22 + Math.random() * 0.15 : 0.05 + Math.random() * 0.09;
+        m.root.position.set(r.rp.x, r.rp.y, r.rp.z);
         m.root.rotation.set(0, r.rp.yaw, 0);
-        const mode = String(r.w || '').split(':');      // the host sends 'm:<mode>[:side]'
+        // taller than the doors: it ducks to get through a doorway
+        let duck = 0;
+        for (const d of this.world.doors || []) {
+          const along = (r.rp.x - d.cx) * d.nx + (r.rp.z - d.cz) * d.nz, lat = Math.abs(-(r.rp.x - d.cx) * d.nz + (r.rp.z - d.cz) * d.nx);
+          if (lat < 1.2) duck = Math.max(duck, 1 - Math.max(0, Math.abs(along) - 0.4) / 1.1);
+        }
+        // its eyes: barely there in the light, two burning points in the dark or in your flashlight
+        if (m.setGlow && this.fx) m.setGlow(this.fx.eyeGlow(r));
         // changing back out of someone's skin: it unfolds up out of the suit to its full height
         // (the first 0.3 s the suit it wore shudders and splits, brfx.js; then it grows out of it)
         if (mode[1] === 'reveal') {
@@ -1879,7 +1897,7 @@ export class Game {
           m.root.scale.setScalar(0.6 + 0.4 * k * k * (3 - 2 * k));
           if (m.revealT < 0.3) m.root.visible = false;
         } else if (m.revealT) { m.revealT = 0; m.root.scale.setScalar(1); }
-        animateMonster(m, dt, { speed: r.speed, mode: mode[1] || 'walk', side: Number(mode[2]) || 1 });
+        animateMonster(m, fdt, { speed: r.speed, mode: r.mode, side: Number(mode[2]) || 1, duck: Math.max(0, duck) });
         this.monsterSounds(r, dt, speed);
         continue;
       }

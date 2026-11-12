@@ -215,20 +215,40 @@ function exitTexture(renderer) {
 // ---------- flashlights on baked surfaces ----------
 // The walls, floor and ceiling are unlit (their light is baked into them), so the usual three.js lights don't
 // touch them. Instead their shader adds up to four flashlight cones itself; game code fills these uniforms.
+// uDark: the lights die around the monster — (x, z, radius, strength 0..1); brfx.js moves it every frame
 export const FLASH = {
   uFlashPos: { value: [0, 1, 2, 3].map(() => new THREE.Vector3()) },
   uFlashDir: { value: [0, 1, 2, 3].map(() => new THREE.Vector3(0, -1, 0)) },
   uFlashOn: { value: [0, 0, 0, 0] },
+  uDark: { value: new THREE.Vector4(0, 0, 1, 0) },
 };
+const DARK_FN = `uniform vec4 uDark;
+float darkAt(vec3 P) { return 1.0 - uDark.w * (1.0 - smoothstep(uDark.z * 0.4, uDark.z, length(P.xz - uDark.xy))); }`;
+const WORLD_POS = 'vec4 fwp = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\nfwp = instanceMatrix * fwp;\n#endif\n';
+// the ceiling panels (and anything else lit by nothing but itself) go dark around the monster too
+export function addDark(material) {
+  material.onBeforeCompile = (sh) => {
+    sh.uniforms.uDark = FLASH.uDark;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vDarkPos;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + WORLD_POS + 'vDarkPos = (modelMatrix * fwp).xyz;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vDarkPos;\n' + DARK_FN)
+      .replace('vec3 outgoingLight = reflectedLight.indirectDiffuse;', 'vec3 outgoingLight = reflectedLight.indirectDiffuse * darkAt(vDarkPos);');
+  };
+  material.customProgramCacheKey = () => 'dark';
+  return material;
+}
 export function addFlash(material) {
   material.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, FLASH);
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vFlashPos; varying vec3 vFlashN;')
-      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFlashPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vFlashN = mat3(modelMatrix) * normal;');
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\n' + WORLD_POS + 'vFlashPos = (modelMatrix * fwp).xyz; vFlashN = mat3(modelMatrix) * normal;');
     sh.fragmentShader = sh.fragmentShader
       .replace('#include <common>', `#include <common>
 varying vec3 vFlashPos; varying vec3 vFlashN;
+${DARK_FN}
 uniform vec3 uFlashPos[4]; uniform vec3 uFlashDir[4]; uniform float uFlashOn[4];
 vec3 flashLight(vec3 P, vec3 N) {
   vec3 s = vec3(0.0);
@@ -242,7 +262,7 @@ vec3 flashLight(vec3 P, vec3 N) {
   return s * vec3(1.0, 0.95, 0.82);
 }`)
       .replace('#include <map_fragment>', '#include <map_fragment>\nvec3 flashAlbedo = diffuseColor.rgb;')
-      .replace('vec3 outgoingLight = reflectedLight.indirectDiffuse;', 'vec3 outgoingLight = reflectedLight.indirectDiffuse + flashAlbedo * flashLight(vFlashPos, length(vFlashN) > 0.001 ? normalize(vFlashN) : vec3(0.0, 1.0, 0.0));');
+      .replace('vec3 outgoingLight = reflectedLight.indirectDiffuse;', 'vec3 outgoingLight = reflectedLight.indirectDiffuse * darkAt(vFlashPos) + flashAlbedo * flashLight(vFlashPos, length(vFlashN) > 0.001 ? normalize(vFlashN) : vec3(0.0, 1.0, 0.0));');
   };
   material.customProgramCacheKey = () => 'flash';
   return material;
@@ -713,9 +733,9 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
   panelGeo.rotateX(Math.PI / 2);          // facing down
   const states = ['on', 'flicker', 'dead'];
   const panelMats = {
-    on: new THREE.MeshBasicMaterial({ map: pTex, color: new THREE.Color(1.6, 1.55, 1.38) }),
-    flicker: new THREE.MeshBasicMaterial({ map: pTex, color: new THREE.Color(1.4, 1.36, 1.2) }),
-    dead: new THREE.MeshBasicMaterial({ map: pTex, color: new THREE.Color(0.32, 0.31, 0.27) }),
+    on: addDark(new THREE.MeshBasicMaterial({ map: pTex, color: new THREE.Color(1.6, 1.55, 1.38) })),
+    flicker: addDark(new THREE.MeshBasicMaterial({ map: pTex, color: new THREE.Color(1.4, 1.36, 1.2) })),
+    dead: addDark(new THREE.MeshBasicMaterial({ map: pTex, color: new THREE.Color(0.32, 0.31, 0.27) })),
   };
   const m4 = new THREE.Matrix4();
   for (const st of states) {
