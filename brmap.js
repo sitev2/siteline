@@ -174,7 +174,9 @@ export function planMaze(seed, level = 'normal') {
     for (let tries = 0; tries < 40; tries++) {
       const k = Math.max(0, Math.min(route.length - 1, Math.round(route.length * frac) + pick(-3, 3)));
       const [cx, cz] = route[k];
-      const r = { w: 3, d: 3 };
+      // a rectangle of rooms: 2×3, 3×2 or 3×3 (8×12, 12×8 or 12×12 m)
+      const r = { w: pick(2, 3), d: pick(2, 3) };
+      if (r.w * r.d < 6) r[R() < 0.5 ? 'w' : 'd'] = 3;
       r.x = cx - pick(0, r.w - 1); r.z = cz - pick(0, r.d - 1);
       if (r.x < 0 || r.z < 0 || r.x + r.w > N || r.z + r.d > N) continue;
       if (halls.some(o => overlaps(o, r)) || pitRooms.some(o => overlaps(o, r))) continue;
@@ -280,20 +282,26 @@ export function planMaze(seed, level = 'normal') {
   };
 }
 
-// Pit rooms: a regular grid of square holes, all the same size, with walkways between them as wide as the
-// difficulty says (r.bridge). Along one side of the room (n rooms from room r0), where each hole starts: as
-// many as fit, centred. The strip left by the walls is either nothing (the holes touch the walls) or at
-// least 1 m: anything narrower would be a ledge too thin to walk along.
+// Pit rooms: a rectangle (any size of rooms) filled with a regular grid of square holes, all the same size,
+// with walkways between them as wide as the difficulty says (r.bridge). Along one side of the room (n rooms
+// from room r0), where each hole starts: as many as fit. The strip left at each end, by the walls, is either
+// nothing (the holes touch the wall) or at least 1 m: anything narrower would be a ledge too thin to walk on.
 export const PIT_HOLE = 2.5;
 export function pitHoles(r0, n, bridge) {
   const lo = BR.border + r0 * BR.cell + 0.5, span = n * BR.cell - 0.5;      // the room's floor after its wall
-  let k = Math.floor((span + bridge) / (PIT_HOLE + bridge)), margin;
-  for (; k > 1; k--) {
-    margin = Math.floor((span - k * PIT_HOLE - (k - 1) * bridge) / 2 / 0.5) * 0.5;
-    if (margin === 0 || margin >= 1) break;
+  const ok = m => m === 0 || m >= 1;
+  for (let k = Math.floor((span + bridge) / (PIT_HOLE + bridge)); k >= 1; k--) {
+    const left = span - k * PIT_HOLE - (k - 1) * bridge;                    // the floor left over, both ends together
+    if (left < 0 || Math.abs(left * 2 - Math.round(left * 2)) > 1e-9) continue;
+    // split it as evenly as the 0.5 m grid allows, so that neither end is a thin ledge
+    let best = null;
+    for (let a = 0; a <= left + 1e-9; a += 0.5) {
+      const b = left - a;
+      if (ok(a) && ok(b) && (!best || Math.abs(a - b) < Math.abs(best - (left - best)))) best = a;
+    }
+    if (best != null) return Array.from({ length: k }, (_, i) => lo + best + i * (PIT_HOLE + bridge));
   }
-  margin = Math.floor((span - k * PIT_HOLE - (k - 1) * bridge) / 2 / 0.5) * 0.5;
-  return Array.from({ length: k }, (_, i) => lo + margin + i * (PIT_HOLE + bridge));
+  return [lo + (span - PIT_HOLE) / 2];
 }
 
 // metres: the corner of room (x, z)

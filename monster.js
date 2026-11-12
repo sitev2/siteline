@@ -15,7 +15,8 @@ export const MONSTER = {
   height: 2.75,      // m: how tall it is (for its eyes)
 };
 const RUN_SPEED = 3.5;   // m/s: faster than this is sprinting (loud); walking is BR.walk
-export const SKIN_CHANCE = 1 / 3;   // a kill nobody else saw: how often it takes their skin and wears it (owner's choice)
+export const SKIN_CHANCE = 1 / 3;
+export const KICK_TIME = 3;         // s: kicking a shut door in (owner's choice), one kick every 0.75 s   // a kill nobody else saw: how often it takes their skin and wears it (owner's choice)
 
 const angTo = (from, to) => { let d = to - from; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
 
@@ -42,7 +43,8 @@ export class MonsterBrain {
       const cells = new Set(d.cells);
       for (let i = 0; i < nav.n; i++) if (cells.has(Math.floor(nav.z[i] / 0.5) * w.w + Math.floor(nav.x[i] / 0.5))) this.doorOf[i] = k;
     });
-    this.shutNode = (i) => this.doorOf[i] >= 0 && !w.doors[this.doorOf[i]].open;
+    // a shut door on a route costs what kicking it in takes (3 s of running); wearing someone, it won't kick
+    this.doorCost = (i) => (this.doorOf[i] >= 0 && !w.doors[this.doorOf[i]].open ? (this.state === 'skin' ? Infinity : KICK_TIME * this.chaseSpeed) : 0);
     this.vel = { x: 0, y: 0, z: 0 };
     this.onGround = true;
     this.state = 'wait';
@@ -68,7 +70,7 @@ export class MonsterBrain {
     // what the players' screens should animate: idle, walk, stalk, run, search, listen, grab, peek:±1,
     // skin (wearing someone: the host hides it and shows them instead), reveal (changing back)
     const p = this.p, sp = Math.hypot(this.vel.x, this.vel.z);
-    const mode = this.state === 'skin' ? 'skin' : this.state === 'reveal' ? 'reveal' : now < (this.grabUntil || 0) ? 'grab'
+    const mode = this.state === 'skin' ? 'skin' : this.state === 'reveal' ? 'reveal' : this.kicking ? 'kick' : now < (this.grabUntil || 0) ? 'grab'
       : this.state === 'peek' ? `peek:${this.peekSide || 1}`
         : now < this.pauseUntil ? 'listen'
           : sp < 0.3 ? 'idle'
@@ -85,6 +87,7 @@ export class MonsterBrain {
     if (now - this.started < wake) { p.use = false; return; }
     if (this.state === 'wait') this.state = 'wander';
     if (this.state === 'skin') { this.thinkAt = now; this.skinStep(dt, now); return; }
+    if (this.kicking) { this.kickStep(dt, now); return; }
     if (this.state === 'reveal') {
       // changing back (0.9 s), then straight for whoever it was standing next to
       p.use = false;
@@ -143,9 +146,10 @@ export class MonsterBrain {
     this.goal = { x: x + (Math.random() - 0.5) * 2, y: 0, z: z + (Math.random() - 0.5) * 2 };
   }
 
-  // A shut door right in front of it. It can't open doors (owner's rule): chasing, it pounds on it once
-  // (everyone near hears it rattle), then goes the long way round; otherwise it just turns away. Every door is
-  // somewhere with another way round (brmap.js), so a door never shuts it out for good.
+  // A shut door right in front of it. It can't open doors (owner's rule): it kicks them in. That takes
+  // KICK_TIME (a boom every 0.75 s everyone near hears), then the door falls off its hinges and stays open
+  // for good. Its routes weigh that up (doorCost): if going round is quicker, it goes round. Wearing
+  // someone's skin it never kicks (that would give it away): it goes round.
   doors(now, dir) {
     const p = this.p, w = this.world;
     if (!dir) return false;
@@ -153,18 +157,25 @@ export class MonsterBrain {
       const d = w.doors[i];
       if (d.kind !== 'way' || d.open) continue;
       const dx = d.cx - p.x, dz = d.cz - p.z, dist = Math.hypot(dx, dz);
-      if (dist > 1.5 || (dx * dir[0] + dz * dir[1]) / (dist || 1) < 0.3) continue;
-      this.path = null; this.repathAt = 0;
-      if (this.state === 'chase' && now > (this.bangAt || 0)) {
-        this.bangAt = now + 5;
-        this.grabUntil = now + 0.6;              // (its arms up, pounding)
-        this.pauseUntil = now + 0.6;
-        this.s.broadcast({ t: 'doorRattle', i });
-        return true;
-      }
-      return false;
+      if (dist > 1.2 || (dx * dir[0] + dz * dir[1]) / (dist || 1) < 0.3) continue;
+      if (this.state === 'skin') { this.path = null; this.repathAt = 0; return false; }
+      this.kicking = { i, until: now + KICK_TIME, next: now + 0.3 };
+      this.vel.x = this.vel.z = 0;
+      return true;
     }
     return false;
+  }
+
+  kickStep(dt, now) {
+    const p = this.p, k = this.kicking, d = this.world.doors[k.i];
+    p.use = this.state === 'chase';
+    // someone opened it meanwhile: through it goes
+    if (!d || d.open) { this.kicking = null; this.path = null; return; }
+    p.yaw += angTo(p.yaw, Math.atan2(-(d.cx - p.x), -(d.cz - p.z))) * Math.min(1, dt * 8);
+    this.move(null, 0, dt);
+    const side = Math.sign((p.x - d.cx) * d.nx + (p.z - d.cz) * d.nz) || 1;
+    if (now >= k.next) { k.next = now + 0.75; this.s.broadcast({ t: 'doorKick', i: k.i, swing: -side }); }
+    if (now >= k.until) { this.kicking = null; this.path = null; this.s.breakDoor(k.i, p); }
   }
 
   // reached where it was going
@@ -294,7 +305,7 @@ export class MonsterBrain {
     const now = this.lastNow || 0;
     this.skin = { id: q.id, since: now, target: null, pickAt: 0, close: 0, away: 0, hold: 1.6 + Math.random() * 2.6, twitchAt: now + 3 + Math.random() * 5, twitchUntil: 0, twitch: 0 };
     this.state = 'skin';
-    this.goal = null; this.path = null; this.target = null;
+    this.goal = null; this.path = null; this.target = null; this.kicking = null;
     this.pauseUntil = 0; this.grabUntil = 0;
     this.vel.x = this.vel.z = 0;
   }
@@ -505,7 +516,7 @@ export class MonsterBrain {
     const key = `${Math.round(goal.x)},${Math.round(goal.z)}`;
     if (!this.path || key !== this.pathKey || now > this.repathAt) {
       this.pathKey = key;
-      this.path = nav.path(nav.nearest(p.x, p.y, p.z), nav.nearest(goal.x, 0, goal.z), 20000, this.shutNode);
+      this.path = nav.path(nav.nearest(p.x, p.y, p.z), nav.nearest(goal.x, 0, goal.z), 20000, this.doorCost);
       this.pathIdx = 0;
       this.repathAt = now + (this.state === 'chase' ? 0.5 : this.state === 'pursue' || this.state === 'stalk' ? 1 : 4);
       if (!this.path) { this.goal = null; return null; }

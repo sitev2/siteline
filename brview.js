@@ -582,7 +582,8 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
         const shut = v ? dirAngle(0, toward) : dirAngle(toward, 0);
         // open: turned a quarter, so the free edge points into one room or the other
         const nx = v ? 1 : 0, nz = v ? 0 : 1;
-        list.push({ pivot, shut, open: [dirAngle(nx, nz), dirAngle(-nx, -nz)] });
+        pivot.rotation.order = 'YXZ';          // (so it can also tip over about its bottom edge: kicked, knocked down)
+        list.push({ pivot, shut, open: [dirAngle(nx, nz), dirAngle(-nx, -nz)], v });
       }
     } else {
       const nx = d.nx, nz = d.nz, px = d.cx, pz = d.cz;
@@ -615,15 +616,43 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
   });
   // open / shut a door (swing: +1 opens towards +x / +z, −1 the other way); instant: no animation (joining a game)
   const turnTo = (a, b) => { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return a + d; };
-  group.userData.setDoor = (i, open, swing = 1, instant = false) => {
+  // which way a leaf tips (+1/-1 about its bottom edge) to fall towards the side `swing` points at
+  const tipSign = (L, swing) => {
+    const fx = L.v ? (swing >= 0 ? 1 : -1) : 0, fz = L.v ? 0 : (swing >= 0 ? 1 : -1);
+    return Math.sign(Math.sin(L.now) * fx + Math.cos(L.now) * fz) || 1;
+  };
+  // broken: kicked in by the monster, both leaves torn off their hinges and flat on the floor (for good)
+  group.userData.setDoor = (i, open, swing = 1, instant = false, broken = false) => {
     for (const L of leaves[i] || []) {
+      if (broken) {
+        if (L.broken) continue;
+        L.broken = true;
+        L.now = L.to = L.shut + (Math.random() - 0.5) * 0.25;
+        L.pivot.rotation.y = L.now;
+        L.pivot.position.y = 0.025;
+        L.tip = tipSign(L, swing);
+        L.fall = instant ? 1 : 0;
+        L.pivot.rotation.x = L.tip * (Math.PI / 2 - 0.03) * L.fall;
+        continue;
+      }
+      if (L.broken) continue;
       const target = !open ? L.shut : (L.open[1] == null || swing >= 0 ? L.open[0] : L.open[1]);
       L.to = turnTo(L.now, target);
       if (instant) { L.now = L.to; L.pivot.rotation.y = L.now; }
     }
   };
+  // a kick: the shut leaves jump in their frame
+  group.userData.kickDoor = (i, swing = 1) => {
+    for (const L of leaves[i] || []) if (!L.broken) { L.jolt = 1; L.joltSign = tipSign(L, swing); }
+  };
   const animateDoors = (dt) => {
     for (const list of leaves) for (const L of list || []) {
+      if (L.broken) {
+        // falling flat, faster and faster
+        if (L.fall < 1) { L.fall = Math.min(1, L.fall + dt / 0.4); L.pivot.rotation.x = L.tip * (Math.PI / 2 - 0.03) * L.fall * L.fall; }
+        continue;
+      }
+      if (L.jolt > 0) { L.jolt = Math.max(0, L.jolt - dt * 5); L.pivot.rotation.x = L.joltSign * 0.08 * Math.sin(L.jolt * Math.PI); }
       if (L.now === L.to) continue;
       const step = dt * 5.5, d = L.to - L.now;
       L.now = Math.abs(d) <= step ? L.to : L.now + Math.sign(d) * step;

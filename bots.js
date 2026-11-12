@@ -134,8 +134,9 @@ export class NavGrid {
   }
 
   // A* search: list of node indices from a to b, or null
-  // skip(i): optional — nodes it may not walk through right now (the Backrooms monster: shut doors)
-  path(a, b, maxIter = 30000, skip = null) {
+  // cost(i): optional — the extra cost of walking through node i (true / Infinity = it can't). The Backrooms
+  // monster: a shut door costs the time it takes to kick it in.
+  path(a, b, maxIter = 30000, cost = null) {
     if (a < 0 || b < 0) return null;
     if (a === b) return [a];
     const n = this.n;
@@ -177,8 +178,10 @@ export class NavGrid {
       const e = this.edges[i];
       for (let k = 0; k < e.length; k += 2) {
         const j = e[k];
-        if (closed[j] || (skip && j !== b && skip(j))) continue;
-        const ng = g[i] + e[k + 1];
+        if (closed[j]) continue;
+        const c = cost && j !== b ? cost(j) : 0;
+        if (c === true || c === Infinity) continue;
+        const ng = g[i] + e[k + 1] + (+c || 0);
         if (ng < g[j]) { g[j] = ng; came[j] = i; push(ng + h(j), j); }
       }
     }

@@ -1410,12 +1410,13 @@ const MON_POSE = {
   grab:   [1.38, 0.3,  -1.5, 0.05, -0.1,  0.2,  0.4,  1.0,  0.0,  1.0],
   peek:   [1.5,  0.06, 0.05, 0.1,  -0.15, 0.0,  0.0,  0.3,  0.0,  1.0],
   reveal: [1.32, 0.42, -1.05, 0.55, -0.7,  0.35, 0.5,  1.0,  0.0,  1.0],   // bursting out of a skin: hunched, arms flung wide
+  kick:   [1.44, 0.18, -0.45, 0.4,  -0.45, -0.1, 0.25, 0.7,  0.0,  1.0],   // kicking a door in: arms out for balance
 };
 export function animateMonster(m, dt, { speed = 0, mode = 'walk', side = 1 } = {}) {
   m.t += dt;
   const P = MON_POSE[mode] || MON_POSE.walk;
   if (!m.pose) m.pose = P.slice();
-  const ease = Math.min(1, dt * (mode === 'grab' || mode === 'reveal' ? 14 : mode === 'peek' ? 5 : 4));
+  const ease = Math.min(1, dt * (mode === 'grab' || mode === 'reveal' || mode === 'kick' ? 14 : mode === 'peek' ? 5 : 4));
   for (let k = 0; k < P.length; k++) m.pose[k] += (P[k] - m.pose[k]) * ease;
   const [hipY, hunch, armX, armZ, elX, headX, neckX, open, stride, rate] = m.pose;
   // peeking: the whole body tips sideways from the hips round the corner, the head straightens to look
@@ -1435,6 +1436,16 @@ export function animateMonster(m, dt, { speed = 0, mode = 'walk', side = 1 } = {
     L.shin.rotation.x = -(0.2 + Math.max(0, co) * (0.9 + (mode === 'stalk' ? 0.5 : 0)) * moving + hunch * 0.6);
     L.foot.rotation.x = 0.25 * moving * Math.max(0, -co);
   });
+  // kicking a door in: one leg drawn up, then driven straight out, every 0.75 s (the host's kick rhythm)
+  if (mode === 'kick') {
+    const c = (m.t % 0.75) / 0.75, out = c < 0.35 ? c / 0.35 : Math.max(0, 1 - (c - 0.35) / 0.2);
+    const draw = c < 0.35 ? Math.sin(c / 0.35 * Math.PI) : 0;
+    const L = m.legs[1];
+    L.thigh.rotation.x = -0.25 - 1.15 * out - 0.35 * draw;
+    L.shin.rotation.x = -(1.6 * draw * (1 - out) + 0.05);
+    L.foot.rotation.x = -0.3 * out;
+    m.hips.position.y -= 0.05 * out;
+  }
   // spine: hunched forward, breathing, a slow ripple through the rings when it moves; bent round the corner when peeking
   const breathe = Math.sin(m.t * 1.7) * 0.015;
   m.verts.forEach((v, i) => {
