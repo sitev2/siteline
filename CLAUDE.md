@@ -181,7 +181,7 @@ The only folder is `server/` (the optional home game server).
     within 4.5 m behind you (BRS 'breath'); hallucinated breathing and footsteps that copy yours and stop a moment after you stop
     (`follow`); it lures you (`{t:'lure', kind: 'steps'|'door'}` every 30–65 s from somewhere a player 7–24 m away can't see).
   - Death: caught by it you're lifted face to face (`caughtMe` / `caughtCamera`, it turns to face you), static fills the screen,
-    then black. Screen grain/static (`#br-static`, drawn by brfx) grows within 13 m of it.
+    then black. Screen grain/static (`#br-static`, drawn by brfx) grows within 10 m of it (kept light: the owner asked for less).
   - What it does with a body (`Server.monsterKill`, owner's numbers, one roll): 1/3 take the skin (if nobody saw and someone is left;
     otherwise a normal kill), 1/6 'drag' (`brain.carry`: it drags it by the leg — kill message `fate`, its mode string carries the
     body id `m:<mode>:1:<id>`, no ragdoll; `brfx.takeBody/updateBodies` lays the hazmat body on its back behind its right hand —
@@ -202,7 +202,9 @@ The only folder is `server/` (the optional home game server).
   sign), pits, skirting boards (the board on the x-facing face runs past outside corners and gets an end cap, so corners close), the wall
   above doorways, door frames, doors, wall outlets, flicker + "dread" dimming when the monster
   is near (`group.userData.update`). Hand-held camera sway in `Game.updateCamera` (Backrooms only, more when running or near the
-  monster), strength = `settings.camShake` (Settings → General "Camera shake in the Backrooms", default 0.5, 0 = off). `monster.js` = the monster's brain on the host (player
+  monster), strength = `settings.camShake` (Settings → General "Camera shake in the Backrooms", default 0.5, 0 = off). Head bobbing while you walk
+  (Backrooms only, owner's request): `settings.headBob` (Settings → General "Head bobbing in the Backrooms", default 0.5, 0 = off; synced
+  to the account), step-paced rise/fall + sway + a little roll in `Game.updateCamera`. `monster.js` = the monster's brain on the host (player
   id `'monster'`, team `'monster'` = snapshot team index 3, `use` = chasing): waits `lv.wake` s; states chase (aims ahead of a running
   target), stalk (creeps up on someone far away looking the other way, charges when they turn or it's within 9 m), pursue (runs to where you
   were heading), search (4 nearby spots, in your direction first, listening at each), wander (towards players, more surely the longer it has

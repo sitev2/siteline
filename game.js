@@ -2016,6 +2016,19 @@ export class Game {
         y += n(1.3, 0.4) * 0.006 * a;
         if (dread > 0.5) { yaw += (Math.random() - 0.5) * 0.004 * dread * k; pitch += (Math.random() - 0.5) * 0.004 * dread * k; }
       }
+      // head bobbing: your head rises and falls with each step and sways a little from side to side
+      // (Settings → General "Head bobbing in the Backrooms": 0 = off … 1 = strong)
+      const hb = this.settings.headBob == null ? 0.5 : this.settings.headBob;
+      const sp = Math.hypot(me.vel.x, me.vel.z);
+      this.bobAmt = (this.bobAmt || 0) + ((me.alive && me.onGround ? Math.min(1, sp / 3) : 0) - (this.bobAmt || 0)) * Math.min(1, dt * 8);
+      if (hb > 0 && this.bobAmt > 0.001 && me.alive) {
+        this.bobPhase = (this.bobPhase || 0) + dt * sp * 2.2;
+        const a = hb * this.bobAmt, s = Math.sin(this.bobPhase);
+        y -= Math.abs(s) * 0.07 * a;
+        x += Math.cos(yaw) * s * 0.018 * a; z -= Math.sin(yaw) * s * 0.018 * a;
+        roll += s * 0.008 * a;
+        pitch += (Math.abs(s) - 0.5) * 0.006 * a;
+      }
     }
     const sn = this.fx && this.fx.camera(cam);
     if (sn) { x = sn.x; y = sn.y; z = sn.z; yaw = sn.yaw; pitch = sn.pitch; roll = sn.roll; }

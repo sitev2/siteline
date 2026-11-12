@@ -36,7 +36,7 @@ function backroomsAllowed() {
 // ---------- settings ----------
 const STORE = 'siteline-settings';
 const defaults = {
-  name: '', sens: 1, fov: 75, volume: 0.7, ambience: 0.6, camShake: 0.5, quality: 'auto', touchMode: 'auto', invert: false, showChat: true,
+  name: '', sens: 1, fov: 75, volume: 0.7, ambience: 0.6, camShake: 0.5, headBob: 0.5, quality: 'auto', touchMode: 'auto', invert: false, showChat: true,
   keys: {}, crosshair: { ...DEFAULT_CROSSHAIR }, touchLayout: {}, graphics: { preset: 'auto', custom: {} },
   // last practice choices
   practice: { kind: 'range', map: 'outpost', bots: true, count: 6, behavior: 'still', side: 'atk', level: 'normal', dmMap: 'quarry', dmCount: 3 },
@@ -49,7 +49,7 @@ function loadSettings() {
   } catch (e) { return { ...defaults, practice: { ...defaults.practice } }; }
 }
 // the settings that follow you to other devices when you're logged in
-const SYNCED = ['keys', 'crosshair', 'touchLayout', 'graphics', 'sens', 'fov', 'invert', 'volume', 'ambience', 'showChat', 'camShake'];
+const SYNCED = ['keys', 'crosshair', 'touchLayout', 'graphics', 'sens', 'fov', 'invert', 'volume', 'ambience', 'showChat', 'camShake', 'headBob'];
 function saveSettings() {
   try {
     const { touch, ...rest } = settings;
@@ -1040,6 +1040,8 @@ function bindSettings() {
     $('set-amb').value = amb; $('amb-out').textContent = amb > 0 ? `${Math.round(amb * 100)}%` : 'off';
     const shk = settings.camShake == null ? 0.5 : settings.camShake;
     $('set-shake').value = shk; $('shake-out').textContent = shk > 0 ? `${Math.round(shk * 100)}%` : 'off';
+    const bob = settings.headBob == null ? 0.5 : settings.headBob;
+    $('set-bob').value = bob; $('bob-out').textContent = bob > 0 ? `${Math.round(bob * 100)}%` : 'off';
     $('set-touch').value = settings.touchMode;
     $('set-invert').checked = settings.invert;
     $('set-chat').checked = settings.showChat !== false;
@@ -1051,6 +1053,7 @@ function bindSettings() {
   $('set-fov').addEventListener('input', e => { settings.fov = Number(e.target.value); sync(); saveSettings(); });
   $('set-vol').addEventListener('input', e => { settings.volume = Number(e.target.value); setVolume(settings.volume); sync(); saveSettings(); });
   $('set-shake').addEventListener('input', e => { settings.camShake = Number(e.target.value); sync(); saveSettings(); });
+  $('set-bob').addEventListener('input', e => { settings.headBob = Number(e.target.value); sync(); saveSettings(); });
   $('set-amb').addEventListener('input', e => { settings.ambience = Number(e.target.value); setAmbienceVolume(settings.ambience); sync(); saveSettings(); });
   $('set-touch').addEventListener('change', e => { settings.touchMode = e.target.value; saveSettings(); });
   $('set-invert').addEventListener('change', e => { settings.invert = e.target.checked; saveSettings(); });

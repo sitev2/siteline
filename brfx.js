@@ -555,7 +555,8 @@ export class BackroomsFX {
       if (g.clock > f.until) this.follow = null;
     }
     // grain and static on your screen when it is close (and when it has you)
-    const want = this.caught ? (this.caught.t < 1.25 ? 0.75 : 0) : here && me.alive ? Math.max(0, Math.min(1, (13 - d) / 10)) * 0.42 : 0;
+    // (the owner asked for less of it: weaker, and only within 10 m)
+    const want = this.caught ? (this.caught.t < 1.25 ? 0.42 : 0) : here && me.alive ? Math.max(0, Math.min(1, (10 - d) / 8)) * 0.22 : 0;
     this.staticK += (want - this.staticK) * Math.min(1, dt * 4);
     const cv = this.staticCv;
     if (this.staticK > 0.01) {
