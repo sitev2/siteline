@@ -16,8 +16,8 @@ export const BR = {
   ceiling: 2.9,       // ceiling height
   wall: 0.5,          // wall thickness
   door: 2.2,          // doorway height
-  walk: 3.2,          // m/s: how fast you walk (the normal speed in here; quiet)
-  sprint: 5.3,        // m/s: holding Shift (or the run button): loud, it hears you
+  walk: 2.7,          // m/s: how fast you walk (the normal speed in here; quiet)
+  sprint: 4.5,        // m/s: holding Shift (or the run button): loud, it hears you
 };
 
 // The three difficulties. Maze: how wide the walkways between the holes of the pit rooms are (m), how many
