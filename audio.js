@@ -584,6 +584,20 @@ const DOOR = {
     biquad(x, 'bandpass', 900, 1.5, sr); normalize(x, 0.6);
   }),
   shut: () => buf(0.7, (x, sr) => { thump(x, sr, 0, 110, 60, 0.12, 1); noiseHit(x, sr, 0, 'lowpass', 700, 0.7, 0.05, 0.6); click(x, sr, 0.03, 2200, 5, 0.5); normalize(x, 0.8); }),
+  // a heavy kick against a shut door: a deep boom, the frame shaking
+  kick: () => buf(0.9, (x, sr) => {
+    thump(x, sr, 0, 75, 40, 0.2, 1); noiseHit(x, sr, 0, 'lowpass', 900, 0.8, 0.09, 0.9);
+    click(x, sr, 0.005, 1700, 4, 0.5); for (let k = 0; k < 4; k++) click(x, sr, 0.06 + k * 0.05, 2400 + Math.random() * 800, 5, 0.3 - k * 0.05);
+    normalize(x, 0.95);
+  }),
+  // the door giving way: wood splitting, the leaves crashing to the floor
+  break: () => buf(1.6, (x, sr) => {
+    thump(x, sr, 0, 70, 35, 0.25, 1);
+    for (let k = 0; k < 14; k++) noiseHit(x, sr, Math.random() * 0.25, 'bandpass', 1200 + Math.random() * 2500, 2, 0.02 + Math.random() * 0.05, 0.6 + Math.random() * 0.4);
+    thump(x, sr, 0.42, 95, 50, 0.16, 0.9); noiseHit(x, sr, 0.42, 'lowpass', 800, 0.7, 0.12, 0.8);
+    thump(x, sr, 0.55, 110, 60, 0.12, 0.6);
+    normalize(x, 0.95);
+  }),
   rattle: () => buf(1.3, (x, sr) => {
     for (let k = 0; k < 7; k++) { const at = k * 0.13 + Math.random() * 0.04; click(x, sr, at, 1900 + Math.random() * 900, 4, 0.7); click(x, sr, at + 0.03, 1200, 3, 0.4); if (k % 3 === 0) thump(x, sr, at, 120, 80, 0.06, 0.6); }
     normalize(x, 0.75);
@@ -639,7 +653,8 @@ export function playBR(kind, pos = null, occ = 0, gain = 1) {
 export function playDoor(pos, kind, occ = 0) {
   const key = `door:${kind}`;
   if (!cache.has(key)) cache.set(key, DOOR[kind]());
-  play(cache.get(key), { pos, gain: kind === 'rattle' ? 1.3 : 0.9, ref: 2.5, roll: 1.0, air: 40, occ, wet: 0.5, rate: 0.92 + Math.random() * 0.16, important: kind === 'rattle' });
+  const loud = kind === 'rattle' || kind === 'kick' || kind === 'break';
+  play(cache.get(key), { pos, gain: kind === 'kick' || kind === 'break' ? 1.6 : kind === 'rattle' ? 1.3 : 0.9, ref: loud ? 4 : 2.5, roll: 1.0, air: 40, occ, wet: 0.5, rate: 0.92 + Math.random() * 0.16, important: loud });
 }
 
 const monSound = (k) => { const key = `mon:${k}#${k === 'step' ? Math.floor(Math.random() * 3) : 0}`; if (!cache.has(key)) cache.set(key, MON[k]()); return cache.get(key); };

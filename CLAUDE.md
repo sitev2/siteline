@@ -112,14 +112,14 @@ The only folder is `server/` (the optional home game server).
   NOT in `MAPS`, `resolveMap('backrooms', variant)`; the variant is "seed:level" (`brVariant` / `parseBrVariant`, a plain number = normal)):
   20×20 rooms of 4 m, spanning tree + 14 % loops + bigger rooms, ONE pillar hall (repeating 1 m pillars, 3–5 rooms a side), a few free
   pillars (12 %), NO single pitfalls (owner removed them), exit door in the outer wall as far as possible from the start (`b.exit` →
-  `world.exit`, never on the start's side). Pit rooms (owner's reference picture; "all the same dimension squares"): two, 3×3 rooms each,
-  set across the shortest way to the exit; a regular grid of identical 2.5 m square holes (`PIT_HOLE`, `pitHoles()`; `b.pit` →
-  `world.pitGrid`, `isPit`: no floor, you fall; below y −3 the host kills you) with walkways of the level's width between them; the strip
-  by the walls is either none (hard: 4×4 holes touching the walls) or at least 1 m (normal 3×3 holes, 1 m; easy 2×2 holes) — never a
-  thinner ledge, which nobody could walk along. Big black spray-painted arrows (`plan.arrows`, drawn in `brview.js` from
+  `world.exit`, never on the start's side). Pit rooms (owner's reference picture; "composed of square holes", the room itself may be a
+  rectangle): two, 2×3 / 3×2 / 3×3 rooms (8×12 / 12×8 / 12×12 m), set across the shortest way to the exit; a regular grid of identical
+  2.5 m square holes (`PIT_HOLE`, `pitHoles()`; `b.pit` → `world.pitGrid`, `isPit`: no floor, you fall; below y −3 the host kills you)
+  with walkways of the level's width between them; at each end of a row the strip by the wall is either none (the holes touch the wall)
+  or at least 1 m — never a thinner ledge, which nobody could walk along. Big black spray-painted arrows (`plan.arrows`, drawn in `brview.js` from
   `arrowTexture`) on walls of rooms where the way splits, pointing to the next room on the shortest way to the exit ("vaguely": only some
   rooms). Doorways: 3 a maze (owner wanted fewer), each where going round is a real detour (6+ rooms, `goodDoor`) and nothing is
-  ever sealed off with every door shut (`walkShut`) — because the monster can't open doors; a wall with a
+  ever sealed off with every door shut (`walkShut`); a wall with a
   1.5 × 2.2 m gap; the wall above is a `wallpaper` span from 2.2 m. Walls fill the
   cell [line, line + 0.5) east/south of each room line. `backroomsMap` checks every maze (`mazeOk`: player start→exit, monster→start with
   3×3 clearance) and deterministically tries seed variations if one fails. `node check_br.mjs 300` checks many seeds (all three levels,
@@ -130,10 +130,13 @@ The only folder is `server/` (the optional home game server).
   gap) and the leaves hang just inside it, so nothing clips. The world is built with every door open (so mazes/NavGrid treat doors as passable); the host then shuts the ones that start
   shut (`world.setDoor(i, open)` adds/removes '_door' spans in the gap). Players: E / hand button within ~1.9 m (`Game.doorTarget`,
   `{t:'door', i}`); host `toggleDoor` (range 2.4 m, 0.45 s cooldown, won't shut on anyone standing in the gap) broadcasts
-  `{t:'door', i, open, swing}` (swings away from whoever moved it); door states travel in the start message (`doors`). The monster CAN'T
-  open doors (owner's rule): its routes skip shut doorways (`NavGrid.path(a, b, max, skip)` with `shutNode`, `straight()` checks '_door'
-  spans; shut doors also block its sight); chasing into one, it pounds on it once (`doorRattle`, 0.6 s, arms up) then goes the long way.
-  Disguised in someone's skin it doesn't open them either (a clue). It hears doors within 14 m.
+  `{t:'door', i, open, swing}` (swings away from whoever moved it); door states travel in the start message (`doors`). The monster can't
+  open doors (owner's rule): it KICKS shut ones in (`KICK_TIME` 3 s, `kicking` / `kickStep` in `monster.js`, mode 'kick'; a
+  `{t:'doorKick', i, swing}` boom every 0.75 s — the leaves jump, `kickDoor` in `brview.js`), then `Server.breakDoor`: the door is
+  `broken`, open for good, both leaves torn off and flat on the floor (`setDoor(..., broken)`, sound 'break'); players can't shut a
+  broken door (toast; start message sends 2 for broken). Its routes weigh a shut door as 3 s of running (`NavGrid.path(a, b, max, cost)`
+  with `doorCost`), so it goes round when that's quicker; `straight()` stops at '_door' spans; shut doors block its sight. Wearing
+  someone's skin it never kicks (doorCost = Infinity: it goes round). Opened by a player mid-kick: it stops and walks through. It hears doors within 14 m.
   `brview.js` `group.userData.setDoor` animates the leaves on hinges.
   Snatches (owner's design): ceiling holes (`plan.holes`: a missing or pushed-aside 0.6 m ceiling tile, by difficulty) — walk under one
   (reach 0.63 m from its middle: 50 % more than before, owner's request) and the host `snatch(p, 'ceiling', …)` takes you, every time;

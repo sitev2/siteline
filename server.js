@@ -744,7 +744,7 @@ export class Server {
     return {
       t: 'start', map: this.settings.map, settings: this.settings, roster: this.roster(), practice: this.practice, phase: this.phase,
       mode: this.br ? 'br' : this.dm ? 'dm' : 'wingman', variant: this.variant,
-      doors: this.br && this.world ? this.world.doors.map(d => (d.open ? 1 : 0)) : undefined,
+      doors: this.br && this.world ? this.world.doors.map(d => (d.broken ? 2 : d.open ? 1 : 0)) : undefined,     // 2 = kicked in
       notes: this.br ? this.notes : undefined,
     };
   }
@@ -1040,6 +1040,7 @@ export class Server {
   // open or shut a door (players with E / the hand button, the monster when one is in its way)
   toggleDoor(i, open, by) {
     const d = this.world.doors[i], now = performance.now();
+    if (d && d.broken) { if (by && !by.bot) this.send(by.id, { t: 'toast', text: 'It kicked this door in. It won\'t shut any more' }); return false; }
     if (!d || d.open === open || now - (this.doorAt[i] || 0) < 450) return false;
     if (!open && d.kind === 'way') {
       // nobody may be standing in the doorway when it shuts
@@ -1060,6 +1061,17 @@ export class Server {
     const m = this.bots.get('monster');
     if (m && by && !by.bot) m.hearNoise(d.cx, d.cz, 14);
     return true;
+  }
+
+  // the monster kicked a shut door in: it falls off its hinges and stays open for good
+  breakDoor(i, m) {
+    const d = this.world.doors[i];
+    if (!d || d.broken) return;
+    d.broken = true;
+    this.world.setDoor(i, true);
+    this.doorAt[i] = performance.now();
+    const s = Math.sign((m.x - d.cx) * d.nx + (m.z - d.cz) * d.nz) || 1;
+    this.broadcast({ t: 'door', i, open: true, broken: true, swing: -s, by: m.id });
   }
 
   // taken: by the thing in the ceiling, or by something round a corner. The body is never seen again.

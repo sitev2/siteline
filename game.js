@@ -115,7 +115,8 @@ export class Game {
     this.mapUpdate = built.group.userData.update || null;     // flickering lights (Backrooms)
     // doors that open and shut (Backrooms): the host says which are shut
     this.setDoorView = built.group.userData.setDoor || null;
-    if (doors) doors.forEach((o, i) => { this.world.setDoor(i, !!o); if (this.setDoorView) this.setDoorView(i, !!o, 1, true); });
+    // (2 = kicked in by the monster: open for good, lying on the floor)
+    if (doors) doors.forEach((o, i) => { this.world.setDoor(i, !!o); if (o === 2 && this.world.doors[i]) this.world.doors[i].broken = true; if (this.setDoorView) this.setDoorView(i, !!o, 1, true, o === 2); });
     this.builtMap = built;
     this.pendingNotes = notes;
     // this map's acoustics and background sound
@@ -435,13 +436,24 @@ export class Game {
         const d = this.world.doors[m.i];
         if (!d) return;
         this.world.setDoor(m.i, m.open);
-        if (this.setDoorView) this.setDoorView(m.i, m.open, m.swing);
-        sfx.playDoor({ x: d.cx, y: 1.2, z: d.cz }, m.open ? 'open' : 'shut', this.occlusion(d.cx, 1.2, d.cz));
+        if (m.broken) d.broken = true;
+        if (this.setDoorView) this.setDoorView(m.i, m.open, m.swing, false, !!m.broken);
+        sfx.playDoor({ x: d.cx, y: 1.2, z: d.cz }, m.broken ? 'break' : m.open ? 'open' : 'shut', this.occlusion(d.cx, 1.2, d.cz));
+        if (m.broken && Math.hypot(d.cx - this.me.pos.x, d.cz - this.me.pos.z) < 8) this.shake = Math.min(1.5, this.shake + 0.9);
         return;
       }
       case 'doorRattle': {
         const d = this.world.doors[m.i];
         if (d) sfx.playDoor({ x: d.cx, y: 1.2, z: d.cz }, 'rattle', this.occlusion(d.cx, 1.2, d.cz));
+        return;
+      }
+      case 'doorKick': {
+        // it is kicking a shut door in: a boom, the door jumping in its frame
+        const d = this.world.doors[m.i];
+        if (!d) return;
+        sfx.playDoor({ x: d.cx, y: 1.2, z: d.cz }, 'kick', this.occlusion(d.cx, 1.2, d.cz));
+        if (this.builtMap && this.builtMap.group.userData.kickDoor) this.builtMap.group.userData.kickDoor(m.i, m.swing || 1);
+        if (Math.hypot(d.cx - this.me.pos.x, d.cz - this.me.pos.z) < 7) this.shake = Math.min(1.2, this.shake + 0.5);
         return;
       }
       case 'escaped':
@@ -1911,6 +1923,7 @@ export class Game {
     const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw);
     let best = -1, bd = Infinity;
     ds.forEach((d, i) => {
+      if (d.broken) return;                    // kicked in: nothing left to shut
       const dx = d.cx - me.pos.x, dz = d.cz - me.pos.z, dist = Math.hypot(dx, dz);
       if (dist > 1.9) return;
       const facing = (dx * fx + dz * fz) / (dist || 1);
