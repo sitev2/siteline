@@ -130,7 +130,11 @@ export class PostFX {
     this.targets = [];
     this.w = w; this.h = h;
     const o = this.o;
+    // the picture is kept with sRGB steps (fine in the dark), not plain 8-bit linear: that had only a few steps
+    // near black, so dark areas came out in hard bands and dark yellow broke up into red streaks
+    const fine = { colorSpace: THREE.SRGBColorSpace };
     this.sceneRT = this.makeTarget(w, h, {
+      ...fine,
       depthBuffer: true,
       depthTexture: o.ao ? new THREE.DepthTexture(w, h) : null,
       samples: o.msaa ? 4 : 0,
@@ -140,7 +144,7 @@ export class PostFX {
       this.bloomA = this.makeTarget(w >> 2, h >> 2);
       this.bloomB = this.makeTarget(w >> 2, h >> 2);
     }
-    if (o.fxaa) this.ldrRT = this.makeTarget(w, h);
+    if (o.fxaa) this.ldrRT = this.makeTarget(w, h, fine);
   }
 
   pass(material, target) {
