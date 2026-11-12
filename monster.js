@@ -15,8 +15,8 @@ export const MONSTER = {
   height: 2.75,      // m: how tall it is (for its eyes)
 };
 const RUN_SPEED = 3.5;   // m/s: faster than this is sprinting (loud); walking is BR.walk
-export const SKIN_CHANCE = 1 / 3;
-export const KICK_TIME = 3;         // s: kicking a shut door in (owner's choice), one kick every 0.75 s   // a kill nobody else saw: how often it takes their skin and wears it (owner's choice)
+export const SKIN_CHANCE = 1 / 3;   // a kill nobody else saw: how often it takes their skin and wears it (owner's choice)
+export const KICK_TIME = 2;         // s: kicking a shut door in (owner's choice), one kick every 0.75 s
 
 const angTo = (from, to) => { let d = to - from; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
 
@@ -43,7 +43,7 @@ export class MonsterBrain {
       const cells = new Set(d.cells);
       for (let i = 0; i < nav.n; i++) if (cells.has(Math.floor(nav.z[i] / 0.5) * w.w + Math.floor(nav.x[i] / 0.5))) this.doorOf[i] = k;
     });
-    // a shut door on a route costs what kicking it in takes (3 s of running); wearing someone, it won't kick
+    // a shut door on a route costs what kicking it in takes (KICK_TIME of running); wearing someone, it won't kick
     this.doorCost = (i) => (this.doorOf[i] >= 0 && !w.doors[this.doorOf[i]].open ? (this.state === 'skin' ? Infinity : KICK_TIME * this.chaseSpeed) : 0);
     this.vel = { x: 0, y: 0, z: 0 };
     this.onGround = true;
