@@ -790,16 +790,63 @@ function segment(parent, name, rag, half, offsetY, build) {
 }
 const hashName = s => { let h = 0; for (const ch of String(s || '')) h = (h * 31 + ch.charCodeAt(0)) | 0; return Math.abs(h); };
 
-export function makePlayerModel(team, name, showName) {
-  const c = TEAM_COLORS[team] || TEAM_COLORS.atk;
+// hazmat suit rubber: yellow with creases and scuffs (one shared material)
+let hazmat = null;
+function hazmatMat() {
+  if (hazmat && hazmat.userData.detail === DETAIL) return hazmat;
+  const S = 128, cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#d8b41c'; g.fillRect(0, 0, S, S);
+  let seed = 17;
+  const r = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 40; i++) {
+    const x = r() * S, y = r() * S, l = 12 + r() * 30, a = (r() - 0.5) * 0.9 + Math.PI / 2;
+    g.strokeStyle = r() < 0.5 ? 'rgba(120,90,10,0.28)' : 'rgba(255,240,150,0.22)'; g.lineWidth = 1 + r() * 2;
+    g.beginPath(); g.moveTo(x, y); g.quadraticCurveTo(x + Math.cos(a) * l * 0.5 + 4, y + Math.sin(a) * l * 0.5, x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+  }
+  for (let i = 0; i < 300; i++) { g.fillStyle = `rgba(90,70,20,${r() * 0.15})`; g.fillRect(r() * S, r() * S, 2, 2); }
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  hazmat = HI() ? new THREE.MeshStandardMaterial({ map: t, roughness: 0.42, metalness: 0.05 }) : new THREE.MeshLambertMaterial({ map: t });
+  hazmat.userData.detail = DETAIL;
+  return hazmat;
+}
+
+// the name printed on the back of a suit: black capitals on a white patch
+function nameTexture(name) {
+  const cv = document.createElement('canvas');
+  cv.width = 384; cv.height = 140;
+  const g = cv.getContext('2d');
+  g.fillStyle = '#efeee6'; g.fillRect(0, 0, 384, 140);
+  g.strokeStyle = '#1a1a1a'; g.lineWidth = 6; g.strokeRect(5, 5, 374, 130);
+  const text = String(name || '').toUpperCase().slice(0, 16);
+  g.fillStyle = '#141414'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  let size = 84;
+  do { g.font = `bold ${size}px Impact, "Arial Black", sans-serif`; size -= 4; } while (g.measureText(text).width > 350 && size > 24);
+  g.fillText(text, 192, 74);
+  const t = new THREE.CanvasTexture(cv);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+// look: null = team uniform; 'hazmat' = the Backrooms: a yellow hazmat suit with a respirator hood and the
+// player's name printed on the back (instead of a name tag over the head)
+export function makePlayerModel(team, name, showName, look = null) {
+  const hz = look === 'hazmat';
+  const c0 = TEAM_COLORS[team] || TEAM_COLORS.atk;
+  const c = hz ? { ...c0, glove: '#151515', gloveTrim: '#0b0b0b', boots: '#151515' } : c0;
   const root = new THREE.Group();
   const skinCol = SKINS[hashName(name) % SKINS.length];
-  const skin = mat(skinCol, { rough: 0.65 });
-  const shirt = fabric(c, 'camo', 3), shirtCap = fabric(c, 'camo', 1.4);
-  const pants = fabric(c, 'pants', 3), pantsCap = fabric(c, 'pants', 1.4);
+  const suit = hz ? hazmatMat() : null;
+  const skin = hz ? suit : mat(skinCol, { rough: 0.65 });
+  const shirt = hz ? suit : fabric(c, 'camo', 3), shirtCap = hz ? suit : fabric(c, 'camo', 1.4);
+  const pants = hz ? suit : fabric(c, 'pants', 3), pantsCap = hz ? suit : fabric(c, 'pants', 1.4);
   const vest = mat(c.vest, { rough: 0.85 }), gear = mat(c.gear, { rough: 0.85 });
-  const dark = mat('#1d1e21', { rough: 0.7 }), boots = mat(c.boots, { rough: 0.8 }), sole = mat('#121212', { rough: 0.95 });
-  const glove = mat(c.glove, { rough: 0.9 });
+  const dark = mat('#1d1e21', { rough: 0.7 }), boots = mat(c.boots, { rough: hz ? 0.5 : 0.8 }), sole = mat('#121212', { rough: 0.95 });
+  const glove = mat(c.glove, { rough: hz ? 0.45 : 0.9 });
+  const tape = mat('#111111', { rough: 0.5 });
   const rag = {};
 
   const hips = new THREE.Group();
@@ -807,6 +854,7 @@ export function makePlayerModel(team, name, showName) {
   root.add(hips);
   segment(hips, 'pelvis', rag, [0.17, 0.1, 0.12], 0, g => {
     P(g, rbox(0.32, 0.18, 0.22, 0.06), pants);
+    if (hz) { P(g, rbox(0.345, 0.05, 0.245, 0.02), suit, 0, 0.06, 0); return; }        // the suit is baggier at the waist
     P(g, rbox(0.34, 0.045, 0.24, 0.015), dark, 0, 0.075, 0);                        // belt
     D(g, rbox(0.05, 0.035, 0.012, 0.004), mat('#8a8a8a', { metal: 0.7, rough: 0.4 }), 0, 0.075, -0.125);   // buckle
     D(g, rbox(0.06, 0.08, 0.05, 0.012), gear, -0.17, 0.03, 0.03);                   // hip pouch
@@ -818,7 +866,8 @@ export function makePlayerModel(team, name, showName) {
     thigh.position.set(sx, -0.04, 0);
     hips.add(thigh);
     segment(thigh, 'thigh' + side, rag, [0.09, 0.21, 0.1], -0.21, g => {
-      P(g, capsule(0.088, 0.25), pantsCap, 0, 0.0, 0);
+      P(g, capsule(hz ? 0.098 : 0.088, 0.25), pantsCap, 0, 0.0, 0);
+      if (hz) return;
       D(g, rbox(0.04, 0.12, 0.1, 0.02), pants, 0.085 * Math.sign(sx), -0.03, 0.0);   // cargo pocket
       if (side === 'R' && HI()) {
         P(g, rbox(0.05, 0.16, 0.1, 0.02), dark, 0.1, 0.03, 0.0);                     // drop-leg holster
@@ -829,12 +878,13 @@ export function makePlayerModel(team, name, showName) {
     shin.position.y = -0.42;
     thigh.add(shin);
     segment(shin, 'shin' + side, rag, [0.085, 0.23, 0.11], -0.22, g => {
-      P(g, capsule(0.072, 0.2), pantsCap, 0, 0.05, 0);
-      P(g, rbox(0.11, 0.13, 0.05, 0.02), gear, 0, 0.18, -0.06);                     // knee pad
+      P(g, capsule(hz ? 0.082 : 0.072, 0.2), pantsCap, 0, 0.05, 0);
+      if (hz) P(g, cylY(0.07, 0.072, 0.05), tape, 0, -0.06, 0);                      // tape where the suit meets the boot
+      else P(g, rbox(0.11, 0.13, 0.05, 0.02), gear, 0, 0.18, -0.06);                // knee pad
       // boot from its side outline, with a darker sole
       P(g, profile('boot', [[0.055, -0.08], [0.06, -0.225], [-0.16, -0.225], [-0.185, -0.205], [-0.18, -0.17], [-0.12, -0.15], [-0.05, -0.12], [-0.04, -0.06], [-0.035, 0.0], [0.05, 0.0]], 0.12, 0.018), boots, 0, 0, 0);
       P(g, profile('sole', [[0.062, -0.215], [0.064, -0.24], [-0.17, -0.24], [-0.192, -0.22], [-0.18, -0.205], [0.06, -0.205]], 0.13, 0.01), sole, 0, 0, 0);
-      D(g, rbox(0.125, 0.012, 0.06, 0.004), dark, 0, -0.1, -0.03);                   // laces band
+      if (!hz) D(g, rbox(0.125, 0.012, 0.06, 0.004), dark, 0, -0.1, -0.03);         // laces band
       feet.push(g);
     });
     thighs.push(thigh); shins.push(shin);
@@ -848,6 +898,17 @@ export function makePlayerModel(team, name, showName) {
     P(g, profile('torso', [[0.105, -0.29], [0.13, -0.05], [0.12, 0.2], [0.09, 0.26], [-0.09, 0.26], [-0.12, 0.2], [-0.13, -0.05], [-0.105, -0.29]], 0.36, 0.05), shirt, 0, 0, 0);
     P(g, sphere(0.068), shirtCap, 0.2, 0.19, 0).scale.set(1, 0.9, 1.1);            // shoulders
     P(g, sphere(0.068), shirtCap, -0.2, 0.19, 0).scale.set(1, 0.9, 1.1);
+    if (hz) {
+      // baggy suit: a looser shell, a zip flap down the front, the name printed on a patch across the back
+      P(g, profile('torso2', [[0.115, -0.3], [0.145, -0.05], [0.135, 0.2], [0.1, 0.27], [-0.1, 0.27], [-0.135, 0.2], [-0.145, -0.05], [-0.115, -0.3]], 0.4, 0.06), suit, 0, 0, 0);
+      P(g, rbox(0.04, 0.48, 0.02, 0.008), suit, 0.02, -0.02, -0.205);                 // zip flap
+      D(g, rbox(0.006, 0.44, 0.006, 0.002), mat('#6e5c10', { rough: 0.6 }), 0.0, -0.02, -0.215);   // the zip
+      const patch = new THREE.Mesh(new THREE.PlaneGeometry(0.33, 0.13), new THREE.MeshStandardMaterial({ map: nameTexture(name), roughness: 0.7 }));
+      patch.position.set(0, 0.11, 0.206);        // on the back (the model faces -z)
+      g.add(patch);
+      P(g, cylY(0.07, 0.075, 0.1), suit, 0, 0.3, 0);                                  // the hood's neck
+      return;
+    }
     // plate carrier
     P(g, rbox(0.38, 0.36, 0.06, 0.03), vest, 0, 0.02, -0.13);
     P(g, rbox(0.38, 0.36, 0.05, 0.03), vest, 0, 0.02, 0.125);
@@ -879,6 +940,20 @@ export function makePlayerModel(team, name, showName) {
   neck.position.y = 0.52;
   spine.add(neck);
   segment(neck, 'head', rag, [0.14, 0.15, 0.14], 0.1, g => {
+    if (hz) {
+      // the hood, a dark full-face visor and a respirator with two filters
+      P(g, sphere(0.13), suit, 0, 0.01, 0.005).scale.set(1, 1.1, 1.08);
+      const visor = mat('#16232a', { metal: 0.5, rough: 0.08 });
+      // a curved band of glass across the front of the hood (the model faces -z)
+      P(g, new THREE.SphereGeometry(0.133, 20, 10, Math.PI * 1.5 - 1.0, 2.0, 0.95, 1.05), visor, 0, 0.012, 0.004).scale.set(1, 1.1, 1.08);
+      P(g, new THREE.TorusGeometry(0.075, 0.012, 6, 18), tape, 0, 0.01, -0.118, 0, 0, 0).scale.set(1.15, 1.05, 1);   // visor rim
+      P(g, rbox(0.08, 0.065, 0.06, 0.02), tape, 0, -0.075, -0.115);                   // respirator
+      for (const sx of [-1, 1]) {
+        P(g, cylY(0.03, 0.03, 0.04), mat('#2a2a2a', { rough: 0.5 }), 0.06 * sx, -0.08, -0.12, Math.PI / 2, 0, 0.5 * sx);   // filters
+        D(g, cylY(0.024, 0.024, 0.008), mat('#c9a21a', { rough: 0.5 }), 0.068 * sx, -0.08, -0.142, Math.PI / 2, 0, 0.5 * sx);
+      }
+      return;
+    }
     P(g, sphere(0.105), skin, 0, 0.0, 0).scale.set(1, 1.12, 1.08);                   // skull
     P(g, rbox(0.15, 0.08, 0.13, 0.035), skin, 0, -0.075, -0.018);                    // jaw
     P(g, rbox(0.026, 0.045, 0.035, 0.01), skin, 0, -0.012, -0.112);                  // nose
@@ -922,16 +997,16 @@ export function makePlayerModel(team, name, showName) {
     sh.position.set(sx, 0, 0);
     arms.add(sh);
     segment(sh, 'uarm' + side, rag, [0.06, L1 / 2, 0.06], -L1 / 2, g => {
-      P(g, capsule(0.058, L1 - 0.06), shirtCap);
-      D(g, rbox(0.06, 0.06, 0.08, 0.02), gear, 0.04 * Math.sign(sx), 0.05, 0);        // shoulder pocket / flag patch
+      P(g, capsule(hz ? 0.066 : 0.058, L1 - 0.06), shirtCap);
+      if (!hz) D(g, rbox(0.06, 0.06, 0.08, 0.02), gear, 0.04 * Math.sign(sx), 0.05, 0);   // shoulder pocket / flag patch
     });
     const el = new THREE.Group();
     el.position.y = -L1;
     sh.add(el);
     const fseg = segment(el, 'farm' + side, rag, [0.055, L2 / 2, 0.055], -L2 / 2, g => {
-      P(g, capsule(0.05, L2 - 0.08), shirtCap, 0, 0.02, 0);
-      D(g, rbox(0.075, 0.07, 0.08, 0.02), gear, 0, 0.13, -0.02);                      // elbow pad
-      P(g, cylY(0.036, 0.042, 0.06), glove, 0, -L2 / 2 + 0.02, 0);                     // glove cuff at the wrist
+      P(g, capsule(hz ? 0.058 : 0.05, L2 - 0.08), shirtCap, 0, 0.02, 0);
+      if (!hz) D(g, rbox(0.075, 0.07, 0.08, 0.02), gear, 0, 0.13, -0.02);             // elbow pad
+      P(g, cylY(0.036, 0.042, 0.06), hz ? tape : glove, 0, -L2 / 2 + 0.02, 0);         // glove cuff at the wrist (taped on a suit)
     });
     const hand = makeHand(c, Math.sign(sx));
     hand.traverse(o => { o.castShadow = true; });

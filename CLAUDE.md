@@ -135,6 +135,9 @@ The only folder is `server/` (the optional home game server).
   hidden but its head leaning out is clearly visible (`findPeek`), leans out (mode `peek:±1`), and leaves 0.5 s after that player
   looks at its head (also if they come within 6 m, see its body, or after 15 s); after a few peeks it may charge them next time.
   Its animation mode travels in its weapon field: `p.w = 'm:<idle|listen|walk|stalk|search|run|grab|peek:±1>'`.
+  In the Backrooms players wear hazmat suits (`makePlayerModel(team, name, false, 'hazmat')`: yellow rubber, black boots/gloves/tape,
+  hood with a dark visor and a respirator) with their name printed on a patch on the back instead of a name tag over the head.
+  2v2 and deathmatch keep the team uniforms and name tags.
   `brview.js` draws it with baked lighting (per-vertex light from every ceiling panel with 2D wall shadows, soft edges, bounce, AO;
   MeshBasic + vertex colours, so it's cheap), canvas textures (chevron wallpaper, carpet, ceiling tiles, panels, doors, outlets, own EXIT
   sign), pits, skirting boards (the board on the x-facing face runs past outside corners and gets an end cap, so corners close), the wall
