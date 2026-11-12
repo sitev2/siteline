@@ -231,6 +231,12 @@ export class Server {
       case 'chat': return this.onChat(p, msg);
       case 'light': p.light = !!msg.on; return;
       case 'pick': return this.onPick(p, msg);
+      case 'door':
+        if (this.phase === 'br' && p.alive && !p.escaped && Number.isInteger(msg.i)) {
+          const d = this.world.doors[msg.i];
+          if (d && Math.hypot(d.cx - p.x, d.cz - p.z) < 2.4) this.toggleDoor(msg.i, !d.open, p);
+        }
+        return;
       case 'pong':
         if (Number.isFinite(msg.ts)) {
           const rtt = Math.max(0, performance.now() - msg.ts);
@@ -733,6 +739,7 @@ export class Server {
     return {
       t: 'start', map: this.settings.map, settings: this.settings, roster: this.roster(), practice: this.practice, phase: this.phase,
       mode: this.br ? 'br' : this.dm ? 'dm' : 'wingman', variant: this.variant,
+      doors: this.br && this.world ? this.world.doors.map(d => (d.open ? 1 : 0)) : undefined,
     };
   }
 
@@ -955,7 +962,10 @@ export class Server {
       inv: { primary: null, secondary: null }, armor: 0, helmet: false, kit: false, hs: 0, dmg: 0, ammo: {},
     };
     this.players.set(mp.id, mp);
-    this.bots.set(mp.id, new MonsterBrain(this, mp));
+    this.bots.set(mp.id, new MonsterBrain(this, mp));     // (its walking grid is made with every door open)
+    // then the doors that start shut are shut
+    this.world.doors.forEach((d, i) => this.world.setDoor(i, d.open));
+    this.doorAt = this.world.doors.map(() => 0);
     this.phase = 'br';
     this.broadcast(this.startMsg());
     this.broadcastRoster();
@@ -996,6 +1006,31 @@ export class Server {
         }
       }
     }
+  }
+
+  // open or shut a door (players with E / the hand button, the monster when one is in its way)
+  toggleDoor(i, open, by) {
+    const d = this.world.doors[i], now = performance.now();
+    if (!d || d.open === open || now - (this.doorAt[i] || 0) < 450) return false;
+    if (!open && d.kind === 'way') {
+      // nobody may be standing in the doorway when it shuts
+      for (const q of this.players.values()) {
+        if (!q.alive || q.escaped) continue;
+        if (q.x > d.x0 - 0.45 && q.x < d.x1 + 0.45 && q.z > d.z0 - 0.45 && q.z < d.z1 + 0.45) {
+          if (by && !by.bot) this.send(by.id, { t: 'toast', text: 'Something is in the way' });
+          return false;
+        }
+      }
+    }
+    this.doorAt[i] = now;
+    this.world.setDoor(i, open);
+    // the door swings away from whoever moved it (a door to nowhere always opens outwards)
+    const s = by ? Math.sign((by.x - d.cx) * d.nx + (by.z - d.cz) * d.nz) || 1 : 1;
+    this.broadcast({ t: 'door', i, open, swing: d.kind === 'blank' ? 1 : -s, by: by ? by.id : null });
+    // it hears doors
+    const m = this.bots.get('monster');
+    if (m && by && !by.bot) m.hearNoise(d.cx, d.cz, 14);
+    return true;
   }
 
   // the monster caught someone

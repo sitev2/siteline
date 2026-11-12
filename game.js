@@ -51,7 +51,7 @@ function angleLerp(a, b, t) {
 const fmtClock = s => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`;
 
 export class Game {
-  constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night }) {
+  constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night, doors }) {
     this.transport = transport;
     this.myId = myId;
     this.practice = practice;
@@ -111,6 +111,9 @@ export class Game {
     built.group.traverse(o => { if (o.userData.sky) this.sky.push(o); });
     this.mapGroup = built.group;
     this.mapUpdate = built.group.userData.update || null;     // flickering lights (Backrooms)
+    // doors that open and shut (Backrooms): the host says which are shut
+    this.setDoorView = built.group.userData.setDoor || null;
+    if (doors) doors.forEach((o, i) => { this.world.setDoor(i, !!o); if (this.setDoorView) this.setDoorView(i, !!o, 1, true); });
     // this map's acoustics and background sound
     sfx.setRoom(this.world.def.theme);
     sfx.startAmbience(this.world.def.theme, this.night, { x: this.world.width / 2, z: this.world.depth / 2 }, Math.max(this.world.width, this.world.depth) * 0.6);
@@ -412,6 +415,19 @@ export class Game {
         for (const r of this.remotes.values()) if (r.team === 'monster') sfx.playScreech({ x: r.rp.x, y: r.rp.y + 2.4, z: r.rp.z }, this.occlusion(r.rp.x, r.rp.y + 2, r.rp.z));
         this.hud.center('', 'It has seen you — RUN', '#ff6b4a', 2);
         return;
+      case 'door': {
+        const d = this.world.doors[m.i];
+        if (!d) return;
+        this.world.setDoor(m.i, m.open);
+        if (this.setDoorView) this.setDoorView(m.i, m.open, m.swing);
+        sfx.playDoor({ x: d.cx, y: 1.2, z: d.cz }, m.open ? 'open' : 'shut', this.occlusion(d.cx, 1.2, d.cz));
+        return;
+      }
+      case 'doorRattle': {
+        const d = this.world.doors[m.i];
+        if (d) sfx.playDoor({ x: d.cx, y: 1.2, z: d.cz }, 'rattle', this.occlusion(d.cx, 1.2, d.cz));
+        return;
+      }
       case 'escaped':
         if (m.id === this.myId) {
           this.me.alive = false; this.me.escaped = true; this.me.deathTime = performance.now();
@@ -1311,7 +1327,9 @@ export class Game {
 
     if (this.br) {
       // no guns, no bomb: just moving (any weapon keys do nothing)
-      for (const a of ['reload', 'alt', 'w1', 'w2', 'w3', 'w5', 'next', 'prev', 'swap', 'drop', 'use', 'inspect', 'click', 'buy']) inp.consume(a);
+      for (const a of ['reload', 'alt', 'w1', 'w2', 'w3', 'w5', 'next', 'prev', 'swap', 'drop', 'inspect', 'click', 'buy']) inp.consume(a);
+      // E / the hand button: open or shut the door in front of you
+      if (inp.consume('use')) { const i = this.doorTarget(); if (i >= 0) this.transport.send({ t: 'door', i }); }
       this.updateMovement(dt, false);
       return;
     }
@@ -1840,6 +1858,23 @@ export class Game {
     }
   }
 
+  // the door you could open or shut right now: close by and in front of you (or right next to you), or -1
+  doorTarget() {
+    const me = this.me, ds = this.world.doors;
+    if (!me.alive || !ds || !ds.length) return -1;
+    const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw);
+    let best = -1, bd = Infinity;
+    ds.forEach((d, i) => {
+      const dx = d.cx - me.pos.x, dz = d.cz - me.pos.z, dist = Math.hypot(dx, dz);
+      if (dist > 1.9) return;
+      const facing = (dx * fx + dz * fz) / (dist || 1);
+      if (dist > 0.9 && facing < 0.3) return;
+      const score = dist - facing;
+      if (score < bd) { bd = score; best = i; }
+    });
+    return best;
+  }
+
   // the monster's footsteps, and how close it is (the lights dip and buzz when it's near)
   monsterSounds(r, dt, speed) {
     const d = Math.hypot(r.rp.x - this.me.pos.x, r.rp.z - this.me.pos.z);
@@ -2105,7 +2140,9 @@ export class Game {
     else if (me.alive && this.dm && this.clock - (this.spawnedAt || 0) < 3) hint = touch ? 'Tap [[cart]] to change guns' : `Press ${this.key('buy')} to change guns`;
     if (this.br) {
       hint = '';
-      if (me.alive && this.clock < (this.brHintUntil || 0)) hint = touch ? 'Push the stick only part way to walk quietly' : `Hold ${this.key('walk')} to walk quietly`;
+      const di = this.doorTarget(), door = di >= 0 ? this.world.doors[di] : null;
+      if (door) hint = `${touch ? 'Tap [[hand]]' : `Press ${this.key('use')}`} to ${door.open ? 'shut' : 'open'} the door`;
+      else if (me.alive && this.clock < (this.brHintUntil || 0)) hint = touch ? 'Push the stick only part way to walk quietly' : `Hold ${this.key('walk')} to walk quietly`;
       else if (me.alive && this.world.exit && Math.hypot(this.world.exit.x - me.pos.x, this.world.exit.z - me.pos.z) < 6) hint = 'The exit! Go through the door';
       else if (!me.alive && me.escaped) hint = 'You got out. Watching the others…';
     }
@@ -2113,6 +2150,7 @@ export class Game {
     const useBtn = document.getElementById('btn-use');
     useBtn.classList.toggle('hidden', use !== 'plant' && use !== 'defuse' && !pick);
     useBtn.classList.toggle('pick', !!pick && use !== 'plant' && use !== 'defuse');
+    if (this.br) useBtn.classList.toggle('hidden', this.doorTarget() < 0);
     const altBtn = document.getElementById('btn-alt');
     altBtn.classList.toggle('hidden', !w.alt);
     const altLabel = w.alt === 'scope' ? 'scope' : w.alt === 'stab' ? 'spoon' : 'burst';

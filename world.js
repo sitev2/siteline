@@ -112,6 +112,19 @@ class Builder {
   }
   // the way out of the Backrooms: a door in a wall at (x, z), (nx, nz) pointing into the maze
   exit(door) { this.wd.exit = door; }
+  // a door that can be opened and shut (Backrooms). 'way' doors fill a doorway (x0..z1) when shut;
+  // 'blank' doors sit on a wall face at (cx, cz) and only ever open onto more wall.
+  door(info, x0, z0, x1, z1) {
+    const w = this.wd, d = { ...info, cells: [] };
+    if (info.kind === 'way') {
+      this.cells(x0, z0, x1, z1, (ix, iz, i) => d.cells.push(i));
+      const ix0 = Math.max(0, snap(x0)), iz0 = Math.max(0, snap(z0)), ix1 = snap(x1), iz1 = snap(z1);
+      Object.assign(d, { x0: ix0 * CELL, z0: iz0 * CELL, x1: ix1 * CELL, z1: iz1 * CELL });
+      d.cx = (d.x0 + d.x1) / 2; d.cz = (d.z0 + d.z1) / 2;
+      d.nx = info.v ? 1 : 0; d.nz = info.v ? 0 : 1;
+    } else { d.nx = info.v ? info.side : 0; d.nz = info.v ? 0 : info.side; }
+    w.doors.push(d);
+  }
 
   spawn(team, x, z, yaw) { this.wd.spawns[team].push({ x, z, yaw }); }
   site(name, x0, z0, x1, z1) { this.wd.siteRects.push({ name, x0, z0, x1, z1 }); }
@@ -152,6 +165,7 @@ export class World {
     this.pits = [];       // holes in the floor (Backrooms)
     this.pitGrid = null;
     this.exit = null;     // Backrooms exit door
+    this.doors = [];      // Backrooms doors that open and shut (all start open in the grid; setDoor shuts them)
     mapDef.build(new Builder(this));
     if (mapDef.village) this.fillHouses(mapDef.village);
     for (const list of this.spans) list.sort((a, b) => a.y0 - b.y0);
@@ -259,6 +273,28 @@ export class World {
   cellSpans(ix, iz) {
     if (ix < 0 || iz < 0 || ix >= this.w || iz >= this.h) return OUTSIDE;
     return this.spans[iz * this.w + ix];
+  }
+
+  // open or shut a door: a shut doorway is solid from the floor to just under the top of the gap
+  setDoor(i, open) {
+    const d = this.doors[i];
+    if (!d) return;
+    d.open = !!open;
+    for (const c of d.cells) {
+      const list = this.spans[c].filter(s => s.m !== '_door');
+      if (!open) { list.push({ y0: 0, y1: 2.15, m: '_door', pen: false, prop: -1 }); list.sort((a, b) => a.y0 - b.y0); }
+      this.spans[c] = list;
+    }
+  }
+
+  // the door nearest to (x, z) within reach, or -1
+  doorNear(x, z, reach = 1.9) {
+    let best = -1, bd = reach;
+    this.doors.forEach((d, i) => {
+      const dd = Math.hypot(d.cx - x, d.cz - z);
+      if (dd < bd) { bd = dd; best = i; }
+    });
+    return best;
   }
 
   // is there a hole in the floor at this point?
