@@ -131,10 +131,10 @@ The only folder is `server/` (the optional home game server).
   shut (`world.setDoor(i, open)` adds/removes '_door' spans in the gap). Players: E / hand button within ~1.9 m (`Game.doorTarget`,
   `{t:'door', i}`); host `toggleDoor` (range 2.4 m, 0.45 s cooldown, won't shut on anyone standing in the gap) broadcasts
   `{t:'door', i, open, swing}` (swings away from whoever moved it); door states travel in the start message (`doors`). The monster can't
-  open doors (owner's rule): it KICKS shut ones in (`KICK_TIME` 3 s, `kicking` / `kickStep` in `monster.js`, mode 'kick'; a
+  open doors (owner's rule): it KICKS shut ones in (`KICK_TIME` 2 s, owner's choice, `kicking` / `kickStep` in `monster.js`, mode 'kick'; a
   `{t:'doorKick', i, swing}` boom every 0.75 s — the leaves jump, `kickDoor` in `brview.js`), then `Server.breakDoor`: the door is
   `broken`, open for good, both leaves torn off and flat on the floor (`setDoor(..., broken)`, sound 'break'); players can't shut a
-  broken door (toast; start message sends 2 for broken). Its routes weigh a shut door as 3 s of running (`NavGrid.path(a, b, max, cost)`
+  broken door (toast; start message sends 2 for broken). Its routes weigh a shut door as `KICK_TIME` of running (`NavGrid.path(a, b, max, cost)`
   with `doorCost`), so it goes round when that's quicker; `straight()` stops at '_door' spans; shut doors block its sight. Wearing
   someone's skin it never kicks (doorCost = Infinity: it goes round). Opened by a player mid-kick: it stops and walks through. It hears doors within 14 m.
   `brview.js` `group.userData.setDoor` animates the leaves on hinges.
