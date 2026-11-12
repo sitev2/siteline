@@ -182,6 +182,42 @@ function exitTexture(renderer) {
   return tex(c, renderer, false);
 }
 
+// ---------- flashlights on baked surfaces ----------
+// The walls, floor and ceiling are unlit (their light is baked into them), so the usual three.js lights don't
+// touch them. Instead their shader adds up to four flashlight cones itself; game code fills these uniforms.
+export const FLASH = {
+  uFlashPos: { value: [0, 1, 2, 3].map(() => new THREE.Vector3()) },
+  uFlashDir: { value: [0, 1, 2, 3].map(() => new THREE.Vector3(0, -1, 0)) },
+  uFlashOn: { value: [0, 0, 0, 0] },
+};
+export function addFlash(material) {
+  material.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, FLASH);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec3 vFlashPos; varying vec3 vFlashN;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvFlashPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vFlashN = mat3(modelMatrix) * normal;');
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', `#include <common>
+varying vec3 vFlashPos; varying vec3 vFlashN;
+uniform vec3 uFlashPos[4]; uniform vec3 uFlashDir[4]; uniform float uFlashOn[4];
+vec3 flashLight(vec3 P, vec3 N) {
+  vec3 s = vec3(0.0);
+  for (int i = 0; i < 4; i++) {
+    if (uFlashOn[i] < 0.01) continue;
+    vec3 L = P - uFlashPos[i]; float d = length(L); L /= max(d, 0.001);
+    float cone = smoothstep(0.86, 0.96, dot(L, uFlashDir[i]));
+    float lam = abs(dot(N, L)) * 0.85 + 0.15;
+    s += uFlashOn[i] * cone * lam * 2.4 / (1.0 + d * d * 0.07);
+  }
+  return s * vec3(1.0, 0.95, 0.82);
+}`)
+      .replace('#include <map_fragment>', '#include <map_fragment>\nvec3 flashAlbedo = diffuseColor.rgb;')
+      .replace('vec3 outgoingLight = reflectedLight.indirectDiffuse;', 'vec3 outgoingLight = reflectedLight.indirectDiffuse + flashAlbedo * flashLight(vFlashPos, length(vFlashN) > 0.001 ? normalize(vFlashN) : vec3(0.0, 1.0, 0.0));');
+  };
+  material.customProgramCacheKey = () => 'flash';
+  return material;
+}
+
 // ---------- baked lighting ----------
 const LIGHT = [1.0, 0.95, 0.82];         // warm fluorescent
 const BOUNCE = [1.0, 0.9, 0.55];          // light bounced off yellow carpet and walls
@@ -207,7 +243,9 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     const cx = at(x) + BR.cell / 2, cz = at(z) + BR.cell / 2;
     if (isSolid(Math.floor(cx / CELL), Math.floor(cz / CELL))) continue;
     const r = R();
-    const state = r < 0.06 ? 'dead' : r < 0.12 ? 'flicker' : 'on';
+    // dark areas: every light dead, now and then one stuttering
+    const dark = (plan.darkZones || []).some(d => x >= d.x && x < d.x + d.w && z >= d.z && z < d.z + d.d);
+    const state = dark ? (r < 0.12 ? 'flicker' : 'dead') : r < 0.06 ? 'dead' : r < 0.12 ? 'flicker' : 'on';
     lights.push({ x: cx, z: cz, y: H - 0.02, ax: 'x', I: state === 'dead' ? 0 : state === 'flicker' ? 0.7 : 1, col: LIGHT, state, seed: R() });
   }
   // the exit glows green-white
@@ -313,13 +351,28 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
   // per-area tint so it isn't the same everywhere (low frequency grime)
   const grime = (x, z) => 0.9 + 0.12 * hash2(Math.floor(x / 3) + 101, Math.floor(z / 3) + 57) + 0.04 * hash2(Math.floor(x) + 7, Math.floor(z) + 3);
   const EXPO = 1.05, AMB = 0.035;
-  const finish = (r, g, b, ao, gr) => [Math.min(1.6, (r + AMB) * EXPO * ao * gr), Math.min(1.6, (g + AMB) * EXPO * ao * gr), Math.min(1.6, (b + AMB * 0.8) * EXPO * ao * gr)];
+  // inside a dark area even the light that spills in from next door fades out (soft over 1.5 m)
+  const zones = (plan.darkZones || []).map(d => ({ x0: at(d.x) + 0.5, z0: at(d.z) + 0.5, x1: at(d.x + d.w), z1: at(d.z + d.d) }));
+  const darkK = (x, z) => {
+    let k = 1;
+    for (const d of zones) {
+      const inside = Math.min(x - d.x0, d.x1 - x, z - d.z0, d.z1 - z);
+      if (inside > 0) k = Math.min(k, 1 - 0.8 * Math.min(1, inside / 1.5));
+    }
+    return k;
+  };
+  let fx_ = 0, fz_ = 0;                  // where finish() is being worked out (set before each call)
+  const finish = (r, g, b, ao, gr) => {
+    const k = ao * gr * EXPO * darkK(fx_, fz_);
+    return [Math.min(1.6, (r + AMB) * k), Math.min(1.6, (g + AMB) * k), Math.min(1.6, (b + AMB * 0.8) * k)];
+  };
 
   // ---------- floor (carpet) and ceiling ----------
   const fPos = [], fUV = [], fCol = [], cPos = [], cUV = [], cCol = [];
   for (let iz = 0; iz < FD; iz++) for (let ix = 0; ix < FW; ix++) {
     const x = ix * CELL, z = iz * CELL, k = iz * FW + ix;
     const gr = grime(x, z);
+    fx_ = x; fz_ = z;
     const fr = floorL[k * 3] + bounce[k * 3] * BOUNCE[0] * 0.35, fg = floorL[k * 3 + 1] + bounce[k * 3 + 1] * BOUNCE[1] * 0.35, fb = floorL[k * 3 + 2] + bounce[k * 3 + 2] * BOUNCE[2] * 0.35;
     fPos.push(x, 0, z); fUV.push(x / 2, z / 2); fCol.push(...finish(fr, fg, fb, floorAO[k], gr));
     // the ceiling only gets bounced light (panels shine down), plus a glow right around each lit panel
@@ -352,7 +405,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     group.add(m);
     return m;
   };
-  const baked = (map) => new THREE.MeshBasicMaterial({ map, vertexColors: true });
+  const baked = (map) => addFlash(new THREE.MeshBasicMaterial({ map, vertexColors: true }));
   const surfaces = [];
   surfaces.push(mesh(fPos, fUV, fCol, fIdx, baked(carpetTexture(renderer))));
   surfaces.push(mesh(cPos, cUV, cCol, cIdx, baked(ceilingTexture(renderer))));
@@ -372,6 +425,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
   const RO = rng(plan.seed * 17 + 9);
   const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
   const wallLight = (px, pz, nx, nz, y, corner, gr) => {
+    fx_ = px; fz_ = pz;
     direct(px, Math.max(0.05, Math.min(H - 0.05, y)), pz, nx, 0, nz, tmp);
     const bk2 = 0.3 * (1 - y / H * 0.4), up = 0.12 * (y / H);
     const r = tmp[0] + (bounceAt(px, pz, 0) * BOUNCE[0]) * (bk2 + up), g = tmp[1] + (bounceAt(px, pz, 1) * BOUNCE[1]) * (bk2 + up), b = tmp[2] + (bounceAt(px, pz, 2) * BOUNCE[2]) * (bk2 + up);
@@ -390,6 +444,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     // the underside of the wall above a doorway
     if (bc > 0) {
       const k = Math.min(FD - 1, iz) * FW + Math.min(FW - 1, ix);
+      fx_ = x0; fz_ = z0;
       const c = finish(bounce[k * 3] * 0.5, bounce[k * 3 + 1] * 0.48, bounce[k * 3 + 2] * 0.4, 0.8, 1);
       quadPush(wPos, wUV, wCol, [x0, bc, z0], [x1, bc, z0], [x1, bc, z1], [x0, bc, z1], x0, x1, z0, z1, c, c, c, c);
     }
@@ -450,17 +505,18 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(bPos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(bCol, 3));
-    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: '#b9ae84', vertexColors: true, side: THREE.DoubleSide }));
+    g.computeVertexNormals();
+    const m = new THREE.Mesh(g, addFlash(new THREE.MeshBasicMaterial({ color: '#b9ae84', vertexColors: true, side: THREE.DoubleSide })));
     surfaces.push(m); group.add(m);
   }
 
   // ---------- doors ----------
   // light at a spot on a wall (for things fixed to walls: they use the same baked light)
   const spotLight = (x, y, z, nx, nz) => { const c = wallLight(x + nx * 0.06, z + nz * 0.06, nx, nz, y, 1, 1); return new THREE.Color(c[0], c[1], c[2]); };
-  const frameM = new THREE.MeshBasicMaterial({ color: '#cfc6a2' });
+  const frameM = addFlash(new THREE.MeshBasicMaterial({ color: '#cfc6a2' }));
   const doorTex = doorTexture(renderer);
   const box = (w, h, d, m, x, y, z, ry = 0, tint = null) => {
-    const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), tint ? m.clone() : m);
+    const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), tint ? addFlash(m.clone()) : m);
     if (tint) o.material.color.multiply(tint);
     o.position.set(x, y, z); o.rotation.y = ry; group.add(o); return o;
   };
@@ -485,7 +541,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
         const pivot = new THREE.Group();
         const p = at3(hinge, 0, wl);
         pivot.position.set(p[0], 0, p[2]);
-        const leaf = new THREE.Mesh(new THREE.BoxGeometry(dw, DH - 0.04, 0.045), new THREE.MeshBasicMaterial({ map: doorTex }));
+        const leaf = new THREE.Mesh(new THREE.BoxGeometry(dw, DH - 0.04, 0.045), addFlash(new THREE.MeshBasicMaterial({ map: doorTex })));
         leaf.material.color.copy(tint);
         leaf.position.set(dw / 2, (DH - 0.04) / 2, 0);
         pivot.add(leaf);
@@ -500,7 +556,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
       const tint = spotLight(px, 1.1, pz, nx, nz);
       const ry = Math.atan2(nx, nz);
       // the bricked-up hole you find behind it, then the frame and the door itself
-      const back = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 2.04), new THREE.MeshBasicMaterial({ map: brickTex }));
+      const back = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 2.04), addFlash(new THREE.MeshBasicMaterial({ map: brickTex })));
       back.material.color.copy(tint).multiplyScalar(0.8);
       back.position.set(px + nx * 0.004, 1.02, pz + nz * 0.004); back.rotation.y = ry; group.add(back);
       for (const s of [-1, 1]) box(0.07, 2.12, 0.06, frameM, px + nx * 0.03 + (d.v ? 0 : s * 0.5), 1.06, pz + nz * 0.03 + (d.v ? s * 0.5 : 0), ry, tint);
@@ -511,7 +567,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
       const hx = px + nx * 0.025 - tx * 0.46 * sgn, hz = pz + nz * 0.025 - tz * 0.46 * sgn;
       const pivot = new THREE.Group();
       pivot.position.set(hx, 0, hz);
-      const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.92, 2.05, 0.04), new THREE.MeshBasicMaterial({ map: doorTex }));
+      const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.92, 2.05, 0.04), addFlash(new THREE.MeshBasicMaterial({ map: doorTex })));
       leaf.material.color.copy(tint);
       leaf.position.set(0.46, 1.025, 0);
       pivot.add(leaf);
@@ -566,7 +622,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
       // the shaft wall on the far side of this edge, facing into the hole
       const ends = nx === 1 ? [[x1, z0], [x1, z1]] : nx === -1 ? [[x0, z1], [x0, z0]] : nz === 1 ? [[x1, z1], [x0, z1]] : [[x0, z0], [x1, z0]];
       const k = (Math.round(ends[0][1] / CELL)) * FW + Math.round(ends[0][0] / CELL);
-      const top = Math.min(0.5, (floorL[k * 3] + 0.05) * 0.45);
+      const top = Math.min(0.5, (floorL[k * 3] + 0.05) * 0.45) * darkK(ends[0][0], ends[0][1]);
       // the cut edge of the floor (carpet and concrete), then rough sides fading quickly into black
       const rows = [0, -0.04, -0.16, -0.6, -1.5, -DEEP];
       const lit = y => y > -0.04 ? top * 1.1 : y > -0.16 ? top * 0.75 : top * 0.4 * Math.exp((y + 0.16) * 2.6);
@@ -584,6 +640,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pPos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(pCol, 3));
+    g.computeVertexNormals();
     const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: '#7a6a45', vertexColors: true, side: THREE.DoubleSide, fog: false }));
     surfaces.push(m); group.add(m);
   }
@@ -630,23 +687,106 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     group.add(dg);
   }
 
+  // ---------- holes in the ceiling: a missing tile, or one pushed aside (something up there) ----------
+  const voidM = new THREE.MeshBasicMaterial({ color: '#000000', fog: false, side: THREE.DoubleSide });
+  const ceilTex = ceilingTexture(renderer);
+  for (const h of plan.holes || []) {
+    const S = h.size, k = Math.min(FD - 1, Math.round(h.z / CELL)) * FW + Math.min(FW - 1, Math.round(h.x / CELL));
+    const lit = Math.max(0.05, Math.min(1.2, bounce[k * 3] * 0.62 + 0.04));
+    // a black shaft going up into the dark
+    const shaft = new THREE.Mesh(new THREE.BoxGeometry(S - 0.02, 0.9, S - 0.02), voidM);
+    shaft.position.set(h.x, H + 0.45 - 0.002, h.z);
+    group.add(shaft);
+    const gap = new THREE.Mesh(new THREE.PlaneGeometry(S - 0.01, S - 0.01), voidM);
+    gap.rotation.x = Math.PI / 2; gap.position.set(h.x, H - 0.003, h.z);
+    group.add(gap);
+    if (h.kind === 'shifted') {
+      // the tile itself, lifted and slid half off its hole, tilted up into the dark
+      const tm = new THREE.MeshBasicMaterial({ map: ceilTex.clone(), color: new THREE.Color(lit * 0.75, lit * 0.72, lit * 0.6) });
+      tm.map.repeat.set(0.5, 0.5); tm.map.needsUpdate = true;
+      const tile = new THREE.Mesh(new THREE.BoxGeometry(S - 0.02, 0.015, S - 0.02), tm);
+      const dx = [1, 0, -1, 0][h.dir] * S * 0.45, dz = [0, 1, 0, -1][h.dir] * S * 0.45;
+      tile.position.set(h.x + dx, H + 0.05, h.z + dz);
+      tile.rotation.set(dz ? Math.sign(dz) * -0.22 : 0, 0, dx ? Math.sign(dx) * 0.22 : 0);
+      group.add(tile);
+    }
+  }
+
+  // how much light falls on a spot (0 dark … ~1.3 under a panel): for dimming the people and the monster in dark areas
+  group.userData.lightAt = (x, z) => {
+    const ix = Math.max(0, Math.min(FW - 1, Math.round(x / CELL))), iz = Math.max(0, Math.min(FD - 1, Math.round(z / CELL)));
+    const k = iz * FW + ix;
+    return (floorL[k * 3] + bounce[k * 3] * 0.35 + AMB) * EXPO * darkK(x, z);
+  };
+
   // lights for players and the monster (the walls are baked and don't need them)
-  group.add(new THREE.HemisphereLight('#fff1c4', '#6b5a2a', 1.6));
+  const hemi = new THREE.HemisphereLight('#fff1c4', '#6b5a2a', 1.6);
+  group.add(hemi);
   const top = new THREE.DirectionalLight('#fff4d8', 0.9);
   top.position.set(0.3, 1, 0.2);
   group.add(top);
+  group.userData.dimPeople = (k) => { hemi.intensity = 1.6 * k; top.intensity = 0.9 * k; };
+
+  // ---------- sparks from flickering panels ----------
+  const SPARKS = 160;
+  const sGeo = new THREE.BufferGeometry();
+  const sPos = new Float32Array(SPARKS * 3), sVel = new Float32Array(SPARKS * 3), sLife = new Float32Array(SPARKS);
+  sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+  // round, hot sparks (a soft dot drawn on a tiny canvas)
+  const [dotC, dotX] = canvas(32);
+  const dg = dotX.createRadialGradient(16, 16, 0, 16, 16, 16);
+  dg.addColorStop(0, 'rgba(255,255,255,1)'); dg.addColorStop(0.35, 'rgba(255,220,140,0.9)'); dg.addColorStop(1, 'rgba(255,140,40,0)');
+  dotX.fillStyle = dg; dotX.fillRect(0, 0, 32, 32);
+  const sparks = new THREE.Points(sGeo, new THREE.PointsMaterial({ map: new THREE.CanvasTexture(dotC), color: new THREE.Color(2.4, 1.9, 1.1), size: 0.045, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
+  sparks.frustumCulled = false;
+  group.add(sparks);
+  let sNext = 0;
+  const emit = (x, y, z, n) => {
+    for (let i = 0; i < n; i++) {
+      const j = sNext++ % SPARKS;
+      sPos[j * 3] = x + (Math.random() - 0.5) * 1.0; sPos[j * 3 + 1] = y; sPos[j * 3 + 2] = z + (Math.random() - 0.5) * 0.5;
+      sVel[j * 3] = (Math.random() - 0.5) * 2.2; sVel[j * 3 + 1] = -Math.random() * 1.2; sVel[j * 3 + 2] = (Math.random() - 0.5) * 2.2;
+      sLife[j] = 0.5 + Math.random() * 0.7;
+    }
+  };
+  const flickLights = lights.filter(L => L.state === 'flicker');
+  group.userData.onSpark = null;           // game code: play the zap sound
+  let burst = null;                        // a hallucinated burst: every light near (x, z) goes mad for a moment
+  group.userData.flickerBurst = (x, z, secs = 1.4) => { burst = { x, z, until: t + secs }; };
 
   // ---------- runtime: flickering panels, and the whole place dimming when "it" is near ----------
   const flick = panelMats.flicker, flickBase = flick.color.clone();
   const surfMats = surfaces.map(m => m.material);
   let t = 0;
-  group.userData.update = (dt, dread = 0) => {
+  let wasOn = 1;
+  group.userData.update = (dt, dread = 0, cam = null) => {
     t += dt;
     animateDoors(dt);
     // a fluorescent tube that won't stay on: mostly on, with stutters and short blackouts
     const s = Math.sin(t * 13.1) + Math.sin(t * 31.7) * 0.6 + Math.sin(t * 2.3) * 1.4;
-    const on = s > -1.2 ? 1 : 0.08;
+    let on = s > -1.2 ? 1 : 0.08;
+    if (burst && t < burst.until) on = Math.random() < 0.5 ? 1 : 0.05;
     flick.color.copy(flickBase).multiplyScalar(on * (0.85 + 0.15 * Math.sin(t * 90)));
+    // as a tube stutters back on it throws sparks (and buzzes), for the ones near you
+    if (on > 0.5 && wasOn < 0.5 && cam) {
+      for (const L of flickLights) {
+        const d = Math.hypot(L.x - cam.x, L.z - cam.z);
+        if (d > 22 || Math.random() < 0.35) continue;
+        emit(L.x, H - 0.05, L.z, 6 + Math.floor(Math.random() * 8));
+        if (group.userData.onSpark && d < 16) group.userData.onSpark(L.x, H - 0.1, L.z);
+      }
+    }
+    if (burst && t < burst.until && cam && Math.random() < dt * 6) { emit(burst.x, H - 0.05, burst.z, 8); if (group.userData.onSpark) group.userData.onSpark(burst.x, H - 0.1, burst.z); }
+    wasOn = on;
+    // sparks fall, bounce off the floor and die out
+    for (let j = 0; j < SPARKS; j++) {
+      if (sLife[j] <= 0) { sPos[j * 3 + 1] = -100; continue; }
+      sLife[j] -= dt;
+      sVel[j * 3 + 1] -= 9 * dt;
+      sPos[j * 3] += sVel[j * 3] * dt; sPos[j * 3 + 1] += sVel[j * 3 + 1] * dt; sPos[j * 3 + 2] += sVel[j * 3 + 2] * dt;
+      if (sPos[j * 3 + 1] < 0.01) { sPos[j * 3 + 1] = 0.01; sVel[j * 3 + 1] *= -0.3; sVel[j * 3] *= 0.5; sVel[j * 3 + 2] *= 0.5; }
+    }
+    sGeo.attributes.position.needsUpdate = true;
     // dread: everything buzzes and dips when the monster is close
     const k = dread > 0 ? 1 - dread * (0.25 + 0.25 * (Math.sin(t * 23) > 0.6 ? 1 : 0) * (Math.sin(t * 3.1) > 0 ? 1 : 0.3)) : 1;
     for (const m of surfMats) m.color.setScalar(k);

@@ -20,6 +20,7 @@ import { Input } from './input.js';
 import { Hud, TEAM_NAMES } from './hud.js';
 import { BuyMenu } from './buy.js';
 import { icon } from './icons.js';
+import { BackroomsFX } from './brfx.js';
 
 const BOMB_STATES = ['none', 'carried', 'dropped', 'planted', 'defused', 'exploded'];
 const INTERP_DELAY = 110; // ms
@@ -51,7 +52,7 @@ function angleLerp(a, b, t) {
 const fmtClock = s => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`;
 
 export class Game {
-  constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night, doors }) {
+  constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night, doors, notes }) {
     this.transport = transport;
     this.myId = myId;
     this.practice = practice;
@@ -114,6 +115,8 @@ export class Game {
     // doors that open and shut (Backrooms): the host says which are shut
     this.setDoorView = built.group.userData.setDoor || null;
     if (doors) doors.forEach((o, i) => { this.world.setDoor(i, !!o); if (this.setDoorView) this.setDoorView(i, !!o, 1, true); });
+    this.builtMap = built;
+    this.pendingNotes = notes;
     // this map's acoustics and background sound
     sfx.setRoom(this.world.def.theme);
     sfx.startAmbience(this.world.def.theme, this.night, { x: this.world.width / 2, z: this.world.depth / 2 }, Math.max(this.world.width, this.world.depth) * 0.6);
@@ -142,6 +145,9 @@ export class Game {
 
     this.setupEffects();
     this.setupFlashlights();
+    // the Backrooms on this screen: snatches, notes, hallucinations, flashlights on the baked walls
+    this.fx = this.br ? new BackroomsFX(this, this.builtMap) : null;
+    if (this.fx) this.fx.startNotes(this.pendingNotes);
 
     // ---- state ----
     this.me = {
@@ -225,6 +231,7 @@ export class Game {
   destroy() {
     this.running = false;
     document.body.classList.remove('br-mode');
+    if (this.fx) this.fx.destroy();
     sfx.stopAmbience();
     this.cancelReloadSfx();
     this.closeChat();
@@ -414,6 +421,9 @@ export class Game {
         this.shake = Math.min(1.2, this.shake + 0.8);
         for (const r of this.remotes.values()) if (r.team === 'monster') sfx.playScreech({ x: r.rp.x, y: r.rp.y + 2.4, z: r.rp.z }, this.occlusion(r.rp.x, r.rp.y + 2, r.rp.z));
         this.hud.center('', 'It has seen you — RUN', '#ff6b4a', 2);
+        return;
+      case 'snatch': case 'note':
+        if (this.fx) this.fx.onMessage(m);
         return;
       case 'door': {
         const d = this.world.doors[m.i];
@@ -628,15 +638,16 @@ export class Game {
       this.me.zoom = 0;
       this.me.using = false;
       this.toggleBuy(false);
-      this.me.killedBy = m.w === 'monster' ? 'It' : m.w === 'fall' ? 'the fall' : killer && m.killer !== this.myId ? `${killer.name} (${itemName(m.w)}${m.head ? ', headshot' : ''})` : (m.w === 'bomb' ? 'the bomb' : '');
+      this.me.killedBy = m.w === 'monster' ? 'It' : m.w === 'fall' ? 'the fall' : m.w === 'ceiling' ? 'the ceiling' : m.w === 'corner' ? 'something' : killer && m.killer !== this.myId ? `${killer.name} (${itemName(m.w)}${m.head ? ', headshot' : ''})` : (m.w === 'bomb' ? 'the bomb' : '');
       if (m.w === 'monster') { sfx.playGrab(); this.shake = 2.5; this.hud.center('', 'It got you', '#ff4a3a', 3); }
       if (m.w === 'fall') this.hud.center('', 'You fell into the dark', '#cfc28a', 3);
-      if (m.w !== 'fall') this.spawnRagdoll(this.myId, m);
+      if (m.w === 'ceiling' || m.w === 'corner') this.hud.center('', m.w === 'ceiling' ? 'Something in the ceiling took you' : 'Something took you', '#ff4a3a', 3);
+      if (m.w !== 'fall' && m.w !== 'ceiling' && m.w !== 'corner') this.spawnRagdoll(this.myId, m);
     } else {
       const r = this.remotes.get(m.victim);
       if (r) {
         r.alive = false; r.deadT = performance.now();
-        if (r.model && r.buf.length && m.w !== 'fall' && !r.model.monster) this.spawnRagdoll(r.id, m);
+        if (r.model && r.buf.length && m.w !== 'fall' && m.w !== 'ceiling' && m.w !== 'corner' && !r.model.monster) this.spawnRagdoll(r.id, m);
       }
     }
   }
@@ -886,7 +897,7 @@ export class Game {
   // switching them on and off never makes the game stutter.
   setupFlashlights() {
     this.flash = new Map();   // (my own flashlight state is me.light, off at the start)
-    if (!this.night) return;
+    if (!this.night && !this.br) return;
     this.myLight = new THREE.SpotLight('#fff1d2', 0, 38, 0.36, 0.55, 1.1);
     this.myLight.castShadow = false;
     this.scene.add(this.myLight, this.myLight.target);
@@ -919,14 +930,14 @@ export class Game {
   }
 
   toggleFlashlight() {
-    if (!this.night || !this.me.alive) return;
+    if ((!this.night && !this.br) || !this.me.alive) return;
     this.me.light = !this.me.light;
     this.transport.send({ t: 'light', on: this.me.light });
     sfx.playClick();
   }
 
   updateFlashlights() {
-    if (!this.night) return;
+    if (!this.night && !this.br) return;
     const me = this.me, cam = this.camera;
     const on = me.alive && me.light;
     this.myLight.intensity = on ? 9 : 0;
@@ -1328,6 +1339,9 @@ export class Game {
     if (this.br) {
       // no guns, no bomb: just moving (any weapon keys do nothing)
       for (const a of ['reload', 'alt', 'w1', 'w2', 'w3', 'w5', 'next', 'prev', 'swap', 'drop', 'inspect', 'click', 'buy']) inp.consume(a);
+      // N / the note button: write or draw a note; nothing else happens while the note is open
+      if (inp.consume('note') && this.fx) this.fx.openEditor();
+      if (this.fx && this.fx.editing) { inp.consume('use'); if (inp.consume('escape')) this.fx.closeEditor(); return; }
       // E / the hand button: open or shut the door in front of you
       if (inp.consume('use')) { const i = this.doorTarget(); if (i >= 0) this.transport.send({ t: 'door', i }); }
       this.updateMovement(dt, false);
@@ -1821,7 +1835,8 @@ export class Game {
       if (m.monster) {
         m.root.visible = r.alive;
         m.root.rotation.set(0, r.rp.yaw, 0);
-        animateMonster(m, dt, { speed: r.speed, chase: !!r.use });
+        const mode = String(r.w || '').split(':');      // the host sends 'm:<mode>[:side]'
+        animateMonster(m, dt, { speed: r.speed, mode: mode[1] || 'walk', side: Number(mode[2]) || 1 });
         this.monsterSounds(r, dt, speed);
         continue;
       }
@@ -1940,6 +1955,8 @@ export class Game {
         if (dread > 0.5) { yaw += (Math.random() - 0.5) * 0.004 * dread * k; pitch += (Math.random() - 0.5) * 0.004 * dread * k; }
       }
     }
+    const sn = this.fx && this.fx.camera(cam);
+    if (sn) { x = sn.x; y = sn.y; z = sn.z; yaw = sn.yaw; pitch = sn.pitch; roll = sn.roll; }
     cam.position.set(x, y, z);
     cam.rotation.set(pitch, yaw, roll);
     this.camYaw = yaw;
@@ -2143,6 +2160,8 @@ export class Game {
       const di = this.doorTarget(), door = di >= 0 ? this.world.doors[di] : null;
       if (door) hint = `${touch ? 'Tap [[hand]]' : `Press ${this.key('use')}`} to ${door.open ? 'shut' : 'open'} the door`;
       else if (me.alive && this.clock < (this.brHintUntil || 0)) hint = touch ? 'Push the stick only part way to walk quietly' : `Hold ${this.key('walk')} to walk quietly`;
+      else if (me.alive && this.clock < (this.brHintUntil || 0) + 9) hint = touch ? 'Tap [[note]] to leave a note for the others' : `Press ${this.key('note')} to leave a note for the others`;
+      else if (me.alive && this.clock < (this.brHintUntil || 0) + 16 && this.fx && this.fx.dim < 0.3) hint = touch ? 'Dark in here: tap [[light]] for your flashlight' : `Dark in here: press ${this.key('flashlight')} for your flashlight`;
       else if (me.alive && this.world.exit && Math.hypot(this.world.exit.x - me.pos.x, this.world.exit.z - me.pos.z) < 6) hint = 'The exit! Go through the door';
       else if (!me.alive && me.escaped) hint = 'You got out. Watching the others…';
     }
@@ -2157,7 +2176,8 @@ export class Game {
     if (altBtn.dataset.icon !== altLabel) { altBtn.dataset.icon = altLabel; altBtn.innerHTML = icon(altLabel); }
     document.getElementById('btn-swap').classList.toggle('hidden', !(me.inv.primary && me.inv.secondary) && !this.owns('c4') && !me.melee);
     const lightBtn = document.getElementById('btn-light');
-    lightBtn.classList.toggle('hidden', !this.night);
+    lightBtn.classList.toggle('hidden', !this.night && !this.br);
+    document.getElementById('btn-note').classList.toggle('hidden', !this.br || !me.alive);
     lightBtn.classList.toggle('on', !!me.light);
     document.getElementById('btn-drop').classList.toggle('hidden', !me.alive || this.dm || me.weapon === me.melee || (!!WEAPONS[me.weapon] && !(me.inv.primary && me.inv.secondary)));
     hud.buyButton(canBuy && !touch && !this.buyOpen && !this.dm);
@@ -2267,6 +2287,7 @@ export class Game {
     else this.updateLocal(dt);
     this.sendState(dt);
     this.updateRemotes(dt);
+    if (this.fx) this.fx.update(dt);
     this.ragdolls.update(dt);
     this.updateDrops(dt);
     this.updateBomb(dt);
@@ -2278,7 +2299,7 @@ export class Game {
       const d = this.monsterDist ?? Infinity;
       this.monsterDist = Infinity;
       this.dread = Math.max(0, Math.min(1, (16 - d) / 12));
-      this.mapUpdate(dt, this.dread);
+      this.mapUpdate(dt, this.dread, this.camera.position);
     }
     // the sky follows the camera (so a short view distance never cuts it off)
     const skyK = (this.camera.far * 0.9) / 500;

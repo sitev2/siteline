@@ -114,6 +114,27 @@ The only folder is `server/` (the optional home game server).
   `{t:'door', i, open, swing}` (swings away from whoever moved it); door states travel in the start message (`doors`). The monster stops
   at a shut door on its way, rattles it (`doorRattle`, 0.7 s chasing / 1.2 s otherwise) and opens it; it hears doors within 14 m.
   `brview.js` `group.userData.setDoor` animates the leaves on hinges.
+  Snatches (owner's design): ceiling holes (`plan.holes`: a missing or pushed-aside 0.6 m ceiling tile, ~13 a maze) — walk under one
+  and the host `snatch(p, 'ceiling', …)` takes you, every time; the corner snatch (`cornerSnatch`, at most once a game, after 45 s):
+  2+ players, the one behind (1.5–8 m) watching the one in front while walking, passes within 0.85 m of an outside wall corner
+  (`outerCorners()` in `monster.js`), a spot just round it that they couldn't see a moment ago, nobody at all looking at that spot,
+  15 % per corner. Both broadcast `{t:'snatch', id, kind, x, z}` then a kill with weapon 'ceiling' / 'corner' (no kill feed, no
+  ragdoll: the body is gone). `brfx.js` animates the arm (`makeSnatchArm` in `models.js`), the victim's body and the victim's
+  own camera (fades to `#br-black`).
+  Dark areas: `plan.darkZones` (blocks of rooms with dead lights, light from next door fades out over 1.5 m, `darkK`); flashlights
+  work in the Backrooms (L / light button); the baked surfaces get flashlight cones through a shader hook (`addFlash` / `FLASH`
+  uniforms in `brview.js`, filled by `brfx.js`); people and the haze dim with the light where you stand (`lightAt`, `dimPeople`).
+  Flickering panels throw sparks + a zap when they stutter back on (`userData.update(dt, dread, cam)`, `onSpark`).
+  Notes: N / note button → `#note-editor` (draw on a canvas + up to 140 characters), put on the floor or taped to the wall in front
+  of you; host `onNote` (rate + count limits, text through `cleanChat`, drawing as a PNG data URL < 60 KB) broadcasts `{t:'note'}`;
+  notes travel in the start message; `#note-read` shows the one you're looking at close up. Drawings can't be filtered.
+  Hallucinations (`brfx.js`, client only — nobody else sees or hears them): footsteps behind you, whispers, knocking, a distant
+  screech, lights going mad, a figure or a "friend" standing far off that vanishes when looked at or approached; more often alone
+  or in the dark.
+  Monster peeking: now and then it picks one player (the most alone), finds a spot by an outside corner 7–16 m away where its body is
+  hidden but its head leaning out is clearly visible (`findPeek`), leans out (mode `peek:±1`), and leaves 0.5 s after that player
+  looks at its head (also if they come within 6 m, see its body, or after 15 s); after a few peeks it may charge them next time.
+  Its animation mode travels in its weapon field: `p.w = 'm:<idle|listen|walk|stalk|search|run|grab|peek:±1>'`.
   `brview.js` draws it with baked lighting (per-vertex light from every ceiling panel with 2D wall shadows, soft edges, bounce, AO;
   MeshBasic + vertex colours, so it's cheap), canvas textures (chevron wallpaper, carpet, ceiling tiles, panels, doors, outlets, own EXIT
   sign), pits, skirting boards (the board on the x-facing face runs past outside corners and gets an end cap, so corners close), the wall

@@ -59,7 +59,8 @@ export class Input {
     if (el.requestPointerLock && document.pointerLockElement !== el) {
       try {
         const p = el.requestPointerLock({ unadjustedMovement: true });
-        if (p && p.catch) p.catch(() => { try { el.requestPointerLock(); } catch (e) { /* ignore */ } });
+        // (a refused second try is fine too: the player clicks the screen to lock the mouse again)
+        if (p && p.catch) p.catch(() => { try { const q = el.requestPointerLock(); if (q && q.catch) q.catch(() => {}); } catch (e) { /* ignore */ } });
       } catch (e) { try { el.requestPointerLock(); } catch (e2) { /* ignore */ } }
     }
   }

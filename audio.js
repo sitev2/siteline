@@ -589,6 +589,35 @@ const DOOR = {
     normalize(x, 0.75);
   }),
 };
+// the Backrooms: sparks, things taking people, and sounds that aren't really there
+const BRS = {
+  // an electrical zap and crackle from a failing tube
+  spark: () => buf(0.6, (x, sr) => {
+    for (let k = 0; k < 6; k++) { const at = Math.random() * 0.35; noiseHit(x, sr, at, 'highpass', 2500 + Math.random() * 3000, 0.7, 0.01 + Math.random() * 0.03, 0.6 + Math.random() * 0.4); }
+    for (let i = 0; i < 0.12 * sr; i++) { const t = i / sr; x[i] += Math.sign(Math.sin(6.283 * 120 * t)) * Math.exp(-t * 30) * 0.4; }
+    normalize(x, 0.7);
+  }),
+  // something fast coming down out of the ceiling: a rush of air, a crunch, gone
+  ceiling: () => buf(1.4, (x, sr) => { sweepNoise(x, sr, 0, 0.3, 1800, 300, 1.2, 1, 0.2); thump(x, sr, 0.22, 90, 45, 0.25, 1); noiseHit(x, sr, 0.22, 'lowpass', 1200, 0.7, 0.12, 0.8); sweepNoise(x, sr, 0.3, 0.6, 300, 1600, 1.2, 0.7, 0.3); normalize(x, 0.9); }),
+  // round the corner: a thud against the wall and a scrape
+  corner: () => buf(1.0, (x, sr) => { thump(x, sr, 0, 120, 55, 0.18, 1); noiseHit(x, sr, 0.01, 'bandpass', 900, 1, 0.25, 0.6, 0.01); sweepNoise(x, sr, 0.08, 0.4, 2400, 600, 2, 0.5, 0.25); normalize(x, 0.85); }),
+  // a whisper (formant-filtered breath)
+  whisper: () => buf(1.6, (x, sr) => {
+    const n = x.length, a = new Float32Array(n), b = new Float32Array(n);
+    for (let i = 0; i < n; i++) { a[i] = Math.random() * 2 - 1; b[i] = Math.random() * 2 - 1; }
+    biquad(a, 'bandpass', 900 + Math.random() * 400, 4, sr); biquad(b, 'bandpass', 2400 + Math.random() * 600, 5, sr);
+    for (let i = 0; i < n; i++) { const t = i / sr, syl = Math.max(0, Math.sin(t * (9 + Math.sin(t * 2) * 3))); x[i] = (a[i] + b[i] * 0.6) * syl * Math.sin(Math.PI * t / 1.6); }
+    normalize(x, 0.5);
+  }),
+  // three knocks on the other side of a wall
+  knock: () => buf(1.3, (x, sr) => { for (const at of [0, 0.32, 0.64]) { thump(x, sr, at, 170, 110, 0.07, 1); noiseHit(x, sr, at, 'lowpass', 700, 0.7, 0.03, 0.5); } normalize(x, 0.7); }),
+};
+export function playBR(kind, pos = null, occ = 0, gain = 1) {
+  const key = `br:${kind}#${Math.floor(Math.random() * 2)}`;
+  if (!cache.has(key)) cache.set(key, BRS[kind]());
+  play(cache.get(key), { pos, gain, ref: pos ? 2.5 : 1, roll: 1.0, air: 40, occ, wet: kind === 'whisper' ? 0.15 : 0.45, important: kind === 'ceiling' || kind === 'corner' });
+}
+
 export function playDoor(pos, kind, occ = 0) {
   const key = `door:${kind}`;
   if (!cache.has(key)) cache.set(key, DOOR[kind]());

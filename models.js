@@ -1305,46 +1305,102 @@ export function makeMonsterModel() {
   return { root, hips, legs, spine, verts, chest, neck, head, arms, monster: true, phase: 0, t: Math.random() * 10, twitch: 0, twitchT: 0, chase: 0, label: null };
 }
 
-// walk, dangle, twitch; chase: hunched forward, arms reaching out, claws open
-export function animateMonster(m, dt, { speed = 0, chase = false } = {}) {
+// How it moves. mode (from the host): idle, listen, walk, stalk, search, run, grab, peek (side ±1).
+// Every pose is a set of targets the body eases towards, so it never snaps from one mode to another;
+// on top of that it twitches: the head (and sometimes an arm) jerks to a new angle and holds it.
+const MON_POSE = {
+  //        hipY  hunch armX   armZ  elX    headX neckX open  stride rate
+  idle:   [1.5,  0.08, 0.06, 0.12, -0.15, 0.0,  0.05, 0.12, 0.0,  1.0],
+  listen: [1.46, 0.16, 0.1,  0.16, -0.2,  0.15, 0.25, 0.2,  0.0,  1.0],
+  walk:   [1.5,  0.1,  0.08, 0.12, -0.2,  0.0,  0.05, 0.12, 0.34, 1.0],
+  search: [1.47, 0.14, 0.0,  0.16, -0.3,  0.1,  0.15, 0.25, 0.4,  1.15],
+  stalk:  [1.26, 0.5,  -0.32, 0.18, -0.45, -0.25, 0.5, 0.55, 0.55, 0.62],
+  run:    [1.42, 0.26, -1.25, 0.22, -0.45, -0.1, 0.35, 0.8, 0.6,  1.0],
+  grab:   [1.38, 0.3,  -1.5, 0.05, -0.1,  0.2,  0.4,  1.0,  0.0,  1.0],
+  peek:   [1.5,  0.06, 0.05, 0.1,  -0.15, 0.0,  0.0,  0.3,  0.0,  1.0],
+};
+export function animateMonster(m, dt, { speed = 0, mode = 'walk', side = 1 } = {}) {
   m.t += dt;
-  m.chase += ((chase ? 1 : 0) - m.chase) * Math.min(1, dt * 4);
+  const P = MON_POSE[mode] || MON_POSE.walk;
+  if (!m.pose) m.pose = P.slice();
+  const ease = Math.min(1, dt * (mode === 'grab' ? 14 : mode === 'peek' ? 5 : 4));
+  for (let k = 0; k < P.length; k++) m.pose[k] += (P[k] - m.pose[k]) * ease;
+  const [hipY, hunch, armX, armZ, elX, headX, neckX, open, stride, rate] = m.pose;
+  // peeking: the whole body tips sideways from the hips round the corner, the head straightens to look
+  m.peekK = (m.peekK || 0) + ((mode === 'peek' ? side : 0) - (m.peekK || 0)) * Math.min(1, dt * 4.5);
+  const pk = m.peekK;
   const moving = Math.min(1, speed / 1.5);
-  m.phase += dt * (1.4 + speed * 0.9);
-  const ph = m.phase, c = m.chase;
-  const amp = (0.32 + 0.25 * c) * moving;
-  m.hips.position.y = 1.5 - 0.06 * c + Math.abs(Math.sin(ph)) * 0.05 * moving;
-  m.hips.rotation.z = Math.sin(ph) * 0.06 * moving;
+  m.phase += dt * (1.3 + speed * 0.9) * rate;
+  const ph = m.phase, amp = stride * moving;
+  m.hips.position.y = hipY + Math.abs(Math.sin(ph)) * 0.05 * moving + Math.sin(m.t * 1.1) * 0.006;
+  m.hips.rotation.z = Math.sin(ph) * 0.06 * moving + pk * 0.42;
+  m.hips.rotation.y = Math.sin(ph) * 0.08 * moving;
   m.legs.forEach((L, i) => {
     const s = Math.sin(ph + i * Math.PI), co = Math.cos(ph + i * Math.PI);
-    L.thigh.rotation.x = s * amp - 0.12 - 0.15 * c;
-    L.shin.rotation.x = -(0.2 + Math.max(0, co) * 0.9 * moving + 0.2 * c);
+    // stalking: high, slow, deliberate steps; peeking: the leg on the far side braces outwards
+    L.thigh.rotation.x = s * amp - 0.12 - hunch * 0.5 - (mode === 'stalk' ? Math.max(0, co) * 0.35 * moving : 0);
+    L.thigh.rotation.z = (i ? -1 : 1) * 0.04 - pk * 0.18;
+    L.shin.rotation.x = -(0.2 + Math.max(0, co) * (0.9 + (mode === 'stalk' ? 0.5 : 0)) * moving + hunch * 0.6);
     L.foot.rotation.x = 0.25 * moving * Math.max(0, -co);
   });
-  // spine bends forward into a hunch (more when chasing), sways with each step
-  const hunch = 0.06 + 0.1 * c;
-  m.verts.forEach((v, i) => { v.rotation.x = -hunch * (i / 5) - (i === 5 ? 0.2 * c : 0); v.rotation.z = Math.sin(ph + i * 0.4) * 0.025 * moving; });
-  // twitches: the head (and an arm) snap to a new angle every second or two, then hold
+  // spine: hunched forward, breathing, a slow ripple through the rings when it moves; bent round the corner when peeking
+  const breathe = Math.sin(m.t * 1.7) * 0.015;
+  m.verts.forEach((v, i) => {
+    v.rotation.x = -hunch * (i / 5) - breathe * (i % 2 ? 1 : -1) + Math.sin(m.t * 3 + i * 0.7) * 0.012 * moving;
+    v.rotation.z = Math.sin(ph + i * 0.4) * 0.025 * moving + pk * 0.1;
+  });
+  // twitches
   m.twitchT -= dt;
   if (m.twitchT <= 0) {
-    m.twitchT = (chase ? 0.25 : 0.8) + Math.random() * (chase ? 0.5 : 1.8);
-    m.twitch = { hy: (Math.random() - 0.5) * 1.1, hz: (Math.random() - 0.5) * 0.9, hx: (Math.random() - 0.5) * 0.4, arm: Math.floor(Math.random() * 2), a: (Math.random() - 0.5) * 0.6 };
+    const calm = mode === 'idle' || mode === 'listen' || mode === 'peek';
+    m.twitchT = mode === 'run' ? 0.25 + Math.random() * 0.5 : calm ? 0.5 + Math.random() * 1.6 : 0.8 + Math.random() * 1.8;
+    m.twitch = { hy: (Math.random() - 0.5) * (mode === 'peek' ? 0.3 : 1.1), hz: (Math.random() - 0.5) * 0.9, hx: (Math.random() - 0.5) * 0.4, arm: Math.floor(Math.random() * 2), a: (Math.random() - 0.5) * 0.6, f: Math.random() };
   }
-  const tw = m.twitch || { hy: 0, hz: 0, hx: 0, arm: 0, a: 0 };
+  const tw = m.twitch || { hy: 0, hz: 0, hx: 0, arm: 0, a: 0, f: 0 };
   const snap = Math.min(1, dt * 30);
-  m.head.rotation.y += (tw.hy - m.head.rotation.y) * snap;
-  m.head.rotation.z += (tw.hz - m.head.rotation.z) * snap;
-  m.head.rotation.x += (tw.hx - 0.1 * c - m.head.rotation.x) * snap;
-  m.neck.rotation.x = 0.35 * c;
-  // arms: dangling and swinging behind the steps, or raised and reaching when it chases you
+  // searching: the head sweeps slowly from side to side; listening: cocked hard to one side
+  const scan = mode === 'search' ? Math.sin(m.t * 1.6) * 0.8 : 0;
+  const cock = mode === 'listen' ? 0.55 * (tw.hz > 0 ? 1 : -1) : 0;
+  m.head.rotation.y += (tw.hy * (mode === 'search' ? 0.3 : 1) + scan - m.head.rotation.y) * snap;
+  m.head.rotation.z += (tw.hz * (mode === 'listen' ? 0.3 : 1) + cock - pk * 0.75 - m.head.rotation.z) * snap;
+  m.head.rotation.x += (tw.hx + headX - m.head.rotation.x) * snap;
+  m.neck.rotation.x = neckX;
+  m.neck.rotation.z = -pk * 0.35;
+  // arms: dangling and swinging behind the steps; reaching forward when stalking, running or grabbing;
+  // peeking: the near arm hangs, the far one grips the edge of the wall
   m.arms.forEach((A, i) => {
     const s = Math.sin(ph + (i ? 0 : Math.PI) - 0.6);
-    const reach = -1.25 - Math.sin(m.t * 9 + i) * 0.08;
-    const dangle = s * 0.35 * moving + 0.08 + Math.sin(m.t * 1.3 + i) * 0.04 + (tw.arm === i ? tw.a * (1 - c) : 0);
-    A.sh.rotation.x = dangle * (1 - c) + reach * c;
-    A.sh.rotation.z = A.side * (0.12 + 0.1 * c);
-    A.el.rotation.x = -(0.15 + 0.1 * moving) * (1 - c) - 0.45 * c;
-    const open = c * (0.6 + 0.3 * Math.sin(m.t * 14 + i)) + (1 - c) * 0.12;
-    A.claws.forEach((f, k) => { f.k1.rotation.x = -open * 0.8 + (k - 1) * 0.05; f.k2.rotation.x = open * 0.9 + 0.3; });
+    const swing = s * 0.35 * moving * (mode === 'run' ? 0.3 : 1) + Math.sin(m.t * 1.3 + i) * 0.04 + (tw.arm === i ? tw.a * (mode === 'run' ? 0.2 : 1) : 0);
+    const grip = pk * A.side > 0 ? 0 : Math.abs(pk);
+    A.sh.rotation.x = armX + swing - grip * 1.1 + (mode === 'run' ? Math.sin(m.t * 9 + i) * 0.08 : 0);
+    A.sh.rotation.z = A.side * armZ + pk * 0.25 - A.side * grip * 0.4;
+    A.el.rotation.x = elX - (mode === 'stalk' ? Math.max(0, s) * 0.2 : 0) - grip * 0.6;
+    const o = open * (0.75 + 0.25 * Math.sin(m.t * (mode === 'run' ? 14 : 4) + i)) + (tw.f > 0.8 ? 0.15 : 0);
+    A.claws.forEach((f, k) => { f.k1.rotation.x = -o * 0.8 + (k - 1) * 0.05; f.k2.rotation.x = o * 0.9 + 0.3; });
   });
+  m.chase = mode === 'run' ? 1 : 0;
+}
+
+// The arm that comes down out of a hole in the ceiling (or round a corner): very long, black, jointed,
+// three claws. Its root is the shoulder; it hangs along -y. reach(k) 0 = tucked away … 1 = fully out.
+export function makeSnatchArm() {
+  const black = new THREE.MeshStandardMaterial({ color: '#0a0a0c', roughness: 0.35, metalness: 0.45 });
+  const joint = new THREE.MeshStandardMaterial({ color: '#1b1b20', roughness: 0.45, metalness: 0.6 });
+  const rod = (len, r0, r1) => { const g = new THREE.CylinderGeometry(r1, r0, len, 8); g.translate(0, -len / 2, 0); return g; };
+  const root = new THREE.Group();
+  const upper = new THREE.Group(); root.add(upper);
+  upper.add(new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), joint));
+  upper.add(new THREE.Mesh(rod(1.0, 0.026, 0.04), black));
+  const lower = new THREE.Group(); lower.position.y = -1.0; upper.add(lower);
+  lower.add(new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), joint));
+  lower.add(new THREE.Mesh(rod(0.95, 0.018, 0.03), black));
+  const hand = new THREE.Group(); hand.position.y = -0.95; lower.add(hand);
+  const claws = [];
+  for (const a of [-0.6, 0, 0.6]) {
+    const f = new THREE.Group(); f.rotation.y = a; hand.add(f);
+    const c = new THREE.Mesh(rod(0.26, 0.004, 0.014), black); f.add(c);
+    claws.push(f);
+  }
+  root.traverse(o => { o.frustumCulled = false; });
+  return { root, upper, lower, hand, claws };
 }

@@ -446,8 +446,7 @@ body.touch #hint { bottom: calc(76px + var(--sab)); }
 body.br-mode #ammo, body.br-mode #econ, body.br-mode #armor, body.br-mode #radar, body.br-mode #crosshair, body.br-mode #buy-chip,
 body.br-mode #hp, body.br-mode #team-label { display: none !important; }
 body.br-mode #touch #btn-fire, body.br-mode #touch #btn-fire-left, body.br-mode #touch #btn-reload, body.br-mode #touch #btn-alt,
-body.br-mode #touch #btn-swap, body.br-mode #touch #btn-drop, body.br-mode #touch #btn-inspect, body.br-mode #touch #btn-buy,
-body.br-mode #touch #btn-light { display: none !important; }
+body.br-mode #touch #btn-swap, body.br-mode #touch #btn-drop, body.br-mode #touch #btn-inspect, body.br-mode #touch #btn-buy { display: none !important; }
 #practice .panel { display: grid; gap: 12px; }
 #practice .p-range, #practice .p-match, #practice .p-count, #practice .p-botopt, #practice .p-behavior { display: none; }
 #practice.m-range.bots-on .p-behavior { display: grid; }
@@ -602,3 +601,31 @@ i[data-icon] .ico { vertical-align: 0; }
 #touch button .ico { width: 55%; height: 55%; }
 #touch button i[data-icon] { width: 100%; height: 100%; justify-content: center; }
 #touch button i[data-icon] .ico { width: 55%; height: 55%; }
+
+/* ---------- the Backrooms: notes, going dark ---------- */
+#note-editor { position: fixed; inset: 0; z-index: 75; display: grid; place-items: center; background: rgba(8,9,11,.6); padding: 12px; }
+#note-editor.hidden, #note-read.hidden, #br-black.hidden { display: none; }
+.note-panel { background: #1b1c20; border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: grid; gap: 10px; width: min(320px, 92vw); }
+.note-head { display: flex; justify-content: space-between; align-items: baseline; }
+.note-head small { color: var(--muted); }
+#note-canvas { width: 100%; aspect-ratio: 1; background: #f3efe2; border-radius: 6px; touch-action: none; cursor: crosshair; }
+#note-text { padding: 9px 11px; border-radius: 9px; border: 1px solid var(--line); background: #0f1013; color: #fff; font-size: 1rem; }
+.note-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.note-buttons button:disabled { opacity: .4; }
+.note-msg { margin: 0; min-height: 1em; font-size: .8rem; color: #ff9a7a; }
+#note-read { position: fixed; right: calc(14px + var(--sar)); top: 50%; transform: translateY(-50%) rotate(-2deg); z-index: 25; pointer-events: none;
+  background: #f3efe2; padding: 6px 6px 4px; border-radius: 3px; box-shadow: 0 8px 30px rgba(0,0,0,.55); display: grid; gap: 2px; }
+#note-read-canvas { width: min(220px, 34vw); aspect-ratio: 1; }
+#note-read-who { color: #5a5444; font-size: .7rem; text-align: right; }
+#br-black { position: fixed; inset: 0; z-index: 22; background: #000; pointer-events: none; transition: opacity .35s; }
+#btn-note { width: 44px; height: 44px; right: calc(230px + var(--sar)); top: calc(62px + var(--sat)); font-size: 1rem; border-radius: 10px; }
+
+/* phones held sideways: drawing on the left, writing and buttons on the right */
+.note-panel { grid-template-areas: "head" "canvas" "text" "b1" "b2" "msg"; }
+.note-head { grid-area: head; } #note-canvas { grid-area: canvas; } #note-text { grid-area: text; }
+.nb1 { grid-area: b1; } .nb2 { grid-area: b2; } .note-msg { grid-area: msg; }
+@media (max-height: 600px) {
+  .note-panel { grid-template-columns: auto 1fr; grid-template-areas: "canvas head" "canvas text" "canvas b1" "canvas b2" "canvas msg"; width: min(640px, 96vw); align-items: start; padding: 10px; gap: 8px; }
+  #note-canvas { width: min(calc(100vh - 44px), 300px); }
+  .note-buttons button { padding: 9px 6px; font-size: .8rem; }
+}
