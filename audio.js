@@ -639,6 +639,21 @@ const BRS = {
     thump(x, sr, 0.3, 110, 55, 0.12, 0.7);
     normalize(x, 0.85);
   }),
+  // slow, wet breathing right behind you: a long inhale, a rattling exhale
+  breath: () => buf(2.6, (x, sr) => {
+    const n = x.length, a = new Float32Array(n);
+    for (let i = 0; i < n; i++) a[i] = Math.random() * 2 - 1;
+    biquad(a, 'bandpass', 650, 1.2, sr);
+    for (let i = 0; i < n; i++) {
+      const t = i / sr;
+      const inh = t < 1.1 ? Math.sin(Math.PI * t / 1.1) * 0.55 : 0;
+      const exh = t > 1.3 && t < 2.5 ? Math.sin(Math.PI * (t - 1.3) / 1.2) * (1 + 0.5 * Math.sign(Math.sin(t * 2 * Math.PI * 38))) : 0;
+      x[i] = a[i] * (inh + exh * 0.9);
+    }
+    normalize(x, 0.6);
+  }),
+  // your own heart: lub-dub
+  heart: () => buf(0.5, (x, sr) => { thump(x, sr, 0, 62, 38, 0.11, 1); thump(x, sr, 0.17, 55, 34, 0.09, 0.7); normalize(x, 0.9); }),
   // something heavy and round hitting the carpet
   thud: () => buf(0.5, (x, sr) => { thump(x, sr, 0, 95, 50, 0.14, 1); noiseHit(x, sr, 0, 'lowpass', 600, 0.7, 0.06, 0.4); normalize(x, 0.8); }),
   // three knocks on the other side of a wall
@@ -648,6 +663,13 @@ export function playBR(kind, pos = null, occ = 0, gain = 1) {
   const key = `br:${kind}#${Math.floor(Math.random() * 2)}`;
   if (!cache.has(key)) cache.set(key, BRS[kind]());
   play(cache.get(key), { pos, gain, ref: pos ? 2.5 : 1, roll: 1.0, air: 40, occ, wet: kind === 'whisper' ? 0.15 : 0.45, important: kind === 'ceiling' || kind === 'corner' || kind === 'tear' });
+}
+
+// your heartbeat (not in the world: inside your head), louder and harder the closer it is
+export function playHeart(gain = 1) {
+  const key = 'br:heart';
+  if (!cache.has(key)) cache.set(key, BRS.heart());
+  play(cache.get(key), { gain: 0.35 + gain * 0.9, wet: 0, lowpass: 400, important: true });
 }
 
 export function playDoor(pos, kind, occ = 0) {

@@ -635,6 +635,9 @@ i[data-icon] .ico { vertical-align: 0; }
 #note-read-canvas { width: min(220px, 34vw); aspect-ratio: 1; }
 #note-read-who { color: #5a5444; font-size: .7rem; text-align: right; }
 #br-black { position: fixed; inset: 0; z-index: 22; background: #000; pointer-events: none; transition: opacity .35s; }
+/* grain and static on your screen when it is close (brfx.js draws it) */
+#br-static { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 21; pointer-events: none; image-rendering: pixelated; mix-blend-mode: screen; opacity: 0; }
+#br-static.hidden { display: none; }
 #btn-note { width: 44px; height: 44px; right: calc(230px + var(--sar)); top: calc(62px + var(--sat)); font-size: 1rem; border-radius: 10px; }
 
 /* phones held sideways: drawing on the left, writing and buttons on the right */

@@ -1302,11 +1302,25 @@ export function makeDropModel(kind, weapon) {
 // About 2.75 m tall and very thin: black jointed limbs like tubing and machine parts, cables running
 // down its spine and arms, arms long enough to drag near the floor ending in three long claws, and
 // instead of a face a narrow head with a cluster of small pale lights. It faces -z like the players.
+// a soft round glow (the monster's eyes in the dark)
+let glowTex = null;
+function glowTexture() {
+  if (glowTex) return glowTex;
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const g = c.getContext('2d'), gr = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+  gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(220,230,255,0.55)'); gr.addColorStop(1, 'rgba(160,180,255,0)');
+  g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
+  glowTex = new THREE.CanvasTexture(c);
+  return glowTex;
+}
+
 export function makeMonsterModel() {
-  const black = new THREE.MeshStandardMaterial({ color: '#0c0c0e', roughness: 0.32, metalness: 0.45 });
-  const joint = new THREE.MeshStandardMaterial({ color: '#1c1c21', roughness: 0.45, metalness: 0.6 });
-  const cable = new THREE.MeshStandardMaterial({ color: '#050506', roughness: 0.6, metalness: 0.2 });
-  const eye = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 2.3, 2.6) });
+  // a shadow more than a body: matte black that takes almost no light, and two small eyes that glow in the
+  // dark (game.js turns them up when it stands somewhere dark or in a flashlight: setGlow)
+  const black = new THREE.MeshStandardMaterial({ color: '#030304', roughness: 0.96, metalness: 0.0 });
+  const joint = new THREE.MeshStandardMaterial({ color: '#08080a', roughness: 0.9, metalness: 0.05 });
+  const cable = new THREE.MeshStandardMaterial({ color: '#020203', roughness: 0.95, metalness: 0.0 });
+  const eye = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 0.52, 0.58) });
   const rod = (len, r0, r1 = r0) => { const g = new THREE.CylinderGeometry(r1, r0, len, 8); g.translate(0, -len / 2, 0); return g; };   // hangs down from its top
   const ball = r => new THREE.SphereGeometry(r, 10, 8);
   const add = (parent, geo, m, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
@@ -1364,8 +1378,13 @@ export function makeMonsterModel() {
   const head = new THREE.Group(); head.position.set(0, 0.24, -0.03); neck.add(head);
   add(head, new THREE.CapsuleGeometry(0.06, 0.2, 4, 10), black, 0, 0.08, 0);
   add(head, new THREE.TorusGeometry(0.07, 0.012, 6, 14), joint, 0, 0.02, 0).rotation.x = Math.PI / 2;
-  const eyes = [[0.02, 0.13, -0.055, 0.011], [-0.025, 0.1, -0.056, 0.008], [0.03, 0.06, -0.054, 0.007], [-0.012, 0.16, -0.05, 0.007], [0.0, 0.05, -0.058, 0.009], [-0.032, 0.03, -0.05, 0.006], [0.018, 0.2, -0.045, 0.006]];
-  for (const [x, y, z, r] of eyes) add(head, ball(r * 1.8), eye, x * 1.2, y, z - 0.008);
+  // two small eyes, set a little unevenly, each with a soft glow round it
+  const halos = [];
+  const haloMat = new THREE.SpriteMaterial({ map: glowTexture(), color: new THREE.Color(0.75, 0.82, 1), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+  for (const [x, y, r] of [[0.026, 0.125, 0.0115], [-0.024, 0.118, 0.01]]) {
+    add(head, ball(r), eye, x, y, -0.064);
+    const h = new THREE.Sprite(haloMat); h.position.set(x, y, -0.075); h.scale.setScalar(0.13); head.add(h); halos.push(h);
+  }
 
   // arms: very long, two joints, three claws that open and close
   const arms = [];
@@ -1393,7 +1412,15 @@ export function makeMonsterModel() {
     arms.push({ sh, el, hand, claws, side: Math.sign(sx) });
   }
   root.traverse(o => { if (o.isMesh) o.castShadow = true; });
-  return { root, hips, legs, spine, verts, chest, neck, head, arms, monster: true, phase: 0, t: Math.random() * 10, twitch: 0, twitchT: 0, chase: 0, label: null };
+  // k: 0 = in bright light (eyes barely there) … 1 = pitch dark or caught in a flashlight (two burning points)
+  const setGlow = (k) => {
+    const v = 0.35 + 2.6 * k;
+    eye.color.setRGB(v, v * 1.04, v * 1.15);
+    haloMat.opacity = Math.min(1, k * 1.1);
+    for (const h of halos) h.scale.setScalar(0.08 + 0.12 * k);
+  };
+  setGlow(0.2);
+  return { root, hips, legs, spine, verts, chest, neck, head, arms, setGlow, monster: true, phase: 0, t: Math.random() * 10, twitch: 0, twitchT: 0, chase: 0, label: null };
 }
 
 // How it moves. mode (from the host): idle, listen, walk, stalk, search, run, grab, peek (side ±1).
@@ -1411,8 +1438,11 @@ const MON_POSE = {
   peek:   [1.5,  0.06, 0.05, 0.1,  -0.15, 0.0,  0.0,  0.3,  0.0,  1.0],
   reveal: [1.32, 0.42, -1.05, 0.55, -0.7,  0.35, 0.5,  1.0,  0.0,  1.0],   // bursting out of a skin: hunched, arms flung wide
   kick:   [1.44, 0.18, -0.45, 0.4,  -0.45, -0.1, 0.25, 0.7,  0.0,  1.0],   // kicking a door in: arms out for balance
+  crawl:  [1.35, 0.05, 0.0,  0.2,  -0.4,  0.1,  0.0,  0.9,  0.7,  1.2],   // on all fours (the spine is tipped flat below)
+  drag:   [1.47, 0.16, 0.08, 0.12, -0.2,  0.15, 0.1,  0.2,  0.3,  0.9],   // dragging a body by the leg (the right arm reaches back)
+  freeze: [1.5,  0.1,  0.08, 0.12, -0.2,  0.0,  0.05, 0.12, 0.34, 1.0],   // stopped dead (game.js holds the pose it was in)
 };
-export function animateMonster(m, dt, { speed = 0, mode = 'walk', side = 1 } = {}) {
+export function animateMonster(m, dt, { speed = 0, mode = 'walk', side = 1, duck = 0 } = {}) {
   m.t += dt;
   const P = MON_POSE[mode] || MON_POSE.walk;
   if (!m.pose) m.pose = P.slice();
@@ -1457,7 +1487,10 @@ export function animateMonster(m, dt, { speed = 0, mode = 'walk', side = 1 } = {
   if (m.twitchT <= 0) {
     const calm = mode === 'idle' || mode === 'listen' || mode === 'peek';
     m.twitchT = mode === 'run' ? 0.25 + Math.random() * 0.5 : calm ? 0.5 + Math.random() * 1.6 : 0.8 + Math.random() * 1.8;
-    m.twitch = { hy: (Math.random() - 0.5) * (mode === 'peek' ? 0.3 : 1.1), hz: (Math.random() - 0.5) * 0.9, hx: (Math.random() - 0.5) * 0.4, arm: Math.floor(Math.random() * 2), a: (Math.random() - 0.5) * 0.6, f: Math.random() };
+    // now and then the head snaps round much further than any neck should go
+    const wrong = mode !== 'peek' && Math.random() < 0.15 ? (Math.random() < 0.5 ? -1 : 1) * (1.5 + Math.random() * 0.7) : 0;
+    m.twitch = { hy: wrong || (Math.random() - 0.5) * (mode === 'peek' ? 0.3 : 1.1), hz: (Math.random() - 0.5) * 0.9, hx: (Math.random() - 0.5) * 0.4, arm: Math.floor(Math.random() * 2), a: (Math.random() - 0.5) * 0.6, f: Math.random() };
+    if (wrong) m.twitchT = 0.35 + Math.random() * 0.5;
   }
   const tw = m.twitch || { hy: 0, hz: 0, hx: 0, arm: 0, a: 0, f: 0 };
   const snap = Math.min(1, dt * 30);
@@ -1481,7 +1514,42 @@ export function animateMonster(m, dt, { speed = 0, mode = 'walk', side = 1 } = {
     const o = open * (0.75 + 0.25 * Math.sin(m.t * (mode === 'run' ? 14 : 4) + i)) + (tw.f > 0.8 ? 0.15 : 0);
     A.claws.forEach((f, k) => { f.k1.rotation.x = -o * 0.8 + (k - 1) * 0.05; f.k2.rotation.x = o * 0.9 + 0.3; });
   });
-  m.chase = mode === 'run' ? 1 : 0;
+  // dragging a body: the right arm hangs back and down, its claws closed round an ankle
+  if (mode === 'drag') {
+    const A = m.arms[1];
+    A.sh.rotation.x = -0.55 + Math.sin(ph) * 0.05; A.sh.rotation.z = A.side * 0.15; A.el.rotation.x = -0.15;
+    A.claws.forEach(f => { f.k1.rotation.x = 0.1; f.k2.rotation.x = 1.1; });
+  }
+  // on all fours: the spine tipped forward flat, long arms reaching down to the floor as front legs, a fast
+  // scuttling gallop
+  m.crawlK = (m.crawlK || 0) + ((mode === 'crawl' ? 1 : 0) - (m.crawlK || 0)) * Math.min(1, dt * 7);
+  const ck = m.crawlK;
+  m.spine.rotation.x = -1.25 * ck;
+  if (ck > 0.02) {
+    m.neck.rotation.x = neckX * (1 - ck) + 1.0 * ck;
+    m.arms.forEach((A, i) => {
+      const s = Math.sin(ph * 1.3 + (i ? Math.PI : 0));
+      A.sh.rotation.x = A.sh.rotation.x * (1 - ck) + (1.25 + s * 0.55 * moving) * ck;
+      A.sh.rotation.z = A.sh.rotation.z * (1 - ck) + A.side * 0.3 * ck;
+      A.el.rotation.x = A.el.rotation.x * (1 - ck) + (-0.35 - Math.max(0, -s) * 0.6) * ck;
+    });
+    m.legs.forEach((L, i) => {
+      const s = Math.sin(ph * 1.3 + (i ? 0 : Math.PI) + 0.6);
+      L.thigh.rotation.x = L.thigh.rotation.x * (1 - ck) + (0.15 + s * 0.6 * moving) * ck;
+      L.shin.rotation.x = L.shin.rotation.x * (1 - ck) + -(0.5 + Math.max(0, s) * 0.7 * moving) * ck;
+    });
+    m.verts.forEach((v, i) => { v.rotation.x *= 1 - ck; v.rotation.x += Math.sin(ph * 1.3 + i * 0.6) * 0.05 * ck; });
+  }
+  // squeezing through a doorway (it is taller than the doors): knees bent, head down
+  m.duckK = (m.duckK || 0) + (duck - (m.duckK || 0)) * Math.min(1, dt * 6);
+  if (m.duckK > 0.01) {
+    const k = m.duckK * (1 - ck);
+    m.hips.position.y -= 0.42 * k;
+    m.legs.forEach(L => { L.thigh.rotation.x += 0.75 * k; L.shin.rotation.x -= 1.35 * k; });
+    m.verts.forEach((v, i) => { v.rotation.x -= 0.3 * k * (i / 5); });
+    m.neck.rotation.x += 0.4 * k;
+  }
+  m.chase = mode === 'run' || mode === 'crawl' ? 1 : 0;
 }
 
 // The arm that comes down out of a hole in the ceiling (or round a corner): very long, black, jointed,

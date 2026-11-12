@@ -168,10 +168,30 @@ The only folder is `server/` (the optional home game server).
   everyone) when they come within 1.3 m, after 1.6–4.2 s next to them, when they turn their back, after 180 s, or if the victim
   leaves; state 'reveal' (0.9 s, mode 'm:reveal', game.js grows it from 0.6× after 0.3 s), then it chases. `brfx.onSkinReveal`:
   the suit shudders and bursts into torn scraps that stay on the floor (sound 'tear' + screech). No gore.
+  Scarier monster (owner picked ALL of these):
+  - Looks: a matte black shadow (`makeMonsterModel`), two small eyes with glow sprites; `setGlow(k)` from `brfx.eyeGlow` (dark where it
+    stands, or in your flashlight beam = burning; barely there in light; low while it has you face to face).
+  - Lights die round it: `FLASH.uDark` (x, z, radius 7.5, strength) darkens the baked light (`addFlash`) and the ceiling panels
+    (`addDark`) near it, stuttering as it arrives; people/haze dim too. Not while it is hidden in someone's skin.
+  - Moves wrong: game.js updates its model like a film with frames missing (`jerkAcc` / `jerkStep` 0.05–0.14 s, sometimes a stall);
+    the head sometimes snaps round 1.5–2.2 rad. Ducks through doorways (`duck` from the door it is in, `animateMonster(..., duck)`).
+    A new chase is on all fours 1 time in 5 (`crawl`, mode 'crawl'). Stalking you and you turn round: it freezes mid-step (mode
+    'freeze', game.js holds the pose) until you look away, or 5 s of staring, or you're within 6 m — then it charges.
+  - Sound: your heartbeat (`playHeart`) faster/louder within 22 m, even through walls; breathing right behind you when it is
+    within 4.5 m behind you (BRS 'breath'); hallucinated breathing and footsteps that copy yours and stop a moment after you stop
+    (`follow`); it lures you (`{t:'lure', kind: 'steps'|'door'}` every 30–65 s from somewhere a player 7–24 m away can't see).
+  - Death: caught by it you're lifted face to face (`caughtMe` / `caughtCamera`, it turns to face you), static fills the screen,
+    then black. Screen grain/static (`#br-static`, drawn by brfx) grows within 13 m of it.
+  - What it does with a body (`Server.monsterKill`, owner's numbers, one roll): 1/3 take the skin (if nobody saw and someone is left;
+    otherwise a normal kill), 1/6 'drag' (`brain.carry`: it drags it by the leg — kill message `fate`, its mode string carries the
+    body id `m:<mode>:1:<id>`, no ragdoll; `brfx.takeBody/updateBodies` lays the hazmat body on its back behind its right hand —
+    until it sees its next target or 120 s: `{t:'dropBody'}`), 1/6 'hang' (`wallSpot`: nearest wall within 7 m; state 'hangGo',
+    1.6 s lifting, `{t:'hangBody', x, z, nx, nz}`: pinned 0.8 m up by two black spikes, head hanging), else left where it fell.
+    Bodies are only on screens that saw the kill (not for people who join later).
   Monster peeking: now and then it picks one player (the most alone), finds a spot by an outside corner 7–16 m away where its body is
   hidden but its head leaning out is clearly visible (`findPeek`), leans out (mode `peek:±1`), and leaves 0.5 s after that player
   looks at its head (also if they come within 6 m, see its body, or after 15 s); after a few peeks it may charge them next time.
-  Its animation mode travels in its weapon field: `p.w = 'm:<idle|listen|walk|stalk|search|run|grab|peek:±1>'`.
+  Its animation mode travels in its weapon field: `p.w = 'm:<idle|listen|walk|stalk|search|run|crawl|grab|kick|drag|freeze|skin|reveal>:1[:bodyId]'` (or `m:peek:±1`).
   In the Backrooms players wear hazmat suits (`makePlayerModel(team, name, false, 'hazmat')`: yellow rubber, black boots/gloves/tape,
   hood with a dark visor and a respirator) with their name printed on a patch on the back instead of a name tag over the head.
   Suit legs: round hip joints, the thigh runs on past the knee + a knee sphere, so joints never open up when they bend. The torso shell's
