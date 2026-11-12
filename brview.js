@@ -223,7 +223,13 @@ export const FLASH = {
   uDark: { value: new THREE.Vector4(0, 0, 1, 0) },
 };
 const DARK_FN = `uniform vec4 uDark;
-float darkAt(vec3 P) { return 1.0 - uDark.w * (1.0 - smoothstep(uDark.z * 0.4, uDark.z, length(P.xz - uDark.xy))); }`;
+float darkAt(vec3 P) { return 1.0 - uDark.w * (1.0 - smoothstep(uDark.z * 0.4, uDark.z, length(P.xz - uDark.xy))); }
+// the last of the light in the dark is cold and colourless: very dim warm light otherwise turns the yellow wallpaper
+// and the carpet into muddy dark-red streaks on screen, like stains
+vec3 coldDark(vec3 c) {
+  float l = dot(c, vec3(0.299, 0.587, 0.114));
+  return mix(c, vec3(l) * vec3(0.86, 0.95, 1.18), 1.0 - smoothstep(0.015, 0.09, l));
+}`;
 const WORLD_POS = 'vec4 fwp = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\nfwp = instanceMatrix * fwp;\n#endif\n';
 // the ceiling panels (and anything else lit by nothing but itself) go dark around the monster too
 export function addDark(material) {
@@ -257,14 +263,14 @@ vec3 flashLight(vec3 P, vec3 N) {
     vec3 L = P - uFlashPos[i]; float d = length(L); L /= max(d, 0.001);
     float c = dot(L, uFlashDir[i]);
     // a bright beam reaching well down a corridor, with a soft dim spill round its edge
-    float cone = smoothstep(0.86, 0.96, c) + 0.16 * smoothstep(0.68, 0.88, c);
+    float cone = smoothstep(0.915, 0.975, c) + 0.1 * smoothstep(0.8, 0.93, c);      // (a tighter circle: owner's request)
     float lam = abs(dot(N, L)) * 0.85 + 0.15;
     s += uFlashOn[i] * cone * lam * 2.3 / (1.0 + d * d * 0.022);
   }
   return s * vec3(1.0, 0.95, 0.82);
 }`)
       .replace('#include <map_fragment>', '#include <map_fragment>\nvec3 flashAlbedo = diffuseColor.rgb;')
-      .replace('vec3 outgoingLight = reflectedLight.indirectDiffuse;', 'vec3 outgoingLight = reflectedLight.indirectDiffuse * darkAt(vFlashPos) + flashAlbedo * flashLight(vFlashPos, length(vFlashN) > 0.001 ? normalize(vFlashN) : vec3(0.0, 1.0, 0.0));');
+      .replace('vec3 outgoingLight = reflectedLight.indirectDiffuse;', 'vec3 outgoingLight = coldDark(reflectedLight.indirectDiffuse * darkAt(vFlashPos)) + flashAlbedo * flashLight(vFlashPos, length(vFlashN) > 0.001 ? normalize(vFlashN) : vec3(0.0, 1.0, 0.0));');
   };
   material.customProgramCacheKey = () => 'flash';
   return material;
@@ -415,7 +421,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
   };
   let fx_ = 0, fz_ = 0;                  // where finish() is being worked out (set before each call)
   const finish = (r, g, b, ao, gr) => {
-    const k = ao * gr * EXPO * darkK(fx_, fz_);
+    const dk = darkK(fx_, fz_), k = ao * gr * EXPO * dk;
     return [Math.min(1.6, (r + AMB) * k), Math.min(1.6, (g + AMB) * k), Math.min(1.6, (b + AMB * 0.8) * k)];
   };
 
