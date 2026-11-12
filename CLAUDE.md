@@ -105,8 +105,8 @@ The only folder is `server/` (the optional home game server).
   `#lobby-level` → `settings.level`, Practice uses `#p-level`): walkway width in pit rooms (1.5 / 1 / 0.5 m), ceiling holes
   (8 / 11 / 14), dark areas (2 / 3 / 4), arrows, and the monster (`lv`): chase speed = your sprint × 1.05 / 1.10 / 1.15 (owner's choice),
   sight / chaseSight (it loses you sooner on easy), fov, `lose` (s before it gives up seeing you), `lead`, hearing, search spots, wake time.
-  Controls in the Backrooms only (owner's choice; 2v2/DM unchanged): you WALK by default (`BR.walk` 3.2 m/s, quiet), Shift (the 'walk'
-  key) or holding the jump button on phones (it shows the `run` icon; `input.jumpHeld`) SPRINTS (`BR.sprint` 5.3 m/s, loud; `Game.sprinting()`),
+  Controls in the Backrooms only (owner's choice; 2v2/DM unchanged): you WALK by default (`BR.walk` 2.7 m/s, quiet; was 3.2 — owner asked for slower, may still tune), Shift (the 'walk'
+  key) or holding the jump button on phones (it shows the `run` icon; `input.jumpHeld`) SPRINTS (`BR.sprint` 4.5 m/s, was 5.3, loud; the monster's speeds were cut ~15 % too; `Game.sprinting()`),
   no jumping, F (the inspect key) is the flashlight as well as L.
   A new random maze every game: `brmap.js` (`planMaze(seed, level)` / `backroomsMap(variant)`;
   NOT in `MAPS`, `resolveMap('backrooms', variant)`; the variant is "seed:level" (`brVariant` / `parseBrVariant`, a plain number = normal)):

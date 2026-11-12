@@ -7,9 +7,9 @@ import { BR, BR_LEVELS, brLevel } from './brmap.js';
 // The fixed numbers. Everything that changes with the difficulty (how fast it chases: 5 / 10 / 15 %
 // faster than your sprint, how far it sees and hears, how quickly it loses you) is in BR_LEVELS in brmap.js.
 export const MONSTER = {
-  wander: 2.3,       // m/s walking around
-  stalk: 2.9,        // m/s creeping up behind someone who hasn't seen it
-  search: 4.0,       // m/s going to a noise, or searching where you were last seen
+  wander: 2.0,       // m/s walking around
+  stalk: 2.5,        // m/s creeping up behind someone who hasn't seen it
+  search: 3.4,       // m/s going to a noise, or searching where you were last seen
   lunge: 1.12,       // × its chasing speed for the last few metres
   reach: 1.15,       // m: grabs you this close
   height: 2.75,      // m: how tall it is (for its eyes)
