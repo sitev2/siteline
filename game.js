@@ -428,7 +428,7 @@ export class Game {
         for (const r of this.remotes.values()) if (r.team === 'monster') sfx.playScreech({ x: r.rp.x, y: r.rp.y + 2.4, z: r.rp.z }, this.occlusion(r.rp.x, r.rp.y + 2, r.rp.z));
         this.hud.center('', 'It has seen you — RUN', '#ff6b4a', 2);
         return;
-      case 'snatch': case 'note':
+      case 'snatch': case 'note': case 'skinReveal':
         if (this.fx) this.fx.onMessage(m);
         return;
       case 'door': {
@@ -636,6 +636,8 @@ export class Game {
     if (m.killer === this.myId && m.victim !== this.myId && WEAPONS[m.w]) this.weaponKills[m.w] = (this.weaponKills[m.w] || 0) + 1;
     const killer = m.killer ? this.playerById(m.killer) : null;
     const victim = this.playerById(m.victim);
+    // the monster wore your skin: you were told when it happened, not again when it changes back
+    if (m.w === 'skin' && m.victim === this.myId && this.me.skinned) return;
     this.hud.killfeed(killer, victim, m.w, m.head);
     if (m.victim === this.myId) {
       this.me.alive = false;
@@ -644,16 +646,23 @@ export class Game {
       this.me.zoom = 0;
       this.me.using = false;
       this.toggleBuy(false);
-      this.me.killedBy = m.w === 'monster' ? 'It' : m.w === 'fall' ? 'the fall' : m.w === 'ceiling' ? 'the ceiling' : m.w === 'corner' ? 'something' : killer && m.killer !== this.myId ? `${killer.name} (${itemName(m.w)}${m.head ? ', headshot' : ''})` : (m.w === 'bomb' ? 'the bomb' : '');
+      this.me.killedBy = m.w === 'monster' || m.w === 'skin' ? 'It' : m.w === 'fall' ? 'the fall' : m.w === 'ceiling' ? 'the ceiling' : m.w === 'corner' ? 'something' : killer && m.killer !== this.myId ? `${killer.name} (${itemName(m.w)}${m.head ? ', headshot' : ''})` : (m.w === 'bomb' ? 'the bomb' : '');
       if (m.w === 'monster') { sfx.playGrab(); this.shake = 2.5; this.hud.center('', 'It got you', '#ff4a3a', 3); }
+      if (m.w === 'skin') {
+        // nobody else knows: to them you are still walking about
+        this.me.skinned = true;
+        sfx.playGrab(); this.shake = 2.5;
+        this.hud.center('It took your skin', 'It is wearing you now. The others think you are still with them.', '#ff4a3a', 6);
+        if (this.fx) this.fx.blackout(2.4);
+      }
       if (m.w === 'fall') this.hud.center('', 'You fell into the dark', '#cfc28a', 3);
       if (m.w === 'ceiling' || m.w === 'corner') this.hud.center('', m.w === 'ceiling' ? 'Something in the ceiling took you' : 'Something took you', '#ff4a3a', 3);
-      if (m.w !== 'fall' && m.w !== 'ceiling' && m.w !== 'corner') this.spawnRagdoll(this.myId, m);
+      if (m.w !== 'fall' && m.w !== 'ceiling' && m.w !== 'corner' && m.w !== 'skin') this.spawnRagdoll(this.myId, m);
     } else {
       const r = this.remotes.get(m.victim);
       if (r) {
         r.alive = false; r.deadT = performance.now();
-        if (r.model && r.buf.length && m.w !== 'fall' && m.w !== 'ceiling' && m.w !== 'corner' && !r.model.monster) this.spawnRagdoll(r.id, m);
+        if (r.model && r.buf.length && m.w !== 'fall' && m.w !== 'ceiling' && m.w !== 'corner' && m.w !== 'skin' && !r.model.monster) this.spawnRagdoll(r.id, m);
       }
     }
   }
@@ -1850,6 +1859,14 @@ export class Game {
         m.root.visible = r.alive;
         m.root.rotation.set(0, r.rp.yaw, 0);
         const mode = String(r.w || '').split(':');      // the host sends 'm:<mode>[:side]'
+        // changing back out of someone's skin: it unfolds up out of the suit to its full height
+        // (the first 0.3 s the suit it wore shudders and splits, brfx.js; then it grows out of it)
+        if (mode[1] === 'reveal') {
+          m.revealT = (m.revealT || 0) + dt;
+          const k = Math.min(1, Math.max(0, (m.revealT - 0.3) / 0.45));
+          m.root.scale.setScalar(0.6 + 0.4 * k * k * (3 - 2 * k));
+          if (m.revealT < 0.3) m.root.visible = false;
+        } else if (m.revealT) { m.revealT = 0; m.root.scale.setScalar(1); }
         animateMonster(m, dt, { speed: r.speed, mode: mode[1] || 'walk', side: Number(mode[2]) || 1 });
         this.monsterSounds(r, dt, speed);
         continue;
@@ -2207,7 +2224,7 @@ export class Game {
       let text = me.killedBy ? `Killed by ${me.killedBy}` : 'You are dead';
       if (target && since > 2) text = `Spectating ${target.name} — ${touch ? 'tap' : 'click'} to switch`;
       if (this.practice || this.dm) text = me.killedBy ? `Killed by ${me.killedBy} — respawning…` : 'Respawning…';
-      if (this.br && !(target && since > 2)) text = me.escaped ? 'You escaped!' : me.killedBy === 'It' ? 'It caught you' : me.killedBy === 'the fall' ? 'You fell into the dark' : 'You are out';
+      if (this.br && !(target && since > 2)) text = me.escaped ? 'You escaped!' : me.skinned ? 'It is wearing your skin' : me.killedBy === 'It' ? 'It caught you' : me.killedBy === 'the fall' ? 'You fell into the dark' : 'You are out';
       hud.death(text);
     } else hud.death(null);
 

@@ -1409,12 +1409,13 @@ const MON_POSE = {
   run:    [1.42, 0.26, -1.25, 0.22, -0.45, -0.1, 0.35, 0.8, 0.6,  1.0],
   grab:   [1.38, 0.3,  -1.5, 0.05, -0.1,  0.2,  0.4,  1.0,  0.0,  1.0],
   peek:   [1.5,  0.06, 0.05, 0.1,  -0.15, 0.0,  0.0,  0.3,  0.0,  1.0],
+  reveal: [1.32, 0.42, -1.05, 0.55, -0.7,  0.35, 0.5,  1.0,  0.0,  1.0],   // bursting out of a skin: hunched, arms flung wide
 };
 export function animateMonster(m, dt, { speed = 0, mode = 'walk', side = 1 } = {}) {
   m.t += dt;
   const P = MON_POSE[mode] || MON_POSE.walk;
   if (!m.pose) m.pose = P.slice();
-  const ease = Math.min(1, dt * (mode === 'grab' ? 14 : mode === 'peek' ? 5 : 4));
+  const ease = Math.min(1, dt * (mode === 'grab' || mode === 'reveal' ? 14 : mode === 'peek' ? 5 : 4));
   for (let k = 0; k < P.length; k++) m.pose[k] += (P[k] - m.pose[k]) * ease;
   const [hipY, hunch, armX, armZ, elX, headX, neckX, open, stride, rate] = m.pose;
   // peeking: the whole body tips sideways from the hips round the corner, the head straightens to look

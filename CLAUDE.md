@@ -98,9 +98,10 @@ The only folder is `server/` (the optional home game server).
 - Maps: 2v2 `outpost`, `foundry`, `frostline`, `canal`, `flame` (one bomb site each, plus `dm` spawns for 3-player deathmatch);
   deathmatch `quarry`, `railyard` (`mode: 'dm'`, small/large variants via `build(b, size)`; `resolveMap()` in `maps.js`)
 - Deathmatch rules: `RULES.dm` in `config.js`; server phase `'dm'`, everyone on team `'ffa'` during the match
-- The Backrooms (`settings.mode = 'br'`; server phase `'br'`, `this.br`): **HIDDEN for now (owner's call, "until further notice")**:
-  `BACKROOMS_OPEN = false` in `main.js` removes its lobby and Practice buttons (`hideBackrooms()`); set it to true to bring it back. No
-  other way in (owner chose "completely hidden"). 1–4 players co-op,
+- The Backrooms (`settings.mode = 'br'`; server phase `'br'`, `this.br`): **not released yet (owner's call)**: only the owner's test
+  account `test123` sees its lobby and Practice buttons (`BACKROOMS_TESTERS` / `backroomsAllowed()` / `hideBackrooms()` in `main.js`,
+  re-checked on login/logout); friends who join that account's room play along. `BACKROOMS_OPEN = true` shows it to everyone again.
+  The lock is only in the page (not real security; the owner was told). 1–4 players co-op,
   no guns (`p.w = 'none'`, empty hands), find the exit door. Three difficulties (`BR_LEVELS` in `brmap.js`: easy / normal / hard; lobby
   `#lobby-level` → `settings.level`, Practice uses `#p-level`): bridge width over pit rooms (1.5 / 1 / 0.5 m), extra bridges, ceiling holes
   (8 / 11 / 14), dark areas (2 / 3 / 4), arrows, and the monster (`lv`): chase speed = your sprint × 1.05 / 1.10 / 1.15 (owner's choice),
@@ -147,8 +148,19 @@ The only folder is `server/` (the optional home game server).
   of you; host `onNote` (rate + count limits, text through `cleanChat`, drawing as a PNG data URL < 60 KB) broadcasts `{t:'note'}`;
   notes travel in the start message; `#note-read` shows the one you're looking at close up. Drawings can't be filtered.
   Hallucinations (`brfx.js`, client only — nobody else sees or hears them): footsteps behind you, whispers, knocking, a distant
-  screech, lights going mad, a figure or a "friend" standing far off that vanishes when looked at or approached; more often alone
-  or in the dark.
+  screech, lights going mad, a figure (the monster) standing far off that vanishes when looked at or approached; more often alone
+  or in the dark. No fake teammates any more (the owner replaced them with the skin-wearing below).
+  Wearing a skin (owner's design): when the monster catches someone and nobody else saw it (`canWear`: no living player with a line
+  of sight within 32 m) and someone is still alive to fool, 1 time in 3 (`SKIN_CHANCE`, all levels) it takes their skin
+  (`Server.monsterKill` → `brSkin = { id }`, `brain.wear`). Only the victim and the already dead/escaped are sent the kill (w 'skin',
+  no ragdoll, the victim's screen blacks out: "It took your skin"); `snapshot()` shows the victim alive where the monster is (no
+  flashlight) and hides the monster, so the scoreboard and "Inside" count still count them. While it lasts, chat from dead players
+  only reaches the dead/escaped. Brain state 'skin' (`skinStep`): walks like a player (`BR.walk`, sprints only when far and unseen)
+  to the nearest player, stands ~2 m away facing them; clues: head twitch (pitch jerk) every 5–14 s, it stares, never a flashlight
+  or a note, it opens doors like a person. It changes back (`unmask` → `revealSkin`: `{t:'skinReveal'}` + the delayed kill to
+  everyone) when they come within 1.3 m, after 1.6–4.2 s next to them, when they turn their back, after 180 s, or if the victim
+  leaves; state 'reveal' (0.9 s, mode 'm:reveal', game.js grows it from 0.6× after 0.3 s), then it chases. `brfx.onSkinReveal`:
+  the suit shudders and bursts into torn scraps that stay on the floor (sound 'tear' + screech). No gore.
   Monster peeking: now and then it picks one player (the most alone), finds a spot by an outside corner 7–16 m away where its body is
   hidden but its head leaning out is clearly visible (`findPeek`), leans out (mode `peek:±1`), and leaves 0.5 s after that player
   looks at its head (also if they come within 6 m, see its body, or after 15 s); after a few peeks it may charge them next time.

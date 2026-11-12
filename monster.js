@@ -15,6 +15,7 @@ export const MONSTER = {
   height: 2.75,      // m: how tall it is (for its eyes)
 };
 const RUN_SPEED = 3.5;   // m/s: faster than this is sprinting (loud); walking is BR.walk
+export const SKIN_CHANCE = 1 / 3;   // a kill nobody else saw: how often it takes their skin and wears it (owner's choice)
 
 const angTo = (from, to) => { let d = to - from; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
 
@@ -54,10 +55,12 @@ export class MonsterBrain {
   humans() { return [...this.s.players.values()].filter(q => !q.bot && !q.dummy && q.alive && !q.escaped); }
 
   update(dt, now) {
+    this.lastNow = now;
     this.step(dt, now);
-    // what the players' screens should animate: idle, walk, stalk, run, search, listen, grab, peek:±1
+    // what the players' screens should animate: idle, walk, stalk, run, search, listen, grab, peek:±1,
+    // skin (wearing someone: the host hides it and shows them instead), reveal (changing back)
     const p = this.p, sp = Math.hypot(this.vel.x, this.vel.z);
-    const mode = now < (this.grabUntil || 0) ? 'grab'
+    const mode = this.state === 'skin' ? 'skin' : this.state === 'reveal' ? 'reveal' : now < (this.grabUntil || 0) ? 'grab'
       : this.state === 'peek' ? `peek:${this.peekSide || 1}`
         : now < this.pauseUntil ? (this.opening ? 'idle' : 'listen')
           : sp < 0.3 ? 'idle'
@@ -73,6 +76,18 @@ export class MonsterBrain {
     if (this.started == null) { this.started = now; this.listenAt = now + wake + 15; this.lastClue = now; this.nextPeek = now + wake + 25 + Math.random() * 30; }
     if (now - this.started < wake) { p.use = false; return; }
     if (this.state === 'wait') this.state = 'wander';
+    if (this.state === 'skin') { this.thinkAt = now; this.skinStep(dt, now); return; }
+    if (this.state === 'reveal') {
+      // changing back (0.9 s), then straight for whoever it was standing next to
+      p.use = false;
+      this.move(null, 0, dt);
+      if (now >= this.revealEnd) {
+        const t = this.target;
+        if (t && t.alive && !t.escaped) { this.state = 'chase'; this.lostAt = now; this.s.monsterAlert(p, t); } else { this.state = 'wander'; this.target = null; }
+        this.goal = null; this.path = null;
+      }
+      return;
+    }
     if (now >= this.thinkAt) { this.thinkAt = now + 0.12; this.think(now); }
     if (now < this.pauseUntil) { p.use = false; if (this.opening) this.doors(now, null); this.move(null, 0, dt); return; }
     if (this.state === 'peek') { this.peekHold(dt, now); this.move(null, 0, dt); return; }
@@ -130,6 +145,8 @@ export class MonsterBrain {
       if (d.kind !== 'way' || d.open) continue;
       const dx = d.cx - p.x, dz = d.cz - p.z, dist = Math.hypot(dx, dz);
       if (dist > 1.5 || (dx * dir[0] + dz * dir[1]) / (dist || 1) < 0.3) continue;
+      // wearing someone: it just opens it, like a person would
+      if (this.state === 'skin') { this.s.toggleDoor(i, true, p); return false; }
       const wait = this.state === 'chase' ? 0.7 : 1.2;
       this.opening = { i, at: now + wait };
       this.pauseUntil = now + wait;
@@ -178,6 +195,7 @@ export class MonsterBrain {
   // what it notices: who it can see, and footsteps it can hear
   think(now) {
     const p = this.p;
+    if (this.state === 'skin' || this.state === 'reveal') return;
     let seen = null, seenD = Infinity, heard = null, heardD = Infinity;
     for (const q of this.humans()) {
       const d = Math.hypot(q.x - p.x, q.z - p.z);
@@ -244,6 +262,79 @@ export class MonsterBrain {
       if (this.state === 'wander' && !this.goal) this.goal = this.wanderGoal(now);
     }
     p.use = this.state === 'chase';     // clients: screeching, running animation
+  }
+
+  // ---------- wearing someone ----------
+  // It has just caught q. If nobody else saw (and 1 time in 3) it takes their skin and wears it: everyone else
+  // still sees q, walking about. It goes to the nearest player like a teammate would, stands with them a
+  // moment too long, then changes back and goes for them. Small clues give it away to a careful player:
+  // it never turns a flashlight on or leaves a note, its head twitches now and then, and it stares.
+  canWear(q) {
+    if (this.state === 'skin' || this.state === 'reveal' || Math.random() >= SKIN_CHANCE) return false;
+    const others = this.humans().filter(o => o !== q);
+    if (!others.length) return false;                // nobody left to fool
+    const w = this.world, p = this.p;
+    return !others.some(o => Math.hypot(o.x - q.x, o.z - q.z) < 32
+      && (w.los(o.x, o.y + EYE, o.z, q.x, q.y + 1.2, q.z) || w.los(o.x, o.y + EYE, o.z, p.x, p.y + 2.2, p.z)));
+  }
+
+  wear(q) {
+    const now = this.lastNow || 0;
+    this.skin = { id: q.id, since: now, target: null, pickAt: 0, close: 0, away: 0, hold: 1.6 + Math.random() * 2.6, twitchAt: now + 3 + Math.random() * 5, twitchUntil: 0, twitch: 0 };
+    this.state = 'skin';
+    this.goal = null; this.path = null; this.target = null; this.opening = null;
+    this.pauseUntil = 0; this.grabUntil = 0;
+    this.vel.x = this.vel.z = 0;
+  }
+
+  skinStep(dt, now) {
+    const p = this.p, s = this.skin, hs = this.humans();
+    p.use = false;
+    if (!hs.length) { this.unmask(now); return; }
+    // who it goes for: the nearest, thought about again every few seconds
+    if (!s.target || !s.target.alive || s.target.escaped || now > s.pickAt) {
+      s.target = hs.reduce((a, b) => (Math.hypot(b.x - p.x, b.z - p.z) < Math.hypot(a.x - p.x, a.z - p.z) ? b : a));
+      s.pickAt = now + 4;
+    }
+    const t = s.target, d = Math.hypot(t.x - p.x, t.z - p.z);
+    this.target = t;                                 // (standing still, it turns to face them: it stares)
+    // a clue: now and then its head twitches
+    if (now > s.twitchAt) { s.twitchUntil = now + 0.14; s.twitch = (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.25); s.twitchAt = now + 5 + Math.random() * 9; }
+    p.pitch = now < s.twitchUntil ? s.twitch : 0;
+    // it never found anyone to fool: it changes back where it is
+    if (now - s.since > 180) { this.unmask(now); return; }
+    const sees = this.world.los(p.x, p.y + EYE, p.z, t.x, t.y + EYE, t.z);
+    if (d < 2.6 && sees) {
+      // right next to them, the way a teammate stands... for a moment too long
+      s.close += dt;
+      const fx = -Math.sin(t.yaw), fz = -Math.cos(t.yaw);
+      const away = ((p.x - t.x) * fx + (p.z - t.z) * fz) / (d || 1) < -0.2;     // they turned their back on it
+      s.away = away ? s.away + dt : 0;
+      if (d < 1.3 || s.close > s.hold || (s.close > 0.6 && s.away > 0.35)) { this.unmask(now); return; }
+      this.move(d > 1.9 ? [(t.x - p.x) / d, (t.z - p.z) / d] : null, 1.2, dt);
+      return;
+    }
+    s.close = Math.max(0, s.close - dt * 0.5);
+    // on its way: walking like a person (it only sprints to catch up when they're far off and can't see it)
+    const speed = d > 22 && !sees ? BR.sprint : d > 7 ? BR.walk : Math.max(1.4, BR.walk * (d - 2) / 5);
+    const k = Math.max(0, (d - 2) / (d || 1));
+    const goal = sees && d < 9 ? { x: p.x + (t.x - p.x) * k, y: 0, z: p.z + (t.z - p.z) * k } : { x: t.x, y: 0, z: t.z };
+    const dir = this.navigate(goal, now);
+    this.doors(now, dir);
+    this.move(dir, speed, dt);
+  }
+
+  // stop pretending: it changes back where it stands (everyone now learns who it had been wearing)
+  unmask(now) {
+    const s = this.skin;
+    if (!s) return;
+    this.skin = null;
+    this.p.pitch = 0;
+    this.state = 'reveal';
+    this.revealEnd = now + 0.9;
+    this.vel.x = this.vel.z = 0;
+    this.target = s.target && s.target.alive && !s.target.escaped ? s.target : null;
+    this.s.revealSkin(this.p, s.id);
   }
 
   // ---------- peeking ----------
@@ -365,6 +456,7 @@ export class MonsterBrain {
     for (const q of this.humans()) {
       if (Math.hypot(q.x - p.x, q.z - p.z) < MONSTER.reach && Math.abs(q.y - p.y) < 1.6 && this.world.los(p.x, p.y + 1.2, p.z, q.x, q.y + 1.2, q.z)) {
         this.s.monsterKill(p, q);
+        if (this.state === 'skin') return;          // it took their skin: now it is them
         this.grabUntil = now + 0.7;
         this.pauseUntil = now + 2.5;      // it stays over them for a moment
         this.state = 'wander'; this.target = null; this.goal = null;

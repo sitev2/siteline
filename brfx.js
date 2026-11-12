@@ -45,6 +45,8 @@ export class BackroomsFX {
     this.notes = new Map();           // id → { note, mesh }
     this.events = [];                 // snatch animations in progress
     this.heads = [];                  // heads the ceiling spat back out: { wait, x, z, name, obj, v, spin }
+    this.shells = [];                 // a skin it wore, splitting open as it changes back: { model, t, x, z }
+    this.shreds = [];                 // bits of torn suit: { mesh, v, spin, still }
     this.hallu = null;                // a hallucination being shown
     this.halluAt = 60 + Math.random() * 40;
     this.editing = false;
@@ -53,6 +55,7 @@ export class BackroomsFX {
   }
 
   destroy() {
+    clearTimeout(this.blackTimer);
     for (const [el, ev, fn] of this.bound || []) el.removeEventListener(ev, fn);
     $('note-editor').classList.add('hidden');
     $('note-read').classList.add('hidden');
@@ -62,6 +65,7 @@ export class BackroomsFX {
   onMessage(m) {
     if (m.t === 'snatch') { this.onSnatch(m); return true; }
     if (m.t === 'note') { this.addNote(m.note); return true; }
+    if (m.t === 'skinReveal') { this.onSkinReveal(m); return true; }
     return false;
   }
 
@@ -209,6 +213,93 @@ export class BackroomsFX {
     return { x: ev.from.x + (ev.x - ev.from.x) * up, y: ev.from.y + EYE + up * (H - EYE + 0.6), z: ev.from.z + (ev.z - ev.from.z) * up, yaw: cam.rotation.y, pitch: Math.min(1.5, 0.4 + ev.t * 5), roll: Math.sin(ev.t * 30) * 0.08 };
   }
 
+  // the screen goes black for a moment, then fades back (it took your skin)
+  blackout(secs) {
+    const black = $('br-black');
+    black.classList.remove('hidden'); black.style.opacity = '1';
+    clearTimeout(this.blackTimer);
+    this.blackTimer = setTimeout(() => { black.style.opacity = '0'; setTimeout(() => { if (black.style.opacity === '0') black.classList.add('hidden'); }, 400); }, secs * 1000);
+  }
+
+  // ---------- it changes back out of someone's skin ----------
+  // The suit it was wearing shudders, splits open in a spray of torn yellow rubber, and it unfolds out
+  // of it to its full height (game.js grows the monster; the host gives it 0.9 s before it moves).
+  onSkinReveal(m) {
+    const g = this.g;
+    const model = makePlayerModel('atk', m.name || '', false, 'hazmat');
+    setModelWeapon(model, 'none');
+    model.root.position.set(m.x, 0, m.z);
+    model.root.rotation.y = m.yaw || 0;
+    this.scene.add(model.root);
+    this.shells.push({ model, t: 0, x: m.x, z: m.z, burst: false });
+    const pos = { x: m.x, y: 1.4, z: m.z };
+    sfx.playBR('tear', pos, g.occlusion(pos.x, pos.y, pos.z), 1.2);
+  }
+
+  updateShells(dt) {
+    const g = this.g;
+    for (const s of this.shells) {
+      s.t += dt;
+      const M = s.model;
+      if (!s.burst) {
+        // shuddering, swelling, the head jerking about
+        animateModel(M, dt, { speed: 0, pitch: Math.sin(s.t * 47) * 0.5 });
+        const k = Math.min(1, s.t / 0.3);
+        M.root.scale.set(1 + k * 0.18 + Math.sin(s.t * 61) * 0.04, 1 + k * 0.12, 1 + k * 0.18 + Math.cos(s.t * 53) * 0.04);
+        M.root.rotation.z = Math.sin(s.t * 38) * 0.08;
+        if (s.t >= 0.3) {
+          s.burst = true;
+          this.scene.remove(M.root);
+          this.tearSuit(s.x, s.z);
+          const pos = { x: s.x, y: 2.2, z: s.z };
+          sfx.playScreech(pos, g.occlusion(pos.x, pos.y, pos.z));
+        }
+      }
+    }
+    this.shells = this.shells.filter(s => !s.burst);
+    // the torn bits fly, fall and lie where they land
+    const w = g.world;
+    for (const b of this.shreds) {
+      if (b.still) continue;
+      const o = b.mesh.position;
+      b.v.y -= 9.8 * dt;
+      const nx = o.x + b.v.x * dt, nz = o.z + b.v.z * dt;
+      if (w.blocked(nx, o.z, 0.05, Math.max(0, o.y - 0.1))) b.v.x *= -0.3; else o.x = nx;
+      if (w.blocked(o.x, nz, 0.05, Math.max(0, o.y - 0.1))) b.v.z *= -0.3; else o.z = nz;
+      o.y += b.v.y * dt;
+      b.mesh.rotation.x += b.spin.x * dt; b.mesh.rotation.y += b.spin.y * dt; b.mesh.rotation.z += b.spin.z * dt;
+      if (o.y <= 0.012 && !w.isPit(o.x, o.z)) {
+        // flat on the carpet
+        o.y = 0.012; b.still = true;
+        b.mesh.rotation.set(-Math.PI / 2, 0, Math.random() * Math.PI * 2);
+      } else if (o.y < -4) { this.scene.remove(b.mesh); b.still = true; }
+    }
+  }
+
+  // a spray of torn suit: ragged yellow pieces (and a few black bits of glove and boot)
+  tearSuit(x, z) {
+    if (!this.shredMats) {
+      this.shredMats = ['#d8b41c', '#c9a514', '#e2c02a', '#151515'].map(c => new THREE.MeshLambertMaterial({ color: c, side: THREE.DoubleSide }));
+      this.shredGeos = [0, 1, 2, 3].map(i => {
+        // an irregular little polygon, like a torn scrap
+        const sh = new THREE.Shape(), n = 6 + i;
+        for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2, r = 0.06 + ((k * 7 + i * 3) % 5) * 0.018; k ? sh.lineTo(Math.cos(a) * r, Math.sin(a) * r) : sh.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
+        return new THREE.ShapeGeometry(sh);
+      });
+    }
+    for (let k = 0; k < 16; k++) {
+      const mesh = new THREE.Mesh(this.shredGeos[k % 4], this.shredMats[k < 13 ? k % 3 : 3]);
+      const s = 0.7 + Math.random() * 0.9;
+      mesh.scale.set(s, s * (0.6 + Math.random() * 0.8), 1);
+      mesh.position.set(x + (Math.random() - 0.5) * 0.4, 0.6 + Math.random() * 1.1, z + (Math.random() - 0.5) * 0.4);
+      const a = Math.random() * Math.PI * 2, sp = 1.5 + Math.random() * 2.5;
+      this.scene.add(mesh);
+      this.shreds.push({ mesh, v: { x: Math.cos(a) * sp, y: 1 + Math.random() * 3, z: Math.sin(a) * sp }, spin: new THREE.Vector3(Math.random() * 14 - 7, Math.random() * 14 - 7, Math.random() * 14 - 7), still: false });
+    }
+    // keep the floor from filling up over a long game
+    while (this.shreds.length > 64) { const b = this.shreds.shift(); this.scene.remove(b.mesh); }
+  }
+
   // ---------- notes ----------
   startNotes(list) { for (const n of list || []) this.addNote(n); }
 
@@ -337,7 +428,7 @@ export class BackroomsFX {
     const alone = ![...g.remotes.values()].some(r => r.alive && r.team !== 'monster' && Math.hypot(r.rp.x - me.pos.x, r.rp.z - me.pos.z) < 10);
     const dark = this.built.lightAt && this.built.lightAt(me.pos.x, me.pos.z) < 0.25;
     this.halluAt = g.clock + (40 + Math.random() * 70) * (alone ? 0.7 : 1) * (dark ? 0.6 : 1);
-    const kinds = ['steps', 'whisper', 'knock', 'screech', 'figure', 'friend', 'lights', 'figure'];
+    const kinds = ['steps', 'whisper', 'knock', 'screech', 'figure', 'lights', 'figure'];
     const kind = kinds[Math.floor(Math.random() * kinds.length)];
     const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw), P = me.pos;
     const occ = (x, z) => g.occlusion(x, 1.2, z);
@@ -365,18 +456,10 @@ export class BackroomsFX {
       const a = me.yaw + (Math.random() - 0.5) * 1.2, d = 10 + Math.random() * 9;
       const x = me.pos.x - Math.sin(a) * d, z = me.pos.z - Math.cos(a) * d;
       if (w.blocked(x, z, 0.4, 0) || w.isPit(x, z) || !w.los(me.pos.x, me.pos.y + EYE, me.pos.z, x, 1.5, z)) continue;
-      let model;
-      if (kind === 'figure') model = makeMonsterModel();
-      else {
-        // someone in a suit, back turned, with a friend's name on it (or no name at all)
-        const mates = [...g.remotes.values()].filter(r => r.team !== 'monster');
-        const who = mates.length && Math.random() < 0.6 ? mates[Math.floor(Math.random() * mates.length)].name : '';
-        model = makePlayerModel('atk', who, false, 'hazmat'); setModelWeapon(model, 'none');
-      }
+      const model = makeMonsterModel();
       model.root.position.set(x, 0, z);
-      // the monster faces you; a "friend" stands with their back to you
-      const toMe = Math.atan2(-(me.pos.x - x), -(me.pos.z - z));
-      model.root.rotation.y = kind === 'figure' ? toMe : toMe + Math.PI;
+      // it faces you
+      model.root.rotation.y = Math.atan2(-(me.pos.x - x), -(me.pos.z - z));
       this.scene.add(model.root);
       this.hallu = { kind, model, t: 0, x, z, seen: 0 };
       return;
@@ -386,8 +469,7 @@ export class BackroomsFX {
   updateVision(dt) {
     const h = this.hallu, g = this.g, me = g.me;
     h.t += dt;
-    if (h.kind === 'figure') animateMonster(h.model, dt, { speed: 0, mode: 'idle' });
-    else animateModel(h.model, dt, { speed: 0, pitch: 0 });
+    animateMonster(h.model, dt, { speed: 0, mode: 'idle' });
     const dx = h.x - me.pos.x, dz = h.z - me.pos.z, d = Math.hypot(dx, dz);
     const look = Math.abs(((Math.atan2(-dx, -dz) - me.yaw + Math.PI * 3) % (Math.PI * 2)) - Math.PI) < 0.12;
     if (look) h.seen += dt;
@@ -399,6 +481,7 @@ export class BackroomsFX {
     const g = this.g;
     this.updateSnatches(dt);
     this.updateHeads(dt);
+    this.updateShells(dt);
     if (!g.paused) this.hallucinate(dt);
     this.readNote();
     // people (and it) are only as bright as the place you are in
