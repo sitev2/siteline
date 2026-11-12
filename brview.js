@@ -268,7 +268,7 @@ vec3 flashLight(vec3 P, vec3 N) {
     float core = smoothstep(0.86, 0.995, c);
     float cone = core * core * 1.15 + 0.07 * smoothstep(0.7, 0.95, c);
     float lam = abs(dot(N, L)) * 0.85 + 0.15;
-    s += uFlashOn[i] * cone * lam * 2.3 / (1.0 + d * d * 0.022);
+    s += uFlashOn[i] * cone * lam * 1.84 / (1.0 + d * d * 0.022);      // (20 % dimmer: owner's request)
   }
   return s * vec3(1.0, 0.95, 0.82);
 }`)
@@ -419,7 +419,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     for (const d of zones) {
       const inside = Math.min(x - d.x0, d.x1 - x, z - d.z0, d.z1 - z);
       // (nearly pitch black: bring a flashlight); no hard line where the dark begins
-      if (inside > 0) { const f = Math.min(1, inside / 2.5); k = Math.min(k, 1 - 0.965 * f * f * (3 - 2 * f)); }
+      if (inside > 0) { const f = Math.min(1, inside / 2.5); k = Math.min(k, 1 - 0.975 * f * f * (3 - 2 * f)); }
     }
     return k;
   };
