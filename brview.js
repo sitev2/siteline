@@ -255,9 +255,11 @@ vec3 flashLight(vec3 P, vec3 N) {
   for (int i = 0; i < 4; i++) {
     if (uFlashOn[i] < 0.01) continue;
     vec3 L = P - uFlashPos[i]; float d = length(L); L /= max(d, 0.001);
-    float cone = smoothstep(0.86, 0.96, dot(L, uFlashDir[i]));
+    float c = dot(L, uFlashDir[i]);
+    // a bright beam reaching well down a corridor, with a soft dim spill round its edge
+    float cone = smoothstep(0.86, 0.96, c) + 0.16 * smoothstep(0.68, 0.88, c);
     float lam = abs(dot(N, L)) * 0.85 + 0.15;
-    s += uFlashOn[i] * cone * lam * 2.4 / (1.0 + d * d * 0.07);
+    s += uFlashOn[i] * cone * lam * 2.3 / (1.0 + d * d * 0.022);
   }
   return s * vec3(1.0, 0.95, 0.82);
 }`)
@@ -407,7 +409,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     let k = 1;
     for (const d of zones) {
       const inside = Math.min(x - d.x0, d.x1 - x, z - d.z0, d.z1 - z);
-      if (inside > 0) k = Math.min(k, 1 - 0.8 * Math.min(1, inside / 1.5));
+      if (inside > 0) k = Math.min(k, 1 - 0.965 * Math.min(1, inside / 1.5));      // (nearly pitch black: bring a flashlight)
     }
     return k;
   };

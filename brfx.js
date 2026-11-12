@@ -695,14 +695,14 @@ export class BackroomsFX {
       let l = this.built.lightAt(g.camera.position.x, g.camera.position.z);
       // (and the dark it brings with it)
       if (this.darkPos) { const dd = Math.hypot(this.darkPos.x - g.camera.position.x, this.darkPos.z - g.camera.position.z); l *= 1 - 0.9 * this.darkK * Math.max(0, Math.min(1, (7.5 - dd) / 4.5)); }
-      const k = Math.max(0.1, Math.min(1, 0.1 + l * 0.95));
+      const k = Math.max(0.035, Math.min(1, 0.035 + l * 1.0));
       this.dim = this.dim == null ? k : this.dim + (k - this.dim) * Math.min(1, dt * 3);
       this.built.dimPeople(this.dim);
       // the haze goes dark too, or distant dark rooms would glow yellow
       const fog = g.scene.fog;
       if (fog) {
         if (!this.fogBase) this.fogBase = fog.color.clone();
-        fog.color.copy(this.fogBase).multiplyScalar(Math.max(0.06, Math.min(1, this.dim * 1.1)));
+        fog.color.copy(this.fogBase).multiplyScalar(Math.max(0.02, Math.min(1, this.dim * 1.1)));
       }
     }
     // flashlights light the baked walls too (up to four, nearest first)

@@ -147,8 +147,10 @@ The only folder is `server/` (the optional home game server).
   15 % per corner. Both broadcast `{t:'snatch', id, kind, x, z}` then a kill with weapon 'ceiling' / 'corner' (no kill feed, no
   ragdoll: the body is gone). `brfx.js` animates the arm (`makeSnatchArm` in `models.js`), the victim's body and the victim's
   own camera (fades to `#br-black`).
-  Dark areas: `plan.darkZones` (blocks of rooms with dead lights, light from next door fades out over 1.5 m, `darkK`); flashlights
-  work in the Backrooms (F or L / light button); the baked surfaces get flashlight cones through a shader hook (`addFlash` / `FLASH`
+  Dark areas: `plan.darkZones` (blocks of rooms with dead lights, light from next door fades out over 1.5 m, `darkK`: down to 3.5 %,
+  nearly pitch black — owner asked for darker; people dim to 3.5 % and the haze to 2 % there); flashlights
+  work in the Backrooms (F or L / light button) and reach further there (shader: bright cone + a dim spill round it, 2.3 / (1 + 0.022 d²);
+  SpotLight for people 16 / 14 intensity, 48 / 42 m, 0.44 rad; 2v2 night mode keeps the old flashlight); the baked surfaces get flashlight cones through a shader hook (`addFlash` / `FLASH`
   uniforms in `brview.js`, filled by `brfx.js`); people and the haze dim with the light where you stand (`lightAt`, `dimPeople`).
   Flickering panels throw sparks + a zap when they stutter back on (`userData.update(dt, dread, cam)`, `onSpark`).
   Notes: N / note button → `#note-editor` (draw on a canvas + up to 140 characters), put on the floor or taped to the wall in front
