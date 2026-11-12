@@ -311,7 +311,8 @@ export class Game {
         this.scene.add(rem.model.root);
       }
       if (!rem.model) {
-        rem.model = makePlayerModel(r.team, r.name, this.isMate(r));
+        // the Backrooms: hazmat suits, with the name on the back instead of a tag over the head
+        rem.model = this.br ? makePlayerModel(r.team, r.name, false, 'hazmat') : makePlayerModel(r.team, r.name, this.isMate(r));
         rem.model.root.visible = false;
         this.scene.add(rem.model.root);
       }
@@ -321,7 +322,7 @@ export class Game {
     }
     // teammates' name tags depend on our team
     for (const rem of this.remotes.values()) {
-      if (rem.model.monster) continue;
+      if (rem.model.monster || this.br) continue;
       const shouldLabel = this.isMate(rem);
       if (!!rem.model.label !== shouldLabel) {
         this.scene.remove(rem.model.root);
@@ -658,7 +659,7 @@ export class Game {
     let model, pos, vel, yaw, pitch;
     if (id === this.myId) {
       const me = this.me;
-      if (!this.myModel || this.myModel.team !== me.team) this.myModel = makePlayerModel(me.team, '', false);
+      if (!this.myModel || this.myModel.team !== me.team) this.myModel = this.br ? makePlayerModel(me.team, this.settings.name, false, 'hazmat') : makePlayerModel(me.team, '', false);
       model = this.myModel;
       pos = me.pos; vel = me.vel; yaw = me.yaw; pitch = me.pitch;
       setModelWeapon(model, me.weapon);

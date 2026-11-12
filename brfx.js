@@ -306,7 +306,12 @@ export class BackroomsFX {
       if (w.blocked(x, z, 0.4, 0) || w.isPit(x, z) || !w.los(me.pos.x, me.pos.y + EYE, me.pos.z, x, 1.5, z)) continue;
       let model;
       if (kind === 'figure') model = makeMonsterModel();
-      else { model = makePlayerModel('atk', '', false); setModelWeapon(model, 'none'); }
+      else {
+        // someone in a suit, back turned, with a friend's name on it (or no name at all)
+        const mates = [...g.remotes.values()].filter(r => r.team !== 'monster');
+        const who = mates.length && Math.random() < 0.6 ? mates[Math.floor(Math.random() * mates.length)].name : '';
+        model = makePlayerModel('atk', who, false, 'hazmat'); setModelWeapon(model, 'none');
+      }
       model.root.position.set(x, 0, z);
       // the monster faces you; a "friend" stands with their back to you
       const toMe = Math.atan2(-(me.pos.x - x), -(me.pos.z - z));
