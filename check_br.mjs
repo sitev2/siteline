@@ -1,16 +1,17 @@
 // Checks Backrooms mazes: for many random seeds, a player can always walk from the start to the
 // exit without falling down a pit, and the monster can always reach the players.
-// Usage: node check_br.mjs [how many seeds = 40] [print one seed's map]
+// Usage: node check_br.mjs [how many seeds = 40] [print one seed's map] [easy|normal|hard = all three]
 import { resolveMap } from './maps.js';
 import { World, CELL } from './world.js';
 import { NavGrid } from './bots.js';
 
-const runs = Number(process.argv[2]) || 40, show = process.argv[3];
+const runs = Number(process.argv[2]) || 40, show = Number(process.argv[3]) || 0, onlyLevel = process.argv[4];
 let bad = 0;
 for (let k = 0; k < runs; k++) {
-  const seed = show ? Number(show) : 1000 + k * 7919;
+  const seed = show || 1000 + k * 7919;
+  const level = onlyLevel || ['easy', 'normal', 'hard'][k % 3];
   const t0 = Date.now();
-  const w = new World(resolveMap('backrooms', seed));
+  const w = new World(resolveMap('backrooms', `${seed}:${level}`));
   const ms = Date.now() - t0;
   // player walk check: a 0.72 m wide player, standing on the floor (its middle never over a pit)
   const free = (ix, iz) => !w.cellSpans(ix, iz).some(s => s.y0 < 1.8 && s.y1 > 0.42);
@@ -37,7 +38,7 @@ for (let k = 0; k < runs; k++) {
   const spawnsOk = w.spawns.atk.every(p => !w.isPit(p.x, p.z) && fits(Math.floor(p.x / CELL), Math.floor(p.z / CELL)));
   const ok = found && !!path && spawnsOk;
   if (!ok) bad++;
-  console.log(`${ok ? 'OK  ' : 'FAIL'} seed ${seed}: exit ${found ? 'reachable' : 'NOT reachable'}, monster ${path ? `path ${path.length} steps` : 'NO path'}, spawns ${spawnsOk ? 'ok' : 'BAD'}, pits ${w.pits.length}, built in ${ms} ms`);
+  console.log(`${ok ? 'OK  ' : 'FAIL'} seed ${seed} ${level}: exit ${found ? 'reachable' : 'NOT reachable'}, monster ${path ? `path ${path.length} steps` : 'NO path'}, spawns ${spawnsOk ? 'ok' : 'BAD'}, pits ${w.pits.length}, built in ${ms} ms`);
   if (show) {
     // a rough picture: # wall, o pillar, . floor, _ pit, S start, E exit, M monster
     const rows = [];

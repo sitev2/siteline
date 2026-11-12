@@ -42,7 +42,7 @@ The only folder is `server/` (the optional home game server).
   (any capitals; `SPOON_OWNER` / `SPOON` in `weapons.js`, kept OUT of `WEAPONS` so it is never bought, dropped or counted in stats).
   The host sets `p.spoon` from the name in `Server.addPlayer` and checks every swing in `onMelee` (`melee` message; others get `swing`).
   Key 3 / mouse wheel / touch ⇄ to hold it; fire = slash (40, then 25; 90 from behind), alt / 🥄 button = stab (65; 180 from behind).
-  Keep it secret: no buy-menu entry, no How-to-play text, no entry in the key settings (`w3` is a hidden fallback in `keys.js`).
+  Keep it secret: no buy-menu entry, no entry in the key settings (`w3` is a hidden fallback in `keys.js`).
   Only its owner sees a 10 s reminder ("[[spoon]] Press 3 for the spoon") the first time it turns up in a game. `reverseMap` ignores
   saved key settings for actions that no longer exist (an old one on key 3 used to block the spoon).
 - `bots.js` — bots for practice games only (range / bot match / bot deathmatch): `NavGrid` walking grid + `BotBrain`.
@@ -98,31 +98,49 @@ The only folder is `server/` (the optional home game server).
 - Maps: 2v2 `outpost`, `foundry`, `frostline`, `canal`, `flame` (one bomb site each, plus `dm` spawns for 3-player deathmatch);
   deathmatch `quarry`, `railyard` (`mode: 'dm'`, small/large variants via `build(b, size)`; `resolveMap()` in `maps.js`)
 - Deathmatch rules: `RULES.dm` in `config.js`; server phase `'dm'`, everyone on team `'ffa'` during the match
-- The Backrooms (`settings.mode = 'br'`, lobby button + Practice "The Backrooms"; server phase `'br'`, `this.br`): 1–4 players co-op,
-  no guns (`p.w = 'none'`, empty hands), find the exit door. A new random maze every game: `brmap.js` (`planMaze(seed)` / `backroomsMap(seed)`;
-  NOT in `MAPS`, `resolveMap('backrooms', seed)`, the seed travels as `variant`): 18×18 rooms of 4 m, spanning tree + loops + bigger rooms,
-  pillar halls (repeating 1 m pillars), free pillars, pitfalls (`b.pit` → `world.pitGrid`, `isPit`: no floor, you fall; below y −3 the host
-  kills you), pit rooms (owner's reference picture: a big room whose floor is a grid of square holes, `holeRow()`), doorways (a wall with a
-  1.5 × 2.2 m gap; the wall above is a `wallpaper` span from 2.2 m), exit door in the outer wall (`b.exit` → `world.exit`). Walls fill the
+- The Backrooms (`settings.mode = 'br'`; server phase `'br'`, `this.br`): **HIDDEN for now (owner's call, "until further notice")**:
+  `BACKROOMS_OPEN = false` in `main.js` removes its lobby and Practice buttons (`hideBackrooms()`); set it to true to bring it back. No
+  other way in (owner chose "completely hidden"). 1–4 players co-op,
+  no guns (`p.w = 'none'`, empty hands), find the exit door. Three difficulties (`BR_LEVELS` in `brmap.js`: easy / normal / hard; lobby
+  `#lobby-level` → `settings.level`, Practice uses `#p-level`): bridge width over pit rooms (1.5 / 1 / 0.5 m), extra bridges, ceiling holes
+  (8 / 11 / 14), dark areas (2 / 3 / 4), arrows, and the monster (`lv`): chase speed = your sprint × 1.05 / 1.10 / 1.15 (owner's choice),
+  sight / chaseSight (it loses you sooner on easy), fov, `lose` (s before it gives up seeing you), `lead`, hearing, search spots, wake time.
+  Controls in the Backrooms only (owner's choice; 2v2/DM unchanged): you WALK by default (`BR.walk` 3.2 m/s, quiet), Shift (the 'walk'
+  key) or holding the jump button on phones (it shows the `run` icon; `input.jumpHeld`) SPRINTS (`BR.sprint` 5.3 m/s, loud; `Game.sprinting()`),
+  no jumping, F (the inspect key) is the flashlight as well as L.
+  A new random maze every game: `brmap.js` (`planMaze(seed, level)` / `backroomsMap(variant)`;
+  NOT in `MAPS`, `resolveMap('backrooms', variant)`; the variant is "seed:level" (`brVariant` / `parseBrVariant`, a plain number = normal)):
+  20×20 rooms of 4 m, spanning tree + 14 % loops + bigger rooms, ONE pillar hall (repeating 1 m pillars, 3–5 rooms a side), a few free
+  pillars (12 %), NO single pitfalls (owner removed them), exit door in the outer wall as far as possible from the start (`b.exit` →
+  `world.exit`, never on the start's side). Pit rooms (owner's reference picture, then "make it an obstacle"): two, set across the
+  shortest way to the exit; the floor is all hole (`b.pit` → `world.pitGrid`, `isPit`: no floor, you fall; below y −3 the host kills you)
+  except bridges (`pitStrips()`): a strip through the middle of each of its rooms, a random tree of links between them (+ extras), and out
+  to every way in (`r.ways`); holes reach the walls. Big black spray-painted arrows (`plan.arrows`, drawn in `brview.js` from
+  `arrowTexture`) on walls of rooms where the way splits, pointing to the next room on the shortest way to the exit ("vaguely": only some
+  rooms). Doorways (6 a maze, spread out; a wall with a
+  1.5 × 2.2 m gap; the wall above is a `wallpaper` span from 2.2 m). Walls fill the
   cell [line, line + 0.5) east/south of each room line. `backroomsMap` checks every maze (`mazeOk`: player start→exit, monster→start with
-  3×3 clearance) and deterministically tries seed variations if one fails. `node check_br.mjs 300` checks many seeds. The NavGrid treats a
-  hole next to a cell as no wall (walk along its edge). Free pillars never sit next to a hole.
-  Doors open and shut (`b.door` → `world.doors`; kind 'way' = double doors in a doorway, 'blank' = a door on a wall face that opens onto
-  bricks). The world is built with every door open (so mazes/NavGrid treat doors as passable); the host then shuts the ones that start
+  3×3 clearance) and deterministically tries seed variations if one fails. `node check_br.mjs 300` checks many seeds (all three levels). The NavGrid treats a
+  hole next to a cell as no wall (walk along its edge).
+  Doors open and shut (`b.door` → `world.doors`; kind 'way' = double doors in a doorway; every door leads somewhere — the old 'blank' doors
+  onto bricks were removed at the owner's request, the code for them is unused). The door frame covers the wall's cut edges (5 cm into the
+  gap) and the leaves hang just inside it, so nothing clips. The world is built with every door open (so mazes/NavGrid treat doors as passable); the host then shuts the ones that start
   shut (`world.setDoor(i, open)` adds/removes '_door' spans in the gap). Players: E / hand button within ~1.9 m (`Game.doorTarget`,
   `{t:'door', i}`); host `toggleDoor` (range 2.4 m, 0.45 s cooldown, won't shut on anyone standing in the gap) broadcasts
   `{t:'door', i, open, swing}` (swings away from whoever moved it); door states travel in the start message (`doors`). The monster stops
   at a shut door on its way, rattles it (`doorRattle`, 0.7 s chasing / 1.2 s otherwise) and opens it; it hears doors within 14 m.
   `brview.js` `group.userData.setDoor` animates the leaves on hinges.
-  Snatches (owner's design): ceiling holes (`plan.holes`: a missing or pushed-aside 0.6 m ceiling tile, ~13 a maze) — walk under one
-  and the host `snatch(p, 'ceiling', …)` takes you, every time; the corner snatch (`cornerSnatch`, at most once a game, after 45 s):
+  Snatches (owner's design): ceiling holes (`plan.holes`: a missing or pushed-aside 0.6 m ceiling tile, by difficulty) — walk under one
+  (reach 0.63 m from its middle: 50 % more than before, owner's request) and the host `snatch(p, 'ceiling', …)` takes you, every time;
+  2.5 s later it spits the victim's head back out (`brfx.updateHeads`: the hazmat hood from `makePlayerModel(...).rag.head.seg` drops,
+  bounces, rolls and lies visor-up on the carpet for the rest of the game; sounds `spit`, `thud`; client only, no gore); the corner snatch (`cornerSnatch`, at most once a game, after 45 s):
   2+ players, the one behind (1.5–8 m) watching the one in front while walking, passes within 0.85 m of an outside wall corner
   (`outerCorners()` in `monster.js`), a spot just round it that they couldn't see a moment ago, nobody at all looking at that spot,
   15 % per corner. Both broadcast `{t:'snatch', id, kind, x, z}` then a kill with weapon 'ceiling' / 'corner' (no kill feed, no
   ragdoll: the body is gone). `brfx.js` animates the arm (`makeSnatchArm` in `models.js`), the victim's body and the victim's
   own camera (fades to `#br-black`).
   Dark areas: `plan.darkZones` (blocks of rooms with dead lights, light from next door fades out over 1.5 m, `darkK`); flashlights
-  work in the Backrooms (L / light button); the baked surfaces get flashlight cones through a shader hook (`addFlash` / `FLASH`
+  work in the Backrooms (F or L / light button); the baked surfaces get flashlight cones through a shader hook (`addFlash` / `FLASH`
   uniforms in `brview.js`, filled by `brfx.js`); people and the haze dim with the light where you stand (`lightAt`, `dimPeople`).
   Flickering panels throw sparks + a zap when they stutter back on (`userData.update(dt, dread, cam)`, `onSpark`).
   Notes: N / note button → `#note-editor` (draw on a canvas + up to 140 characters), put on the floor or taped to the wall in front
@@ -137,6 +155,8 @@ The only folder is `server/` (the optional home game server).
   Its animation mode travels in its weapon field: `p.w = 'm:<idle|listen|walk|stalk|search|run|grab|peek:±1>'`.
   In the Backrooms players wear hazmat suits (`makePlayerModel(team, name, false, 'hazmat')`: yellow rubber, black boots/gloves/tape,
   hood with a dark visor and a respirator) with their name printed on a patch on the back instead of a name tag over the head.
+  Suit legs: round hip joints, the thigh runs on past the knee + a knee sphere, so joints never open up when they bend. The torso shell's
+  front/back are ~0.14 m from its middle (zip flap and name patch sit there).
   2v2 and deathmatch keep the team uniforms and name tags.
   `brview.js` draws it with baked lighting (per-vertex light from every ceiling panel with 2D wall shadows, soft edges, bounce, AO;
   MeshBasic + vertex colours, so it's cheap), canvas textures (chevron wallpaper, carpet, ceiling tiles, panels, doors, outlets, own EXIT
@@ -144,10 +164,10 @@ The only folder is `server/` (the optional home game server).
   above doorways, door frames, doors, wall outlets, flicker + "dread" dimming when the monster
   is near (`group.userData.update`). Hand-held camera sway in `Game.updateCamera` (Backrooms only, more when running or near the
   monster), strength = `settings.camShake` (Settings → General "Camera shake in the Backrooms", default 0.5, 0 = off). `monster.js` = the monster's brain on the host (player
-  id `'monster'`, team `'monster'` = snapshot team index 3, `use` = chasing): waits `MONSTER.wake` s; states chase (aims ahead of a running
+  id `'monster'`, team `'monster'` = snapshot team index 3, `use` = chasing): waits `lv.wake` s; states chase (aims ahead of a running
   target), stalk (creeps up on someone far away looking the other way, charges when they turn or it's within 9 m), pursue (runs to where you
   were heading), search (4 nearby spots, in your direction first, listening at each), wander (towards players, more surely the longer it has
-  no clue; stops to listen now and then). Hears running (> 3.5 m/s) within 16 m and walking within 3.5 m; kills on contact (`monsterKill`). Model `makeMonsterModel` / `animateMonster` in
+  no clue; stops to listen now and then). Hears sprinting (> 3.5 m/s) within `lv.hear` and walking within `lv.hearWalk`; kills on contact (`monsterKill`). Model `makeMonsterModel` / `animateMonster` in
   `models.js` is OUR OWN design (the owner asked for a known character from someone else's Backrooms videos; we declined to copy it).
   Sounds in `audio.js` (fluorescent buzz bed, monster steps/screech/grab). Account stats are not reported for this mode.
 - `check_map.mjs` — `node check_map.mjs outpost` / `node check_map.mjs quarry large` checks every area and spawn is reachable
@@ -156,6 +176,9 @@ The only folder is `server/` (the optional home game server).
   "Rejoin your last game (CODE)". The host remembers leavers by name (`rememberLeaver` / `restoreLeaver` in `server.js`): team,
   score and money come back. If a whole team leaves a 2v2, the clocks stop for `REJOIN_WAIT` (60 s, `this.hold`) and the round is
   replayed when they are back; after that it is a forfeit. A host who leaves a peer-to-peer room closes it (no rejoin).
+- Menus: no "How to play" screen and no tagline under the logo (owner removed both). Loading screen while a game is built
+  (`#game-loading`, `beginGame()` in `main.js`: map name, mode, steps on a bar, fades out after the first frames are drawn); messages
+  that arrive meanwhile wait in `app.starting` and are handled in order once the game exists (so your spawn is never lost).
 - Phones: the canvas always fills the page by CSS; `renderer.setSize(w, h, false)` only (never let three.js write a pixel size
   on the canvas, that caused half-black screens after turning the phone). `Game.loop` re-checks the window size 3×/s.
   `stopPageZoom()` in `main.js` blocks pinch / double-tap zoom.

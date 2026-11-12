@@ -853,8 +853,13 @@ export function makePlayerModel(team, name, showName, look = null) {
   hips.position.y = 0.92;
   root.add(hips);
   segment(hips, 'pelvis', rag, [0.17, 0.1, 0.12], 0, g => {
+    if (hz) {
+      // the suit is baggy: wide hips that the legs grow out of, a fold round the waist
+      P(g, rbox(0.4, 0.2, 0.26, 0.09), suit, 0, -0.01, 0);
+      P(g, rbox(0.36, 0.05, 0.27, 0.02), suit, 0, 0.07, 0);
+      return;
+    }
     P(g, rbox(0.32, 0.18, 0.22, 0.06), pants);
-    if (hz) { P(g, rbox(0.345, 0.05, 0.245, 0.02), suit, 0, 0.06, 0); return; }        // the suit is baggier at the waist
     P(g, rbox(0.34, 0.045, 0.24, 0.015), dark, 0, 0.075, 0);                        // belt
     D(g, rbox(0.05, 0.035, 0.012, 0.004), mat('#8a8a8a', { metal: 0.7, rough: 0.4 }), 0, 0.075, -0.125);   // buckle
     D(g, rbox(0.06, 0.08, 0.05, 0.012), gear, -0.17, 0.03, 0.03);                   // hip pouch
@@ -866,8 +871,13 @@ export function makePlayerModel(team, name, showName, look = null) {
     thigh.position.set(sx, -0.04, 0);
     hips.add(thigh);
     segment(thigh, 'thigh' + side, rag, [0.09, 0.21, 0.1], -0.21, g => {
-      P(g, capsule(hz ? 0.098 : 0.088, 0.25), pantsCap, 0, 0.0, 0);
-      if (hz) return;
+      if (hz) {
+        // one smooth leg: a round hip joint, the thigh running on past the knee so the joint never opens up
+        P(g, sphere(0.104), suit, 0, 0.2, 0);
+        P(g, capsule(0.1, 0.3), suit, 0, -0.01, 0);
+        return;
+      }
+      P(g, capsule(0.088, 0.25), pantsCap, 0, 0.0, 0);
       D(g, rbox(0.04, 0.12, 0.1, 0.02), pants, 0.085 * Math.sign(sx), -0.03, 0.0);   // cargo pocket
       if (side === 'R' && HI()) {
         P(g, rbox(0.05, 0.16, 0.1, 0.02), dark, 0.1, 0.03, 0.0);                     // drop-leg holster
@@ -878,9 +888,14 @@ export function makePlayerModel(team, name, showName, look = null) {
     shin.position.y = -0.42;
     thigh.add(shin);
     segment(shin, 'shin' + side, rag, [0.085, 0.23, 0.11], -0.22, g => {
-      P(g, capsule(hz ? 0.082 : 0.072, 0.2), pantsCap, 0, 0.05, 0);
-      if (hz) P(g, cylY(0.07, 0.072, 0.05), tape, 0, -0.06, 0);                      // tape where the suit meets the boot
-      else P(g, rbox(0.11, 0.13, 0.05, 0.02), gear, 0, 0.18, -0.06);                // knee pad
+      if (hz) {
+        P(g, sphere(0.094), suit, 0, 0.22, 0);                                       // the knee
+        P(g, capsule(0.088, 0.25), suit, 0, 0.035, 0);
+        P(g, cylY(0.072, 0.074, 0.05), tape, 0, -0.06, 0);                           // tape where the suit meets the boot
+      } else {
+        P(g, capsule(0.072, 0.2), pantsCap, 0, 0.05, 0);
+        P(g, rbox(0.11, 0.13, 0.05, 0.02), gear, 0, 0.18, -0.06);                    // knee pad
+      }
       // boot from its side outline, with a darker sole
       P(g, profile('boot', [[0.055, -0.08], [0.06, -0.225], [-0.16, -0.225], [-0.185, -0.205], [-0.18, -0.17], [-0.12, -0.15], [-0.05, -0.12], [-0.04, -0.06], [-0.035, 0.0], [0.05, 0.0]], 0.12, 0.018), boots, 0, 0, 0);
       P(g, profile('sole', [[0.062, -0.215], [0.064, -0.24], [-0.17, -0.24], [-0.192, -0.22], [-0.18, -0.205], [0.06, -0.205]], 0.13, 0.01), sole, 0, 0, 0);
@@ -901,10 +916,11 @@ export function makePlayerModel(team, name, showName, look = null) {
     if (hz) {
       // baggy suit: a looser shell, a zip flap down the front, the name printed on a patch across the back
       P(g, profile('torso2', [[0.115, -0.3], [0.145, -0.05], [0.135, 0.2], [0.1, 0.27], [-0.1, 0.27], [-0.135, 0.2], [-0.145, -0.05], [-0.115, -0.3]], 0.4, 0.06), suit, 0, 0, 0);
-      P(g, rbox(0.04, 0.48, 0.02, 0.008), suit, 0.02, -0.02, -0.205);                 // zip flap
-      D(g, rbox(0.006, 0.44, 0.006, 0.002), mat('#6e5c10', { rough: 0.6 }), 0.0, -0.02, -0.215);   // the zip
-      const patch = new THREE.Mesh(new THREE.PlaneGeometry(0.33, 0.13), new THREE.MeshStandardMaterial({ map: nameTexture(name), roughness: 0.7 }));
-      patch.position.set(0, 0.11, 0.206);        // on the back (the model faces -z)
+      // (the shell's front and back are about 0.14 m from its middle)
+      P(g, rbox(0.04, 0.36, 0.02, 0.008), suit, 0.02, 0.01, -0.141);                  // zip flap
+      D(g, rbox(0.006, 0.33, 0.006, 0.002), mat('#6e5c10', { rough: 0.6 }), 0.0, 0.01, -0.152);    // the zip
+      const patch = new THREE.Mesh(new THREE.PlaneGeometry(0.25, 0.1), new THREE.MeshStandardMaterial({ map: nameTexture(name), roughness: 0.7 }));
+      patch.position.set(0, 0.11, 0.143);        // on the flat of the back (the model faces -z)
       g.add(patch);
       P(g, cylY(0.07, 0.075, 0.1), suit, 0, 0.3, 0);                                  // the hood's neck
       return;

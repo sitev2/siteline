@@ -41,6 +41,36 @@ function blotches(ctx, w, h, n, col, alpha, R, rMin, rMax) {
   ctx.globalAlpha = 1;
 }
 
+// a big black arrow sprayed on a wall (pointing right): soft overspray edges, speckles, drips
+function arrowTexture(renderer) {
+  const [c, g] = canvas(256, 128);
+  const R = rng(4242);
+  const shape = () => {
+    g.beginPath();
+    g.moveTo(16, 47); g.lineTo(142, 43); g.lineTo(138, 12); g.lineTo(242, 64); g.lineTo(140, 116); g.lineTo(144, 86); g.lineTo(18, 82);
+    g.closePath();
+  };
+  g.lineJoin = 'round'; g.strokeStyle = g.fillStyle = '#000';
+  // overspray: the same outline stroked wider and fainter
+  for (const [w, a] of [[16, 0.07], [11, 0.1], [7, 0.16], [4, 0.3]]) { g.globalAlpha = a; g.lineWidth = w; shape(); g.stroke(); }
+  g.globalAlpha = 0.93; shape(); g.fill();
+  // speckles round the edges
+  for (let i = 0; i < 260; i++) {
+    const x = 10 + R() * 236, y = 14 + R() * 102;
+    g.globalAlpha = 0.25 + R() * 0.5;
+    g.fillRect(x, y, 1 + R() * 2, 1 + R() * 2);
+  }
+  // drips running down from the bottom edge
+  g.globalAlpha = 0.85;
+  for (let i = 0; i < 7; i++) {
+    const x = 26 + R() * 200, top = x > 142 ? 64 + (114 - 64) * (1 - (x - 142) / 100) : 80, len = 6 + R() * Math.min(34, 124 - top);
+    g.lineWidth = 1.5 + R() * 2; g.beginPath(); g.moveTo(x, top); g.lineTo(x + (R() - 0.5) * 1.5, top + len); g.stroke();
+    g.beginPath(); g.arc(x, top + len, g.lineWidth * 0.8, 0, Math.PI * 2); g.fill();
+  }
+  g.globalAlpha = 1;
+  return tex(c, renderer, false);
+}
+
 // mono-yellow wallpaper: columns of pale chevrons, thin darker stripes, grime (1 tile = 1 m)
 function wallpaperTexture(renderer) {
   const S = 512, [c, ctx] = canvas(S), R = rng(11);
@@ -532,18 +562,21 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
       const DH = BR.door, depth = CELL + 0.06;
       const tint = spotLight(v ? wl + 0.3 : mid, 1.2, v ? mid : wl + 0.3, v ? 1 : 0, v ? 0 : 1);
       const at3 = (u, y, w) => (v ? [w, y, u] : [u, y, w]);
-      // a painted frame round the gap
-      for (const u of [g0 - 0.04, g1 + 0.04]) { const p = at3(u, DH / 2, wl); box(v ? depth : 0.08, DH, v ? 0.08 : depth, frameM, p[0], p[1], p[2], 0, tint); }
-      { const p = at3(mid, DH + 0.04, wl); box(v ? depth : g1 - g0 + 0.16, 0.08, v ? g1 - g0 + 0.16 : depth, frameM, p[0], p[1], p[2], 0, tint); }
-      // double doors hinged at both sides of the gap
-      const dw = (g1 - g0) / 2 - 0.02;
-      for (const [hinge, toward] of [[g0, 1], [g1, -1]]) {
+      // a painted frame round the gap: it covers the cut edges of the wall (sticking 5 cm into the gap, so the
+      // wall's own faces never show through it) and stands 3 cm proud of both wall faces
+      const IN = 0.05;
+      for (const [u, s] of [[g0, 1], [g1, -1]]) { const p = at3(u + s * (IN - 0.04), DH / 2, wl); box(v ? depth : 0.08, DH, v ? 0.08 : depth, frameM, p[0], p[1], p[2], 0, tint); }
+      { const p = at3(mid, DH - IN + 0.04, wl); box(v ? depth : g1 - g0 + 0.16, 0.08, v ? g1 - g0 + 0.16 : depth, frameM, p[0], p[1], p[2], 0, tint); }
+      // double doors, hinged just inside the frame on both sides of the gap: opened, a leaf lies along the
+      // frame (never through it)
+      const gapH = DH - IN, inset = IN + 0.028, dw = (g1 - g0) / 2 - inset - 0.012, lh = gapH - 0.03;
+      for (const [hinge, toward] of [[g0 + inset, 1], [g1 - inset, -1]]) {
         const pivot = new THREE.Group();
         const p = at3(hinge, 0, wl);
         pivot.position.set(p[0], 0, p[2]);
-        const leaf = new THREE.Mesh(new THREE.BoxGeometry(dw, DH - 0.04, 0.045), addFlash(new THREE.MeshBasicMaterial({ map: doorTex })));
+        const leaf = new THREE.Mesh(new THREE.BoxGeometry(dw, lh, 0.045), addFlash(new THREE.MeshBasicMaterial({ map: doorTex })));
         leaf.material.color.copy(tint);
-        leaf.position.set(dw / 2, (DH - 0.04) / 2, 0);
+        leaf.position.set(dw / 2, 0.012 + lh / 2, 0);
         pivot.add(leaf);
         group.add(pivot);
         const shut = v ? dirAngle(0, toward) : dirAngle(toward, 0);
@@ -685,6 +718,35 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     const sign = add(new THREE.PlaneGeometry(0.62, 0.23), new THREE.MeshBasicMaterial({ map: exitTexture(renderer), color: new THREE.Color(1.5, 1.5, 1.5) }), 0, 2.55, 0.02);
     void sign;
     group.add(dg);
+  }
+
+  // ---------- big black arrows sprayed on the walls, pointing roughly the way to the exit ----------
+  if ((plan.arrows || []).length) {
+    const aPos = [], aUV = [];
+    for (const a of plan.arrows) {
+      // the face of the wall on side (wx, wz) of room (x, z), and its normal (into the room)
+      const nx = -a.wx, nz = -a.wz;
+      let fx = at(a.x) + 2.25, fz = at(a.z) + 2.25;
+      if (a.wx < 0) fx = a.x === 0 ? at(0) : at(a.x) + 0.5;
+      if (a.wx > 0) fx = at(a.x + 1);
+      if (a.wz < 0) fz = a.z === 0 ? at(0) : at(a.z) + 0.5;
+      if (a.wz > 0) fz = at(a.z + 1);
+      const cx = fx + nx * 0.012, cz = fz + nz * 0.012, cy = 1.5;
+      // across the wall, turned so the tip points the way to go; a little crooked, like it was done by hand
+      let ux = nz, uz = -nx;
+      if (ux * a.dx + uz * a.dz < 0) { ux = -ux; uz = -uz; }
+      const hw = 0.85 * a.s, hh = 0.425 * a.s, ct = Math.cos(a.tilt), st = Math.sin(a.tilt);      // about 1.7 m long
+      const U = [ux * ct, st, uz * ct], V = [-ux * st, ct, -uz * st];
+      const P = (su, sv) => [cx + U[0] * hw * su + V[0] * hh * sv, cy + U[1] * hw * su + V[1] * hh * sv, cz + U[2] * hw * su + V[2] * hh * sv];
+      for (const [su, sv] of [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]]) { aPos.push(...P(su, sv)); aUV.push((su + 1) / 2, (sv + 1) / 2); }
+    }
+    const ag = new THREE.BufferGeometry();
+    ag.setAttribute('position', new THREE.Float32BufferAttribute(aPos, 3));
+    ag.setAttribute('uv', new THREE.Float32BufferAttribute(aUV, 2));
+    const am = new THREE.MeshBasicMaterial({ map: arrowTexture(renderer), color: '#0d0b07', transparent: true, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 });
+    const arrows = new THREE.Mesh(ag, am);
+    arrows.renderOrder = 1;
+    group.add(arrows);
   }
 
   // ---------- holes in the ceiling: a missing tile, or one pushed aside (something up there) ----------

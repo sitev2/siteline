@@ -609,6 +609,16 @@ const BRS = {
     for (let i = 0; i < n; i++) { const t = i / sr, syl = Math.max(0, Math.sin(t * (9 + Math.sin(t * 2) * 3))); x[i] = (a[i] + b[i] * 0.6) * syl * Math.sin(Math.PI * t / 1.6); }
     normalize(x, 0.5);
   }),
+  // the thing in the ceiling spitting something back out: a wet hacking cough from up in the dark
+  spit: () => buf(0.9, (x, sr) => {
+    sweepNoise(x, sr, 0, 0.18, 400, 1400, 1.5, 0.8, 0.12);
+    noiseHit(x, sr, 0.16, 'bandpass', 700, 1.4, 0.22, 0.9, 0.01);
+    thump(x, sr, 0.17, 140, 70, 0.12, 0.6);
+    noiseHit(x, sr, 0.42, 'lowpass', 500, 0.8, 0.2, 0.35);
+    normalize(x, 0.8);
+  }),
+  // something heavy and round hitting the carpet
+  thud: () => buf(0.5, (x, sr) => { thump(x, sr, 0, 95, 50, 0.14, 1); noiseHit(x, sr, 0, 'lowpass', 600, 0.7, 0.06, 0.4); normalize(x, 0.8); }),
   // three knocks on the other side of a wall
   knock: () => buf(1.3, (x, sr) => { for (const at of [0, 0.32, 0.64]) { thump(x, sr, at, 170, 110, 0.07, 1); noiseHit(x, sr, at, 'lowpass', 700, 0.7, 0.03, 0.5); } normalize(x, 0.7); }),
 };

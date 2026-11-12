@@ -89,7 +89,6 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .brand { text-align: left; }
 .logo { font: 700 clamp(3.2rem, 12vw, 5.4rem)/0.9 var(--display); letter-spacing: -0.01em; }
 .logo .accent { color: var(--accent); }
-.tag { color: var(--muted); margin: 10px 0 0; font-size: 1.02rem; }
 .menu-actions { display: grid; gap: 12px; }
 .menu-actions .primary { padding: 18px; font-size: 1.1rem; }
 .join-row, .practice-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
@@ -173,7 +172,6 @@ body:not(.is-host) .host-only { display: none !important; }
 .panel h2 { margin: 0; font: 700 1.8rem var(--display); }
 .panel h3 { font: 700 1rem var(--display); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); margin: 8px 0 4px; }
 .panel p { line-height: 1.5; margin: 6px 0; }
-.howto-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px; }
 .keys { border-collapse: collapse; width: 100%; font-size: .92rem; }
 .keys td { padding: 5px 4px; border-bottom: 1px solid var(--line); }
 .keys td:first-child { white-space: nowrap; }
@@ -181,6 +179,23 @@ body:not(.is-host) .host-only { display: none !important; }
 .overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 20px; background: rgba(8,9,11,.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 #pause .panel button { width: 100%; }
 #loading { gap: 14px; align-content: center; text-align: center; }
+/* the loading screen while a game is being built (map, lighting, first picture) */
+#game-loading {
+  position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 24px;
+  background: radial-gradient(ellipse at 50% 40%, #23262c 0%, #101114 70%);
+  transition: opacity .35s ease;
+}
+#game-loading.fade { opacity: 0; pointer-events: none; }
+#game-loading[data-mode="br"] { background: radial-gradient(ellipse at 50% 40%, #3b3415 0%, #141208 72%); }
+.gl-inner { width: min(460px, 100%); text-align: center; }
+.gl-logo { font-size: clamp(1.6rem, 6vw, 2.2rem); opacity: .55; margin-bottom: 22px; }
+.gl-title { font: 700 clamp(2rem, 8vw, 3.2rem)/1 var(--display); letter-spacing: .01em; }
+#game-loading[data-mode="br"] .gl-title { color: #e8dc8a; }
+.gl-sub { margin-top: 8px; color: var(--muted); font: 600 .82rem var(--display); letter-spacing: .14em; text-transform: uppercase; }
+.gl-bar { height: 4px; margin: 28px auto 12px; border-radius: 4px; background: rgba(255,255,255,.1); overflow: hidden; }
+.gl-bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 4px; transition: width .45s ease; }
+#game-loading[data-mode="br"] .gl-bar i { background: #e8dc8a; }
+.gl-step { margin: 0; color: var(--muted); font-size: .92rem; min-height: 1.3em; }
 .spinner { width: 46px; height: 46px; border-radius: 50%; border: 4px solid rgba(255,255,255,.15); border-top-color: var(--accent); animation: spin 0.9s linear infinite; margin: 0 auto; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .over-score { font: 700 3rem var(--display); display: flex; gap: 18px; align-items: baseline; }
@@ -411,7 +426,6 @@ body.touch #hint { bottom: calc(76px + var(--sab)); }
 
 @media (max-width: 700px) {
   .teams, .map-cards { grid-template-columns: 1fr; }
-  .howto-grid { grid-template-columns: 1fr; }
   .buy-row { grid-template-columns: repeat(2, 1fr); }
 }
 @media (max-width: 700px) and (orientation: landscape) {
@@ -439,6 +453,9 @@ body.touch #hint { bottom: calc(76px + var(--sab)); }
 /* the Backrooms: no map choice, teams, night or bot options */
 .p-br { display: none; }
 #practice.m-br .p-br { display: block; }
+#practice.m-br .p-botopt { display: grid; }
+.lobby-row .br-level { display: none; margin: 0; }
+#lobby.br .lobby-row .br-level { display: grid; }
 #practice.m-br .p-map, #practice.m-br .p-nightopt, #practice.m-br #p-note { display: none; }
 #lobby.br .ffa-list { display: block; }
 #lobby.br .teams, #lobby.br #btn-shuffle, #lobby.br #map-cards, #lobby.br .night-toggle, #lobby.br .lobby-settings > .eyebrow { display: none; }

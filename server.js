@@ -6,6 +6,7 @@ import { MAPS, resolveMap, mapsFor, isDmMap, dmVariant } from './maps.js';
 import { RULES } from './config.js';
 import { NavGrid, BotBrain, BOT_NAMES } from './bots.js';
 import { MonsterBrain, outerCorners } from './monster.js';
+import { BR_LEVELS, brLevel, brVariant } from './brmap.js';
 import { cleanChat, CHAT_LIMIT } from './filter.js';
 import {
   WEAPONS, EQUIPMENT, MONEY, STARTER_PISTOL, canTeamBuy, rawDamage, applyArmor, isArmored, penMetres, HITGROUPS,
@@ -38,7 +39,7 @@ export class Server {
     this.ownerId = ownerId;
     this.localId = localId;
     this.players = new Map();
-    this.settings = { map: 'outpost', winRounds: RULES.winRounds, mode: 'wingman' };   // mode: 'wingman' (2v2 bomb), 'dm' (deathmatch) or 'br' (Backrooms)
+    this.settings = { map: 'outpost', winRounds: RULES.winRounds, mode: 'wingman', level: 'normal' };   // level: Backrooms difficulty   // mode: 'wingman' (2v2 bomb), 'dm' (deathmatch) or 'br' (Backrooms)
     this.dm = false;               // true while a deathmatch is being played
     this.br = false;               // true while a Backrooms escape is being played
     this.variant = null;           // deathmatch map size: 'small' or 'large'
@@ -254,6 +255,7 @@ export class Server {
         if (id !== this.ownerId || this.phase !== 'lobby') return;
         if (msg.mode === 'wingman' || msg.mode === 'dm' || msg.mode === 'br') this.settings.mode = msg.mode;
         if (typeof msg.night === 'boolean') this.settings.night = msg.night;
+        if (BR_LEVELS[msg.level]) this.settings.level = msg.level;
         if (MAPS[msg.map]) this.settings.map = msg.map;
         this.broadcastRoster();
         return;
@@ -818,6 +820,7 @@ export class Server {
     }
     if (cfg.kind === 'br') {
       this.settings.mode = 'br';
+      this.settings.level = brLevel(cfg.level);
       this.startBackrooms();
       return;
     }
@@ -950,7 +953,8 @@ export class Server {
     this.dm = false;
     this.brDone = false;
     this.settings.map = 'backrooms';
-    this.variant = 1 + Math.floor(Math.random() * 2147483000);      // the maze's seed: a new maze every game
+    // the maze's seed and the difficulty ("12345:hard"): a new maze every game
+    this.variant = brVariant(1 + Math.floor(Math.random() * 2147483000), this.settings.level);
     this.world = new World(resolveMap('backrooms', this.variant));
     this.round = 1;
     this.timer = 0;
@@ -1009,7 +1013,8 @@ export class Server {
     for (const p of this.humans()) {
       if (!p.alive || p.escaped) continue;
       // walked under a hole in the ceiling: something up there takes you
-      const h = holes.find(o => Math.abs(p.x - o.x) < o.size / 2 + 0.12 && Math.abs(p.z - o.z) < o.size / 2 + 0.12 && Math.abs(p.y) < 0.6);
+      // (it reaches 0.63 m out from the middle of the hole: half as far again as the tile's own edge + 12 cm)
+      const h = holes.find(o => Math.abs(p.x - o.x) < (o.size / 2 + 0.12) * 1.5 && Math.abs(p.z - o.z) < (o.size / 2 + 0.12) * 1.5 && Math.abs(p.y) < 0.6);
       if (h) { this.snatch(p, 'ceiling', h.x, h.z); continue; }
       // down a pitfall
       if (p.y < -3) { p.brDeath = 'fell'; this.kill(p, null, 'fall', false); continue; }

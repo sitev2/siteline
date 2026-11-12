@@ -1,22 +1,20 @@
 // The Backrooms monster's brain. Runs on the host (and the home server), never in a client.
 // It wanders the maze, listens for running footsteps, chases anyone it sees and kills on contact.
-// Walking (Shift / walk) is quiet; running is heard about 16 m away, through walls.
+// Walking is quiet; sprinting (Shift / the run button) is heard 11–16 m away (by difficulty), through walls.
 import { PLAYER_RADIUS, PLAYER_HEIGHT, EYE } from './world.js';
+import { BR, BR_LEVELS, brLevel } from './brmap.js';
 
+// The fixed numbers. Everything that changes with the difficulty (how fast it chases: 5 / 10 / 15 %
+// faster than your sprint, how far it sees and hears, how quickly it loses you) is in BR_LEVELS in brmap.js.
 export const MONSTER = {
   wander: 2.3,       // m/s walking around
   stalk: 2.9,        // m/s creeping up behind someone who hasn't seen it
   search: 4.0,       // m/s going to a noise, or searching where you were last seen
-  chase: 5.7,        // m/s chasing (a running player is a little faster: ~6.1 m/s)
-  lunge: 6.6,        // m/s for the last few metres
+  lunge: 1.12,       // × its chasing speed for the last few metres
   reach: 1.15,       // m: grabs you this close
-  sight: 28,         // m: sees you this far (in front of it, with a clear line)
-  hear: 16,          // m: hears running feet this far
-  hearWalk: 3.5,     // m: hears walking this close
-  wake: 20,          // s: it starts moving this long after the game starts
   height: 2.75,      // m: how tall it is (for its eyes)
 };
-const RUN_SPEED = 3.5;   // m/s: faster than this is running (loud)
+const RUN_SPEED = 3.5;   // m/s: faster than this is sprinting (loud); walking is BR.walk
 
 const angTo = (from, to) => { let d = to - from; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
 
@@ -33,6 +31,8 @@ export class MonsterBrain {
     this.s = server;
     this.p = p;
     this.world = server.world;
+    this.lv = BR_LEVELS[brLevel(this.world.def.level)].monster;      // the difficulty
+    this.chaseSpeed = BR.sprint * this.lv.speed;
     this.nav = server.navGrid();
     this.vel = { x: 0, y: 0, z: 0 };
     this.onGround = true;
@@ -69,8 +69,9 @@ export class MonsterBrain {
 
   step(dt, now) {
     const p = this.p;
-    if (this.started == null) { this.started = now; this.listenAt = now + MONSTER.wake + 15; this.lastClue = now; this.nextPeek = now + MONSTER.wake + 25 + Math.random() * 30; }
-    if (now - this.started < MONSTER.wake) { p.use = false; return; }
+    const wake = this.lv.wake;
+    if (this.started == null) { this.started = now; this.listenAt = now + wake + 15; this.lastClue = now; this.nextPeek = now + wake + 25 + Math.random() * 30; }
+    if (now - this.started < wake) { p.use = false; return; }
     if (this.state === 'wait') this.state = 'wander';
     if (now >= this.thinkAt) { this.thinkAt = now + 0.12; this.think(now); }
     if (now < this.pauseUntil) { p.use = false; if (this.opening) this.doors(now, null); this.move(null, 0, dt); return; }
@@ -80,7 +81,7 @@ export class MonsterBrain {
     if (this.state === 'chase' && this.target) {
       const t = this.target, tr = this.track.get(t.id);
       const d = Math.hypot(t.x - p.x, t.z - p.z);
-      speed = d < 4 ? MONSTER.lunge : MONSTER.chase;
+      speed = d < 4 ? this.chaseSpeed * MONSTER.lunge : this.chaseSpeed;
       // aim a little ahead of a running target, if that spot is somewhere you can stand
       goal = { x: t.x, y: t.y, z: t.z };
       if (tr && d > 3) {
@@ -96,7 +97,7 @@ export class MonsterBrain {
     } else if (this.state === 'stalk' && this.target) {
       speed = MONSTER.stalk;
       goal = { x: this.target.x, y: 0, z: this.target.z };
-    } else if (this.state === 'pursue') speed = MONSTER.chase;
+    } else if (this.state === 'pursue') speed = this.chaseSpeed;
     else if (this.state === 'search' || this.state === 'retreat') speed = MONSTER.search;
     else if (this.state === 'peekGo') speed = MONSTER.stalk;
     const dir = goal ? this.navigate(goal, now) : null;
@@ -168,7 +169,7 @@ export class MonsterBrain {
       pts.push({ x, y: 0, z, score: ahead * 2 + Math.random() });
     }
     pts.sort((a, b) => b.score - a.score);
-    this.searchPts = pts.slice(0, 4);
+    this.searchPts = pts.slice(0, this.lv.search);
     this.searchUntil = now + 22;
     this.goal = this.searchPts.shift() || null;
     if (!this.goal) this.state = 'wander';
@@ -191,7 +192,7 @@ export class MonsterBrain {
       } else this.track.set(q.id, { x: q.x, z: q.z, vx: 0, vz: 0, t: now });
       if (d < seenD && this.sees(q)) { seen = q; seenD = d; }
       const loud = sp > RUN_SPEED && sp < 12;
-      if ((loud && d < MONSTER.hear) || (sp > 0.4 && d < MONSTER.hearWalk) || d < 2) { if (d < heardD) { heard = q; heardD = d; } }
+      if ((loud && d < this.lv.hear) || (sp > 0.4 && d < this.lv.hearWalk) || d < 2) { if (d < heardD) { heard = q; heardD = d; } }
     }
     const clue = (q) => { const tr = this.track.get(q.id) || { vx: 0, vz: 0 }; this.last = { x: q.x, z: q.z, vx: tr.vx, vz: tr.vz, t: now, id: q.id }; this.lastClue = now; };
     // stalking one player by peeking round corners: it ignores everything else unless someone gets right up close
@@ -217,8 +218,9 @@ export class MonsterBrain {
       }
     } else if (this.state === 'chase' || this.state === 'stalk') {
       // lost sight: run on to where they were heading
-      if (this.state === 'stalk' || now - this.lostAt > 0.6) {
-        const L = this.last, lead = 1.6;
+      // (on easier difficulties it gives up on you sooner and guesses less far ahead)
+      if (this.state === 'stalk' || now - this.lostAt > this.lv.lose) {
+        const L = this.last, lead = this.lv.lead;
         let gx = L.x + L.vx * lead, gz = L.z + L.vz * lead;
         const i = this.nav.nearest(gx, 0, gz);
         if (i >= 0) { gx = this.nav.x[i]; gz = this.nav.z[i]; }
@@ -348,11 +350,12 @@ export class MonsterBrain {
   sees(q) {
     const p = this.p;
     const dx = q.x - p.x, dz = q.z - p.z, d = Math.hypot(dx, dz);
-    if (d > MONSTER.sight) return false;
+    // how far it sees: less far once you have got away from it in a chase (on easier difficulties)
+    if (d > (this.state === 'chase' && this.target === q ? this.lv.chaseSight : this.lv.sight)) return false;
     if (d > 3) {
-      // in front of it (about 150° wide)
+      // in front of it (115–150° wide, by difficulty)
       const yaw = Math.atan2(-dx, -dz);
-      if (Math.abs(angTo(p.yaw, yaw)) > 1.3) return false;
+      if (Math.abs(angTo(p.yaw, yaw)) > this.lv.fov) return false;
     }
     return this.world.los(p.x, p.y + 2.2, p.z, q.x, q.y + EYE - 0.2, q.z) || this.world.los(p.x, p.y + 1.2, p.z, q.x, q.y + 0.9, q.z);
   }
