@@ -52,7 +52,8 @@ export class NavGrid {
       return tops[iz * W + ix].find(t => Math.abs(t - y) <= STEP + 0.01);
     };
     const fits = (ix, iz, y) => {
-      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) if (near(ix + dx, iz + dz, y) === undefined) return false;
+      // a hole in the floor next to you is no wall: you can walk along its edge
+      for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) if (near(ix + dx, iz + dz, y) === undefined && !(y < 0.1 && world.pitCell(ix + dx, iz + dz))) return false;
       return true;
     };
     this.cellNodes = new Array(W * H);

@@ -125,6 +125,34 @@ function panelTexture(renderer) {
   return tex(c, renderer, false);
 }
 
+// a plain painted wooden door: two recessed panels, a brass handle
+function doorTexture(renderer) {
+  const [c, ctx] = canvas(128, 256), R = rng(51);
+  ctx.fillStyle = '#9a8460'; ctx.fillRect(0, 0, 128, 256);
+  noise(ctx, 128, 256, 2500, ['#8a7452', '#ab9570', '#7d6848'], 0.3, R, 1.4);
+  for (const [y, h] of [[20, 96], [136, 100]]) {
+    ctx.fillStyle = 'rgba(60,45,25,0.35)'; ctx.fillRect(18, y, 92, h);
+    ctx.fillStyle = 'rgba(200,180,140,0.25)'; ctx.fillRect(22, y + 4, 84, h - 8);
+    ctx.strokeStyle = 'rgba(50,38,20,0.5)'; ctx.lineWidth = 2; ctx.strokeRect(22, y + 4, 84, h - 8);
+  }
+  ctx.fillStyle = '#c9a85a'; ctx.beginPath(); ctx.arc(110, 132, 6, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#6b5528'; ctx.beginPath(); ctx.arc(111, 133, 2, 0, Math.PI * 2); ctx.fill();
+  return tex(c, renderer, false);
+}
+
+// a wall power outlet: off-white plate, two slots, one screw
+function outletTexture(renderer) {
+  const [c, ctx] = canvas(64, 104);
+  ctx.fillStyle = '#e9e4d2'; ctx.fillRect(0, 0, 64, 104);
+  ctx.strokeStyle = '#b9b29a'; ctx.lineWidth = 3; ctx.strokeRect(2, 2, 60, 100);
+  for (const y of [22, 66]) {
+    ctx.fillStyle = '#d8d2bc'; ctx.beginPath(); ctx.ellipse(32, y + 8, 17, 15, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = '#2a2722'; ctx.fillRect(23, y, 4, 13); ctx.fillRect(37, y, 4, 13);
+  }
+  ctx.fillStyle = '#a49d86'; ctx.beginPath(); ctx.arc(32, 52, 3, 0, Math.PI * 2); ctx.fill();
+  return tex(c, renderer, false);
+}
+
 // the EXIT sign (our own: green panel, white letters, a running figure and an arrow)
 function exitTexture(renderer) {
   const [c, ctx] = canvas(256, 96);
@@ -313,51 +341,90 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
   surfaces.push(mesh(fPos, fUV, fCol, fIdx, baked(carpetTexture(renderer))));
   surfaces.push(mesh(cPos, cUV, cCol, cIdx, baked(ceilingTexture(renderer))));
 
-  // ---------- walls, pillars and skirting boards ----------
-  const ROWS = [0, 0.11, 0.35, 0.8, 1.4, 2.0, 2.45, 2.72, H];
-  const wPos = [], wUV = [], wCol = [], bPos = [], bCol = [];
-  const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  // ---------- walls, pillars, the wall above doorways, skirting boards and outlets ----------
+  // bottom of the wall in each cell: 0 for a wall, the doorway height for the wall above a doorway, none for open floor
+  const bottom = new Float32Array(Wc * Dc).fill(Infinity);
   for (let iz = 0; iz < Dc; iz++) for (let ix = 0; ix < Wc; ix++) {
-    if (!solid[iz * Wc + ix]) continue;
+    const i = iz * Wc + ix;
+    if (solid[i]) bottom[i] = 0;
+    else { const lin = world.cellSpans(ix, iz).find(sp => sp.m === 'wallpaper' && sp.y0 > 1.5 && sp.y0 < H - 0.1); if (lin) bottom[i] = lin.y0; }
+  }
+  const bot = (ix, iz) => (ix < 0 || iz < 0 || ix >= Wc || iz >= Dc ? 0 : bottom[iz * Wc + ix]);
+  const BASE_ROWS = [0, 0.11, 0.35, 0.8, 1.4, 2.0, 2.45, 2.72, H];
+  const wPos = [], wUV = [], wCol = [], bPos = [], bCol = [];
+  const outlets = [];                     // [x, y, z, nx, nz, colour]
+  const RO = rng(plan.seed * 17 + 9);
+  const SIDES = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const wallLight = (px, pz, nx, nz, y, corner, gr) => {
+    direct(px, Math.max(0.05, Math.min(H - 0.05, y)), pz, nx, 0, nz, tmp);
+    const bk2 = 0.3 * (1 - y / H * 0.4), up = 0.12 * (y / H);
+    const r = tmp[0] + (bounceAt(px, pz, 0) * BOUNCE[0]) * (bk2 + up), g = tmp[1] + (bounceAt(px, pz, 1) * BOUNCE[1]) * (bk2 + up), b = tmp[2] + (bounceAt(px, pz, 2) * BOUNCE[2]) * (bk2 + up);
+    const ao = corner * (y < 0.3 ? 0.72 + y : 1) * (y > H - 0.3 ? 0.8 + (H - y) * 0.6 : 1);
+    return finish(r, g, b, Math.min(1, ao), gr);
+  };
+  const quadPush = (P, UV, COL, A, B, C, Dv, ua, ub, va, vb, ca, cb, cc, cd) => {
+    for (const [p, u, v, c] of [[A, ua, va, ca], [B, ub, va, cb], [C, ub, vb, cc], [A, ua, va, ca], [C, ub, vb, cc], [Dv, ua, vb, cd]]) {
+      P.push(...p); if (UV) UV.push(u, v); COL.push(...c);
+    }
+  };
+  for (let iz = 0; iz < Dc; iz++) for (let ix = 0; ix < Wc; ix++) {
+    const bc = bottom[iz * Wc + ix];
+    if (bc === Infinity) continue;
+    const x0 = ix * CELL, z0 = iz * CELL, x1 = x0 + CELL, z1 = z0 + CELL;
+    // the underside of the wall above a doorway
+    if (bc > 0) {
+      const k = Math.min(FD - 1, iz) * FW + Math.min(FW - 1, ix);
+      const c = finish(bounce[k * 3] * 0.5, bounce[k * 3 + 1] * 0.48, bounce[k * 3 + 2] * 0.4, 0.8, 1);
+      quadPush(wPos, wUV, wCol, [x0, bc, z0], [x1, bc, z0], [x1, bc, z1], [x0, bc, z1], x0, x1, z0, z1, c, c, c, c);
+    }
     for (const [nx, nz] of SIDES) {
       const ox = ix + nx, oz = iz + nz;
-      if (isSolid(ox, oz)) continue;
-      // the face between this cell and the open one, as two ends a → b (seen from the open side, left to right)
-      const x0 = ix * CELL, z0 = iz * CELL, x1 = x0 + CELL, z1 = z0 + CELL;
+      const bn = bot(ox, oz);
+      if (bn <= bc) continue;                         // the neighbour covers this face
+      const top = Math.min(H, bn);
+      // the face between this cell and its neighbour, as two ends a → b (seen from the neighbour's side, left to right)
       const ends = nx === 1 ? [[x1, z1], [x1, z0]] : nx === -1 ? [[x0, z0], [x0, z1]] : nz === 1 ? [[x0, z1], [x1, z1]] : [[x1, z0], [x0, z0]];
-      const cols = ends.map(([ex, ez]) => {
+      const rows = [bc, ...BASE_ROWS.filter(y => y > bc + 0.01 && y < top - 0.01), top];
+      const gr0 = grime(ends[0][0], ends[0][1]), gr1 = grime(ends[1][0], ends[1][1]);
+      const cols = ends.map(([ex, ez], e) => {
         // light along this end of the face, bottom to top; the sample point sits just off the wall
         const px = ex + nx * 0.06 - (nx ? 0 : Math.sign(ex - (x0 + x1) / 2) * 0.04), pz = ez + nz * 0.06 - (nz ? 0 : Math.sign(ez - (z0 + z1) / 2) * 0.04);
         // an inside corner next to this end darkens it
         const sx = nz !== 0 ? Math.sign(ex - (x0 + x1) / 2) : 0, sz = nx !== 0 ? Math.sign(ez - (z0 + z1) / 2) : 0;
-        const corner = isSolid(ox + sx, oz + sz) ? 0.78 : 1;
-        const gr = grime(ex, ez);
-        return ROWS.map(y => {
-          direct(px, Math.max(0.05, Math.min(H - 0.05, y)), pz, nx, 0, nz, tmp);
-          const bk2 = 0.3 * (1 - y / H * 0.4), up = 0.12 * (y / H);
-          const r = tmp[0] + (bounceAt(px, pz, 0) * BOUNCE[0]) * (bk2 + up), g = tmp[1] + (bounceAt(px, pz, 1) * BOUNCE[1]) * (bk2 + up), b = tmp[2] + (bounceAt(px, pz, 2) * BOUNCE[2]) * (bk2 + up);
-          const ao = corner * (y < 0.3 ? 0.72 + y : 1) * (y > H - 0.3 ? 0.8 + (H - y) * 0.6 : 1);
-          return finish(r, g, b, Math.min(1, ao), gr);
-        });
+        const corner = bot(ox + sx, oz + sz) === 0 ? 0.78 : 1;
+        return rows.map(y => wallLight(px, pz, nx, nz, y, corner, e ? gr1 : gr0));
       });
       const ua = nx ? ends[0][1] : ends[0][0], ub = nx ? ends[1][1] : ends[1][0];
       const flip = nx === -1 || nz === 1 ? 1 : -1;      // keep the paper running the same way on every wall
-      for (let r = 0; r < ROWS.length - 1; r++) {
-        const ya = ROWS[r], yb = ROWS[r + 1];
-        const A = [ends[0][0], ya, ends[0][1]], B = [ends[1][0], ya, ends[1][1]], C = [ends[1][0], yb, ends[1][1]], Dv = [ends[0][0], yb, ends[0][1]];
-        const uA = ua * flip, uB = ub * flip;
-        for (const [p, u, v, cc] of [[A, uA, ya, cols[0][r]], [B, uB, ya, cols[1][r]], [C, uB, yb, cols[1][r + 1]], [A, uA, ya, cols[0][r]], [C, uB, yb, cols[1][r + 1]], [Dv, uA, yb, cols[0][r + 1]]]) {
-          wPos.push(...p); wUV.push(u, v); wCol.push(...cc);
-        }
+      for (let r = 0; r < rows.length - 1; r++) {
+        const ya = rows[r], yb = rows[r + 1];
+        quadPush(wPos, wUV, wCol, [ends[0][0], ya, ends[0][1]], [ends[1][0], ya, ends[1][1]], [ends[1][0], yb, ends[1][1]], [ends[0][0], yb, ends[0][1]],
+          ua * flip, ub * flip, ya, yb, cols[0][r], cols[1][r], cols[1][r + 1], cols[0][r + 1]);
       }
-      // skirting board along the foot of every wall and pillar
-      {
-        const o = 0.018, hgt = 0.1;
-        const a0 = [ends[0][0] + nx * o, ends[0][1] + nz * o], b0 = [ends[1][0] + nx * o, ends[1][1] + nz * o];
-        const ca = cols[0][1], cb = cols[1][1];
-        for (const [p, cc] of [[[a0[0], 0, a0[1]], ca], [[b0[0], 0, b0[1]], cb], [[b0[0], hgt, b0[1]], cb], [[a0[0], 0, a0[1]], ca], [[b0[0], hgt, b0[1]], cb], [[a0[0], hgt, a0[1]], ca]]) { bPos.push(...p); bCol.push(...cc); }
-        // its top edge
-        for (const [p, cc] of [[[a0[0], hgt, a0[1]], ca], [[b0[0], hgt, b0[1]], cb], [[ends[1][0], hgt, ends[1][1]], cb], [[a0[0], hgt, a0[1]], ca], [[ends[1][0], hgt, ends[1][1]], cb], [[ends[0][0], hgt, ends[0][1]], ca]]) { bPos.push(...p); bCol.push(...cc.map(v => v * 1.05)); }
+      if (bc > 0) continue;
+      // skirting board along the foot of the wall. At the outside corner of a wall end or pillar the board on the
+      // face pointing along x runs on past the corner and gets an end, so the two boards meet with no gap.
+      const o = 0.02, hgt = 0.1;
+      const ca = cols[0][1], cb = cols[1][1];
+      const A = [...ends[0]], B = [...ends[1]];
+      const tx = Math.sign(B[0] - A[0]), tz = Math.sign(B[1] - A[1]);
+      const caps = [];
+      if (nx !== 0) {
+        if (bot(ix - tx, iz - tz) !== 0) { A[0] -= tx * o; A[1] -= tz * o; caps.push([A, -tx, -tz]); }
+        if (bot(ix + tx, iz + tz) !== 0) { B[0] += tx * o; B[1] += tz * o; caps.push([B, tx, tz]); }
+      }
+      const Af = [A[0] + nx * o, A[1] + nz * o], Bf = [B[0] + nx * o, B[1] + nz * o];
+      quadPush(bPos, null, bCol, [Af[0], 0, Af[1]], [Bf[0], 0, Bf[1]], [Bf[0], hgt, Bf[1]], [Af[0], hgt, Af[1]], 0, 0, 0, 0, ca, cb, cb, ca);
+      const ta = ca.map(v => v * 0.95), tb = cb.map(v => v * 0.95);
+      quadPush(bPos, null, bCol, [Af[0], hgt, Af[1]], [Bf[0], hgt, Bf[1]], [B[0], hgt, B[1]], [A[0], hgt, A[1]], 0, 0, 0, 0, ta, tb, tb, ta);
+      for (const [E] of caps) {
+        const F = [E[0] + nx * o, E[1] + nz * o], c = E === A ? ca : cb;
+        quadPush(bPos, null, bCol, [E[0], 0, E[1]], [F[0], 0, F[1]], [F[0], hgt, F[1]], [E[0], hgt, E[1]], 0, 0, 0, 0, c, c, c, c);
+      }
+      // now and then a power outlet just above the skirting (not on pillars, not next to a hole)
+      if (kind[iz * Wc + ix] === 1 && bn === Infinity && !isPit(ox, oz) && RO() < 0.012) {
+        const cx = (ends[0][0] + ends[1][0]) / 2, cz = (ends[0][1] + ends[1][1]) / 2;
+        if (!outlets.some(q => Math.hypot(q[0] - cx, q[2] - cz) < 6)) outlets.push([cx + nx * 0.004, 0.32, cz + nz * 0.004, nx, nz, cols[0][2]]);
       }
     }
   }
@@ -367,8 +434,86 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(bPos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(bCol, 3));
-    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: '#b9ae84', vertexColors: true }));
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: '#b9ae84', vertexColors: true, side: THREE.DoubleSide }));
     surfaces.push(m); group.add(m);
+  }
+
+  // ---------- doors ----------
+  // light at a spot on a wall (for things fixed to walls: they use the same baked light)
+  const spotLight = (x, y, z, nx, nz) => { const c = wallLight(x + nx * 0.06, z + nz * 0.06, nx, nz, y, 1, 1); return new THREE.Color(c[0], c[1], c[2]); };
+  const frameM = new THREE.MeshBasicMaterial({ color: '#cfc6a2' });
+  const doorTex = doorTexture(renderer);
+  const box = (w, h, d, m, x, y, z, ry = 0, tint = null) => {
+    const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), tint ? m.clone() : m);
+    if (tint) o.material.color.multiply(tint);
+    o.position.set(x, y, z); o.rotation.y = ry; group.add(o); return o;
+  };
+  // doorways: a painted frame round the gap, and the door itself standing open against the wall
+  for (const d of plan.doorways || []) {
+    const v = d.dir === 'v';
+    const line = Math.round((v ? at(d.x + 1) : at(d.z + 1)) / CELL);       // the wall's cell column / row
+    const from = Math.round(at(v ? d.z : d.x) / CELL), to = Math.round(at((v ? d.z : d.x) + 1) / CELL);
+    let lo = Infinity, hi = -Infinity;
+    for (let k = from; k <= to; k++) { const b = v ? bot(line, k) : bot(k, line); if (b > 0 && b < Infinity) { lo = Math.min(lo, k); hi = Math.max(hi, k); } }
+    if (lo === Infinity) continue;
+    const g0 = lo * CELL, g1 = (hi + 1) * CELL, mid = (g0 + g1) / 2, wl = line * CELL + CELL / 2;   // gap along the wall, wall middle
+    const DH = BR.door, depth = CELL + 0.06;
+    const tint = spotLight(v ? wl + 0.3 : mid, 1.2, v ? mid : wl + 0.3, v ? 1 : 0, v ? 0 : 1);
+    const at3 = (u, y, w) => (v ? [w, y, u] : [u, y, w]);
+    for (const u of [g0 - 0.04, g1 + 0.04]) { const p = at3(u, DH / 2, wl); box(v ? depth : 0.08, DH, v ? 0.08 : depth, frameM, p[0], p[1], p[2], 0, tint); }
+    { const p = at3(mid, DH + 0.04, wl); box(v ? depth : g1 - g0 + 0.16, 0.08, v ? g1 - g0 + 0.16 : depth, frameM, p[0], p[1], p[2], 0, tint); }
+    // double doors, hinged at both sides of the gap and swung open flat against the wall
+    const side = RO() < 0.5 ? 1 : -1, dw = (g1 - g0) / 2 - 0.02;
+    for (const hinge of [g0, g1]) {
+      const leaf = new THREE.Mesh(new THREE.BoxGeometry(dw, DH - 0.04, 0.045), new THREE.MeshBasicMaterial({ map: doorTex }));
+      leaf.material.color.copy(tint);
+      leaf.geometry.translate(dw / 2, 0, 0);
+      const p = at3(hinge, (DH - 0.04) / 2, wl + side * (CELL / 2 + 0.03));
+      leaf.position.set(p[0], p[1], p[2]);
+      // lying along the wall, pointing away from the gap, not quite shut against it
+      const away = hinge === g0 ? -1 : 1;
+      leaf.rotation.y = (v ? (away > 0 ? -Math.PI / 2 : Math.PI / 2) : (away > 0 ? 0 : Math.PI)) + side * (v ? 1 : -1) * 0.14 * away;
+      group.add(leaf);
+    }
+  }
+  // closed doors set into some walls: they never open
+  const blank = [];
+  for (let z = 0; z < N && blank.length < 9; z++) for (let x = 0; x < N && blank.length < 9; x++) {
+    for (const v of [true, false]) {
+      if (RO() > 0.05) continue;
+      if (v ? (x >= N - 1 || !plan.vWall[z][x]) : (z >= N - 1 || !plan.hWall[z][x])) continue;
+      if ((plan.doorways || []).some(d => d.x === x && d.z === z && d.dir === (v ? 'v' : 'h'))) continue;
+      const side = RO() < 0.5 ? 1 : -1;
+      const line = v ? at(x + 1) : at(z + 1), mid = (v ? at(z) : at(x)) + 2.25;
+      const face = line + (side > 0 ? CELL : 0);                 // the wall cell is [line, line + 0.5)
+      const ox = v ? Math.floor((face + side * 0.25) / CELL) : Math.floor(mid / CELL), oz = v ? Math.floor(mid / CELL) : Math.floor((face + side * 0.25) / CELL);
+      if (bot(ox, oz) !== Infinity || isPit(ox, oz)) continue;
+      blank.push({ v, side, face, mid });
+    }
+  }
+  for (const b of blank) {
+    const nx = b.v ? b.side : 0, nz = b.v ? 0 : b.side;
+    const px = b.v ? b.face : b.mid, pz = b.v ? b.mid : b.face;
+    const tint = spotLight(px, 1.1, pz, nx, nz);
+    const ry = b.v ? (b.side > 0 ? Math.PI / 2 : -Math.PI / 2) : (b.side > 0 ? 0 : Math.PI);
+    const leaf = new THREE.Mesh(new THREE.BoxGeometry(0.92, 2.05, 0.04), new THREE.MeshBasicMaterial({ map: doorTex }));
+    leaf.material.color.copy(tint);
+    leaf.position.set(px + nx * 0.02, 1.025, pz + nz * 0.02); leaf.rotation.y = ry; group.add(leaf);
+    for (const s of [-1, 1]) box(0.07, 2.12, 0.06, frameM, px + nx * 0.03 + (b.v ? 0 : s * 0.5), 1.06, pz + nz * 0.03 + (b.v ? s * 0.5 : 0), ry, tint);
+    box(1.07, 0.07, 0.06, frameM, px + nx * 0.03, 2.12, pz + nz * 0.03, ry, tint);
+  }
+
+  // ---------- power outlets ----------
+  if (outlets.length) {
+    const geo = new THREE.PlaneGeometry(0.09, 0.145);
+    const inst = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ map: outletTexture(renderer) }), outlets.length);
+    const q = new THREE.Quaternion(), e = new THREE.Euler(), one = new THREE.Vector3(1, 1, 1);
+    outlets.forEach(([x, y, z, nx, nz, c], i) => {
+      e.set(0, Math.atan2(nx, nz), 0); q.setFromEuler(e);
+      inst.setMatrixAt(i, new THREE.Matrix4().compose(new THREE.Vector3(x, y, z), q, one));
+      inst.setColorAt(i, new THREE.Color(Math.min(1.2, c[0] * 1.1), Math.min(1.2, c[1] * 1.1), Math.min(1.2, c[2] * 1.1)));
+    });
+    group.add(inst);
   }
 
   // ---------- pitfalls: a dark shaft going down ----------

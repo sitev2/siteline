@@ -1890,8 +1890,23 @@ export class Game {
       yaw += (Math.random() - 0.5) * 0.02 * this.shake;
       pitch += (Math.random() - 0.5) * 0.02 * this.shake;
     }
+    // the Backrooms: a hand-held camera that never quite keeps still (more when running, or when it is near)
+    let roll = 0;
+    if (this.br) {
+      const k = this.settings.camShake == null ? 0.5 : this.settings.camShake;
+      if (k > 0) {
+        const t = this.clock, run = Math.min(1, Math.hypot(me.vel.x, me.vel.z) / 6), dread = this.dread || 0;
+        const a = k * (1 + run * 1.2 + dread * 2.2);
+        const n = (f, p) => Math.sin(t * f + p) * 0.6 + Math.sin(t * f * 2.37 + p * 1.7) * 0.3 + Math.sin(t * f * 5.1 + p * 0.3) * 0.1;
+        yaw += n(0.9, 1.3) * 0.006 * a;
+        pitch += n(1.1, 4.2) * 0.005 * a + Math.abs(Math.sin(t * 9)) * 0.004 * run * k;
+        roll = n(0.7, 2.6) * 0.008 * a;
+        y += n(1.3, 0.4) * 0.006 * a;
+        if (dread > 0.5) { yaw += (Math.random() - 0.5) * 0.004 * dread * k; pitch += (Math.random() - 0.5) * 0.004 * dread * k; }
+      }
+    }
     cam.position.set(x, y, z);
-    cam.rotation.set(pitch, yaw, 0);
+    cam.rotation.set(pitch, yaw, roll);
     this.camYaw = yaw;
     sfx.setListener(x, y, z, yaw, pitch);
     this.indoorT = (this.indoorT || 0) - dt;
@@ -2224,7 +2239,8 @@ export class Game {
     if (this.mapUpdate) {
       const d = this.monsterDist ?? Infinity;
       this.monsterDist = Infinity;
-      this.mapUpdate(dt, Math.max(0, Math.min(1, (16 - d) / 12)));
+      this.dread = Math.max(0, Math.min(1, (16 - d) / 12));
+      this.mapUpdate(dt, this.dread);
     }
     // the sky follows the camera (so a short view distance never cuts it off)
     const skyK = (this.camera.far * 0.9) / 500;
