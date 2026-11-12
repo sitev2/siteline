@@ -928,7 +928,7 @@ export class Game {
     this.flash = new Map();   // (my own flashlight state is me.light, off at the start)
     if (!this.night && !this.br) return;
     // (the Backrooms' flashlight reaches further and wider: it is what you have in the dark areas)
-    this.myLight = this.br ? new THREE.SpotLight('#fff1d2', 0, 48, 0.34, 0.55, 1.0) : new THREE.SpotLight('#fff1d2', 0, 38, 0.36, 0.55, 1.1);
+    this.myLight = this.br ? new THREE.SpotLight('#fff1d2', 0, 48, 0.36, 0.9, 1.0) : new THREE.SpotLight('#fff1d2', 0, 38, 0.36, 0.55, 1.1);
     this.myLight.castShadow = false;
     this.scene.add(this.myLight, this.myLight.target);
     this.beamTex = radialTexture('rgba(255,244,214,1)', 'rgba(255,230,180,0)');
@@ -937,7 +937,7 @@ export class Game {
   flashlightFor(r) {
     let f = this.flash.get(r.id);
     if (f) return f;
-    const spot = this.br ? new THREE.SpotLight('#fff1d2', 0, 42, 0.34, 0.55, 1.0) : new THREE.SpotLight('#fff1d2', 0, 32, 0.36, 0.55, 1.1);
+    const spot = this.br ? new THREE.SpotLight('#fff1d2', 0, 42, 0.36, 0.9, 1.0) : new THREE.SpotLight('#fff1d2', 0, 32, 0.36, 0.55, 1.1);
     const L = 8;
     const geo = new THREE.ConeGeometry(1.9, L, 20, 1, true);
     geo.translate(0, -L / 2, 0);
