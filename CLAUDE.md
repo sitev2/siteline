@@ -102,7 +102,7 @@ The only folder is `server/` (the optional home game server).
   `BACKROOMS_OPEN = true` in `main.js`. Setting it to false hides the lobby and Practice buttons from everyone but the test accounts
   (`BACKROOMS_TESTERS` = `test123`; `backroomsAllowed()` / `hideBackrooms()`, re-checked on login/logout). 1–4 players co-op,
   no guns (`p.w = 'none'`, empty hands), find the exit door. Three difficulties (`BR_LEVELS` in `brmap.js`: easy / normal / hard; lobby
-  `#lobby-level` → `settings.level`, Practice uses `#p-level`): bridge width over pit rooms (1.5 / 1 / 0.5 m), extra bridges, ceiling holes
+  `#lobby-level` → `settings.level`, Practice uses `#p-level`): walkway width in pit rooms (1.5 / 1 / 0.5 m), ceiling holes
   (8 / 11 / 14), dark areas (2 / 3 / 4), arrows, and the monster (`lv`): chase speed = your sprint × 1.05 / 1.10 / 1.15 (owner's choice),
   sight / chaseSight (it loses you sooner on easy), fov, `lose` (s before it gives up seeing you), `lead`, hearing, search spots, wake time.
   Controls in the Backrooms only (owner's choice; 2v2/DM unchanged): you WALK by default (`BR.walk` 3.2 m/s, quiet), Shift (the 'walk'
@@ -112,23 +112,28 @@ The only folder is `server/` (the optional home game server).
   NOT in `MAPS`, `resolveMap('backrooms', variant)`; the variant is "seed:level" (`brVariant` / `parseBrVariant`, a plain number = normal)):
   20×20 rooms of 4 m, spanning tree + 14 % loops + bigger rooms, ONE pillar hall (repeating 1 m pillars, 3–5 rooms a side), a few free
   pillars (12 %), NO single pitfalls (owner removed them), exit door in the outer wall as far as possible from the start (`b.exit` →
-  `world.exit`, never on the start's side). Pit rooms (owner's reference picture, then "make it an obstacle"): two, set across the
-  shortest way to the exit; the floor is all hole (`b.pit` → `world.pitGrid`, `isPit`: no floor, you fall; below y −3 the host kills you)
-  except bridges (`pitStrips()`): a strip through the middle of each of its rooms, a random tree of links between them (+ extras), and out
-  to every way in (`r.ways`); holes reach the walls. Big black spray-painted arrows (`plan.arrows`, drawn in `brview.js` from
+  `world.exit`, never on the start's side). Pit rooms (owner's reference picture; "all the same dimension squares"): two, 3×3 rooms each,
+  set across the shortest way to the exit; a regular grid of identical 2.5 m square holes (`PIT_HOLE`, `pitHoles()`; `b.pit` →
+  `world.pitGrid`, `isPit`: no floor, you fall; below y −3 the host kills you) with walkways of the level's width between them; the strip
+  by the walls is either none (hard: 4×4 holes touching the walls) or at least 1 m (normal 3×3 holes, 1 m; easy 2×2 holes) — never a
+  thinner ledge, which nobody could walk along. Big black spray-painted arrows (`plan.arrows`, drawn in `brview.js` from
   `arrowTexture`) on walls of rooms where the way splits, pointing to the next room on the shortest way to the exit ("vaguely": only some
-  rooms). Doorways (6 a maze, spread out; a wall with a
-  1.5 × 2.2 m gap; the wall above is a `wallpaper` span from 2.2 m). Walls fill the
+  rooms). Doorways: 3 a maze (owner wanted fewer), each where going round is a real detour (6+ rooms, `goodDoor`) and nothing is
+  ever sealed off with every door shut (`walkShut`) — because the monster can't open doors; a wall with a
+  1.5 × 2.2 m gap; the wall above is a `wallpaper` span from 2.2 m. Walls fill the
   cell [line, line + 0.5) east/south of each room line. `backroomsMap` checks every maze (`mazeOk`: player start→exit, monster→start with
-  3×3 clearance) and deterministically tries seed variations if one fails. `node check_br.mjs 300` checks many seeds (all three levels). The NavGrid treats a
+  3×3 clearance) and deterministically tries seed variations if one fails. `node check_br.mjs 300` checks many seeds (all three levels,
+  with every door shut). The NavGrid treats a
   hole next to a cell as no wall (walk along its edge).
   Doors open and shut (`b.door` → `world.doors`; kind 'way' = double doors in a doorway; every door leads somewhere — the old 'blank' doors
   onto bricks were removed at the owner's request, the code for them is unused). The door frame covers the wall's cut edges (5 cm into the
   gap) and the leaves hang just inside it, so nothing clips. The world is built with every door open (so mazes/NavGrid treat doors as passable); the host then shuts the ones that start
   shut (`world.setDoor(i, open)` adds/removes '_door' spans in the gap). Players: E / hand button within ~1.9 m (`Game.doorTarget`,
   `{t:'door', i}`); host `toggleDoor` (range 2.4 m, 0.45 s cooldown, won't shut on anyone standing in the gap) broadcasts
-  `{t:'door', i, open, swing}` (swings away from whoever moved it); door states travel in the start message (`doors`). The monster stops
-  at a shut door on its way, rattles it (`doorRattle`, 0.7 s chasing / 1.2 s otherwise) and opens it; it hears doors within 14 m.
+  `{t:'door', i, open, swing}` (swings away from whoever moved it); door states travel in the start message (`doors`). The monster CAN'T
+  open doors (owner's rule): its routes skip shut doorways (`NavGrid.path(a, b, max, skip)` with `shutNode`, `straight()` checks '_door'
+  spans; shut doors also block its sight); chasing into one, it pounds on it once (`doorRattle`, 0.6 s, arms up) then goes the long way.
+  Disguised in someone's skin it doesn't open them either (a clue). It hears doors within 14 m.
   `brview.js` `group.userData.setDoor` animates the leaves on hinges.
   Snatches (owner's design): ceiling holes (`plan.holes`: a missing or pushed-aside 0.6 m ceiling tile, by difficulty) — walk under one
   (reach 0.63 m from its middle: 50 % more than before, owner's request) and the host `snatch(p, 'ceiling', …)` takes you, every time;
@@ -155,8 +160,8 @@ The only folder is `server/` (the optional home game server).
   no ragdoll, the victim's screen blacks out: "It took your skin"); `snapshot()` shows the victim alive where the monster is (no
   flashlight) and hides the monster, so the scoreboard and "Inside" count still count them. While it lasts, chat from dead players
   only reaches the dead/escaped. Brain state 'skin' (`skinStep`): walks like a player (`BR.walk`, sprints only when far and unseen)
-  to the nearest player, stands ~2 m away facing them; clues: head twitch (pitch jerk) every 5–14 s, it stares, never a flashlight
-  or a note, it opens doors like a person. It changes back (`unmask` → `revealSkin`: `{t:'skinReveal'}` + the delayed kill to
+  to the nearest player, stands ~2 m away facing them; clues: head twitch (pitch jerk) every 5–14 s, it stares, never a flashlight,
+  a note or a door. It changes back (`unmask` → `revealSkin`: `{t:'skinReveal'}` + the delayed kill to
   everyone) when they come within 1.3 m, after 1.6–4.2 s next to them, when they turn their back, after 180 s, or if the victim
   leaves; state 'reveal' (0.9 s, mode 'm:reveal', game.js grows it from 0.6× after 0.3 s), then it chases. `brfx.onSkinReveal`:
   the suit shudders and bursts into torn scraps that stay on the floor (sound 'tear' + screech). No gore.
