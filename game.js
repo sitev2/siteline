@@ -8,7 +8,7 @@ import { resolveMap } from './maps.js';
 import { buildMapScene, THEMES } from './mapview.js';
 import { WEAPONS, SPOON, U, TOP_SPEED, ACCURATE_SPEED, STARTER_PISTOL, runSpeed, penMetres, patternAt, itemDef, itemName } from './weapons.js';
 import { RULES } from './config.js';
-import { makePlayerModel, setModelWeapon, animateModel, modelRecoil, modelSwing, makeViewModel, makeBombModel, makeDropModel, setModelDetail, TEAM_COLORS } from './models.js';
+import { makePlayerModel, setModelWeapon, animateModel, modelRecoil, modelSwing, makeViewModel, makeBombModel, makeDropModel, setModelDetail, TEAM_COLORS, makeMonsterModel, animateMonster } from './models.js';
 import { Ragdolls } from './ragdoll.js';
 import { keyMap, keyLabel, reverseMap } from './keys.js';
 import { radialTexture } from './textures.js';
@@ -47,6 +47,9 @@ function angleLerp(a, b, t) {
   return a + d * t;
 }
 
+// 83 → "1:23"
+const fmtClock = s => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`;
+
 export class Game {
   constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night }) {
     this.transport = transport;
@@ -57,6 +60,7 @@ export class Game {
     this.onPause = onPause;
     this.mapId = map;
     this.dm = mode === 'dm';   // deathmatch: free-for-all, guns free, quick respawns
+    this.br = mode === 'br';   // the Backrooms: co-op escape from a random maze, no guns, a monster
     this.world = new World(resolveMap(map, variant));
     this.hud = new Hud();
     this.running = true;
@@ -106,6 +110,7 @@ export class Game {
     this.sky = [];
     built.group.traverse(o => { if (o.userData.sky) this.sky.push(o); });
     this.mapGroup = built.group;
+    this.mapUpdate = built.group.userData.update || null;     // flickering lights (Backrooms)
     // this map's acoustics and background sound
     sfx.setRoom(this.world.def.theme);
     sfx.startAmbience(this.world.def.theme, this.night, { x: this.world.width / 2, z: this.world.depth / 2 }, Math.max(this.world.width, this.world.depth) * 0.6);
@@ -207,10 +212,16 @@ export class Game {
     this.me.pos.x = s.x; this.me.pos.z = s.z;
     this.me.yaw = s && Number.isFinite(s.yaw) ? s.yaw : 0;
     if (this.dm) this.hud.center('Deathmatch', `Everyone for themselves — first to ${RULES.dm.killLimit} kills`, TEAM_COLORS.ffa.css, 4);
+    document.body.classList.toggle('br-mode', this.br);
+    if (this.br) {
+      this.hud.center('The Backrooms', 'Find the exit. Walk to stay quiet: it hears you run.', '#e8dc8a', 6);
+      this.brHintUntil = 14;
+    }
   }
 
   destroy() {
     this.running = false;
+    document.body.classList.remove('br-mode');
     sfx.stopAmbience();
     this.cancelReloadSfx();
     this.closeChat();
@@ -284,6 +295,11 @@ export class Game {
       }
       rem.name = r.name;
       rem.bot = !!r.bot;
+      if (!rem.model && r.team === 'monster') {
+        rem.model = makeMonsterModel();
+        rem.model.root.visible = false;
+        this.scene.add(rem.model.root);
+      }
       if (!rem.model) {
         rem.model = makePlayerModel(r.team, r.name, this.isMate(r));
         rem.model.root.visible = false;
@@ -295,6 +311,7 @@ export class Game {
     }
     // teammates' name tags depend on our team
     for (const rem of this.remotes.values()) {
+      if (rem.model.monster) continue;
       const shouldLabel = this.isMate(rem);
       if (!!rem.model.label !== shouldLabel) {
         this.scene.remove(rem.model.root);
@@ -389,6 +406,20 @@ export class Game {
           sfx.playChime(true);
         }
         return;
+      case 'spotted':
+        // the monster has seen you
+        this.shake = Math.min(1.2, this.shake + 0.8);
+        for (const r of this.remotes.values()) if (r.team === 'monster') sfx.playScreech({ x: r.rp.x, y: r.rp.y + 2.4, z: r.rp.z }, this.occlusion(r.rp.x, r.rp.y + 2, r.rp.z));
+        this.hud.center('', 'It has seen you — RUN', '#ff6b4a', 2);
+        return;
+      case 'escaped':
+        if (m.id === this.myId) {
+          this.me.alive = false; this.me.escaped = true; this.me.deathTime = performance.now();
+          this.hud.center('You escaped!', `${fmtClock(m.time)} in the Backrooms`, '#9dffb5', 5);
+          sfx.playEscape();
+          this.escapeFlash = 1;
+        } else this.hud.center('', `${m.name} found the exit and escaped!`, '#9dffb5', 3);
+        return;
       case 'shot': return this.onRemoteShot(m);
       case 'swing': return this.onRemoteSwing(m);
       case 'drops': return this.onDrops(m);
@@ -461,6 +492,7 @@ export class Game {
         this.me.armor = armor || 0; this.me.helmet = !!(flags & 1); this.me.kit = !!(flags & 2);
         if (Number.isFinite(money)) this.me.money = money;
         if (!alive && this.me.alive) { this.me.alive = false; this.me.deathTime = now; }
+        this.me.escaped = !!(flags & 8);
         continue;
       }
       const r = this.remotes.get(id);
@@ -474,7 +506,8 @@ export class Game {
       r.alive = !!alive; r.hp = hp; r.w = w; r.kills = kills; r.deaths = deaths; r.use = use; r.ping = ping;
       r.armor = armor || 0; r.money = money;
       r.light = !!(flags & 4);
-      r.team = teamIdx === 0 ? 'atk' : teamIdx === 1 ? 'def' : 'ffa';
+      r.team = teamIdx === 0 ? 'atk' : teamIdx === 1 ? 'def' : teamIdx === 3 ? 'monster' : 'ffa';
+      r.escaped = !!(flags & 8);
     }
     const [bs, carrier, bx, by, bz, prog, user, site, need] = m.b;
     Object.assign(this.bomb, { state: BOMB_STATES[bs], carrier, x: bx, y: by, z: bz, prog, user, site, need: need || RULES.defuseTime });
@@ -579,13 +612,15 @@ export class Game {
       this.me.zoom = 0;
       this.me.using = false;
       this.toggleBuy(false);
-      this.me.killedBy = killer && m.killer !== this.myId ? `${killer.name} (${itemName(m.w)}${m.head ? ', headshot' : ''})` : (m.w === 'bomb' ? 'the bomb' : '');
-      this.spawnRagdoll(this.myId, m);
+      this.me.killedBy = m.w === 'monster' ? 'It' : m.w === 'fall' ? 'the fall' : killer && m.killer !== this.myId ? `${killer.name} (${itemName(m.w)}${m.head ? ', headshot' : ''})` : (m.w === 'bomb' ? 'the bomb' : '');
+      if (m.w === 'monster') { sfx.playGrab(); this.shake = 2.5; this.hud.center('', 'It got you', '#ff4a3a', 3); }
+      if (m.w === 'fall') this.hud.center('', 'You fell into the dark', '#cfc28a', 3);
+      if (m.w !== 'fall') this.spawnRagdoll(this.myId, m);
     } else {
       const r = this.remotes.get(m.victim);
       if (r) {
         r.alive = false; r.deadT = performance.now();
-        if (r.model && r.buf.length) this.spawnRagdoll(r.id, m);
+        if (r.model && r.buf.length && m.w !== 'fall' && !r.model.monster) this.spawnRagdoll(r.id, m);
       }
     }
   }
@@ -1274,6 +1309,12 @@ export class Game {
       return;
     }
 
+    if (this.br) {
+      // no guns, no bomb: just moving (any weapon keys do nothing)
+      for (const a of ['reload', 'alt', 'w1', 'w2', 'w3', 'w5', 'next', 'prev', 'swap', 'drop', 'use', 'inspect', 'click', 'buy']) inp.consume(a);
+      this.updateMovement(dt, false);
+      return;
+    }
     const use = this.eligibleUse();
     // E / ✋ with nothing to plant or defuse: swap for the gun you're looking at
     if (inp.consume('use') && use !== 'plant' && use !== 'defuse' && use !== 'look') this.tryPick();
@@ -1720,7 +1761,7 @@ export class Game {
   }
 
   cycleSpectate() {
-    const list = [...this.remotes.values()].filter(r => r.alive && !r.dummy);
+    const list = [...this.remotes.values()].filter(r => r.alive && !r.dummy && r.team !== 'monster' && !r.escaped);
     const mates = list.filter(r => this.isMate(r));
     const pool = mates.length ? mates : list;
     if (!pool.length) { this.me.spectate = null; return; }
@@ -1759,7 +1800,15 @@ export class Game {
       // the dead are shown as ragdolls instead
       m.root.visible = !hidden && r.alive;
       m.root.position.set(r.rp.x, r.rp.y, r.rp.z);
-      if (itemDef(r.w)) setModelWeapon(m, r.w);
+      if (m.monster) {
+        m.root.visible = r.alive;
+        m.root.rotation.set(0, r.rp.yaw, 0);
+        animateMonster(m, dt, { speed: r.speed, chase: !!r.use });
+        this.monsterSounds(r, dt, speed);
+        continue;
+      }
+      if (r.w === 'none') setModelWeapon(m, 'none');
+      else if (itemDef(r.w)) setModelWeapon(m, r.w);
       if (r.alive) {
         m.root.rotation.set(0, r.rp.yaw, 0);
         const fx = -Math.sin(r.rp.yaw), fz = -Math.cos(r.rp.yaw);
@@ -1789,6 +1838,17 @@ export class Game {
         if (fall > 0.5 && d < 30) sfx.playLand({ pos: { x: r.rp.x, y: r.rp.y + 0.05, z: r.rp.z }, surface: this.surfaceAt(r.rp.x, r.rp.y, r.rp.z), hard: Math.min(1, fall / 3), occ: this.occlusion(r.rp.x, r.rp.y + 0.3, r.rp.z) });
       }
     }
+  }
+
+  // the monster's footsteps, and how close it is (the lights dip and buzz when it's near)
+  monsterSounds(r, dt, speed) {
+    const d = Math.hypot(r.rp.x - this.me.pos.x, r.rp.z - this.me.pos.z);
+    this.monsterDist = Math.min(this.monsterDist ?? Infinity, r.alive ? d : Infinity);
+    if (!r.alive || speed < 0.6) return;
+    r.stepTimer -= dt;
+    if (r.stepTimer > 0) return;
+    r.stepTimer = r.use ? 0.26 : 0.55;
+    if (d < 32) sfx.playMonsterStep({ x: r.rp.x, y: r.rp.y + 0.05, z: r.rp.z }, this.occlusion(r.rp.x, r.rp.y + 0.5, r.rp.z), !!r.use);
   }
 
   // ---------- camera + view-model ----------
@@ -1950,12 +2010,18 @@ export class Game {
     const elapsed = (performance.now() - (this.timeLeftAt || performance.now())) / 1000;
     const tl = Math.max(0, this.timeLeft - (this.phase === 'end' || this.phase === 'over' ? 0 : elapsed));
     const planted = this.bomb.state === 'planted';
-    if (this.practice && !planted) hud.setTimer(0, false), document.getElementById('timer').textContent = '∞';
+    if (this.br) hud.setTimer(this.timeLeft + (this.phase === 'br' ? elapsed : 0), false);
+    else if (this.practice && !planted) hud.setTimer(0, false), document.getElementById('timer').textContent = '∞';
     else hud.setTimer(tl, planted);
     const alive = { atk: 0, def: 0 };
     for (const r of this.remotes.values()) if (r.alive && !r.dummy) alive[r.team]++;
     if (me.alive) alive[me.team]++;
-    if (this.dm) {
+    if (this.br) {
+      // how many are still inside, how many got out
+      let inside = me.alive ? 1 : 0, out = me.escaped ? 1 : 0;
+      for (const r of this.remotes.values()) if (r.team !== 'monster') { if (r.alive) inside++; if (r.escaped) out++; }
+      hud.setBackrooms(inside, out);
+    } else if (this.dm) {
       let best = null;
       for (const r of this.remotes.values()) if (!r.dummy && (!best || r.kills > best.kills)) best = r;
       hud.setDeathmatch(me.kills || 0, best ? best.kills : 0, best ? best.name : '', RULES.dm.killLimit);
@@ -2022,6 +2088,12 @@ export class Game {
       hint = touch ? '[[spoon]] Tap [[swap]] for the spoon' : code ? `[[spoon]] Press ${keyLabel(code)} for the spoon` : '[[spoon]] Scroll the mouse wheel for the spoon';
     } else if (me.alive && this.phase === 'freeze') hint = touch ? 'Tap [[cart]] to buy' : `Press ${this.key('buy')} to buy`;
     else if (me.alive && this.dm && this.clock - (this.spawnedAt || 0) < 3) hint = touch ? 'Tap [[cart]] to change guns' : `Press ${this.key('buy')} to change guns`;
+    if (this.br) {
+      hint = '';
+      if (me.alive && this.clock < (this.brHintUntil || 0)) hint = touch ? 'Push the stick only part way to walk quietly' : `Hold ${this.key('walk')} to walk quietly`;
+      else if (me.alive && this.world.exit && Math.hypot(this.world.exit.x - me.pos.x, this.world.exit.z - me.pos.z) < 6) hint = 'The exit! Go through the door';
+      else if (!me.alive && me.escaped) hint = 'You got out. Watching the others…';
+    }
     hud.hint(hint);
     const useBtn = document.getElementById('btn-use');
     useBtn.classList.toggle('hidden', use !== 'plant' && use !== 'defuse' && !pick);
@@ -2048,13 +2120,17 @@ export class Game {
       let text = me.killedBy ? `Killed by ${me.killedBy}` : 'You are dead';
       if (target && since > 2) text = `Spectating ${target.name} — ${touch ? 'tap' : 'click'} to switch`;
       if (this.practice || this.dm) text = me.killedBy ? `Killed by ${me.killedBy} — respawning…` : 'Respawning…';
+      if (this.br && !(target && since > 2)) text = me.escaped ? 'You escaped!' : me.killedBy === 'It' ? 'It caught you' : me.killedBy === 'the fall' ? 'You fell into the dark' : 'You are out';
       hud.death(text);
     } else hud.death(null);
 
     // scoreboard
     const list = [{ id: this.myId, name: this.settings.name, team: me.team, kills: me.kills || 0, deaths: me.deaths || 0, alive: me.alive, me: true, ping: this.myId === 'host' ? 'host' : me.ping, money: me.money }];
-    for (const r of this.remotes.values()) list.push({ name: r.name, team: r.team, kills: r.kills, deaths: r.deaths, alive: r.alive, dummy: r.dummy, ping: r.bot ? 'bot' : r.id === 'host' ? 'host' : r.ping, money: r.money });
-    hud.scoreboard(this.input.scoreHeld, list, this.score, me.team, this.dm);
+    for (const r of this.remotes.values()) {
+      if (r.team === 'monster') continue;
+      list.push({ name: r.name, team: r.team, kills: r.kills, deaths: r.deaths, alive: r.alive, dummy: r.dummy, ping: r.bot ? 'bot' : r.id === 'host' ? 'host' : r.ping, money: r.money });
+    }
+    hud.scoreboard(this.input.scoreHeld, list, this.score, me.team, this.dm || this.br);
 
     // radar
     this.radarTimer = (this.radarTimer || 0) - dt;
@@ -2145,6 +2221,11 @@ export class Game {
     this.updateCamera(dt);
     this.updateFlashlights();
     this.updateHud(dt);
+    if (this.mapUpdate) {
+      const d = this.monsterDist ?? Infinity;
+      this.monsterDist = Infinity;
+      this.mapUpdate(dt, Math.max(0, Math.min(1, (16 - d) / 12)));
+    }
     // the sky follows the camera (so a short view distance never cuts it off)
     const skyK = (this.camera.far * 0.9) / 500;
     for (const s of this.sky) { s.position.copy(this.camera.position); s.scale.setScalar(skyK); }
@@ -2154,6 +2235,7 @@ export class Game {
       this.renderer.clear();
       this.renderer.render(this.scene, this.camera);
     }
+    if (this.br) return;          // no gun in your hands in the Backrooms
     this.renderer.clearDepth();
     this.renderer.render(this.vmScene, this.vmCamera);
   }

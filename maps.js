@@ -13,6 +13,8 @@
 //   b.spawn('dm', x, z, yaw)             deathmatch spawn point (spread them out)
 //   b.site('A', x0,z0,x1,z1)             bomb site area
 
+import { backroomsMap } from './brmap.js';
+
 const EAST = -Math.PI / 2, WEST = Math.PI / 2, NORTH = 0, SOUTH = Math.PI;
 // Wraps a builder so a block of map script can be placed with an offset
 // (deathmatch maps build the same core into a bigger area for 4 players).
@@ -918,6 +920,8 @@ export const dmVariant = players => (players >= 4 ? 'large' : 'small');
 
 // The map definition to build, with a deathmatch map's size variant applied
 export function resolveMap(id, variant) {
+  // the Backrooms is a new random maze every game: the variant is its seed
+  if (id === 'backrooms') return backroomsMap(Math.floor(Number(variant)) || 1);
   const d = MAPS[id] || MAPS.outpost;
   if (!d.sizes) return d;
   const v = d.sizes[variant] ? variant : 'small';

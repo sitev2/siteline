@@ -59,6 +59,7 @@ const ROOMS = {
   railyard: { decay: 1.2, wet: 0.19, damp: 3800 },
   village: { decay: 1.4, wet: 0.22, damp: 4000 },   // narrow stone streets
   tuscan: { decay: 1.3, wet: 0.2, damp: 4200 },
+  backrooms: { decay: 0.8, wet: 0.2, damp: 2600 },   // carpet and ceiling tiles soak it up, but it goes on and on
 };
 let room = ROOMS.desert;
 export function setRoom(theme) {
@@ -546,6 +547,45 @@ export function playBolt() { play(sound('boltBack'), { gain: 0.4 }); }
 // ---------- feedback ----------
 export function playHit(head) { play(sound(head ? 'hitHead' : 'hitBody'), { gain: head ? 0.5 : 0.45, wet: 0.05, important: true }); }
 export function playKill(head) { play(sound(head ? 'killHead' : 'kill'), { gain: 0.55, wet: 0.1, important: true }); }
+// ---------- the Backrooms monster ----------
+const MON = {
+  // a step: a hard metal tip on carpet, a rattle of its joints
+  step: () => buf(0.5, (x, sr) => { click(x, sr, 0, 900, 3, 0.9, 0.02); thump(x, sr, 0, 120, 70, 0.06, 0.8); partials(x, sr, 0.01, [[640 + Math.random() * 200, 0.25, 0.12], [1730, 0.15, 0.08], [2950, 0.08, 0.05]], 1); for (let k = 0; k < 4; k++) click(x, sr, 0.06 + k * 0.035 + Math.random() * 0.02, 2600 + Math.random() * 1500, 6, 0.25); normalize(x, 0.8); }),
+  // the scream when it sees you: a scraping metallic shriek bending down
+  screech: () => buf(2.2, (x, sr) => {
+    const n = x.length;
+    for (let i = 0; i < n; i++) {
+      const t = i / sr, e = Math.min(1, t / 0.05) * Math.exp(-Math.max(0, t - 0.6) * 2.2);
+      const f = 1180 - 520 * Math.min(1, t / 1.6) + 60 * Math.sin(t * 47);
+      let v = 0; for (let h = 1; h < 9; h++) v += Math.sin(6.283 * f * h * t * (1 + h * 0.013)) / h;
+      x[i] = Math.tanh(v * 2.4) * e * 0.5 + (Math.random() * 2 - 1) * e * 0.25;
+    }
+    biquad(x, 'bandpass', 1800, 0.6, sr);
+    normalize(x, 0.9);
+  }),
+  // a fast clicking rattle while it runs
+  rattle: () => buf(0.35, (x, sr) => { for (let k = 0; k < 9; k++) click(x, sr, k * 0.035, 1800 + Math.random() * 2600, 5, 0.4 + Math.random() * 0.4); normalize(x, 0.6); }),
+  // caught: a deafening burst right in your face
+  grab: () => buf(1.6, (x, sr) => {
+    for (let i = 0; i < x.length; i++) {
+      const t = i / sr, e = Math.exp(-t * 1.6);
+      let v = 0; for (let h = 1; h < 12; h++) v += Math.sin(6.283 * (340 + 90 * Math.sin(t * 31)) * h * t) / h;
+      x[i] = Math.tanh(v * 4) * e * 0.55 + (Math.random() * 2 - 1) * e * 0.45;
+    }
+    thump(x, sr, 0, 90, 40, 0.4, 1);
+    normalize(x, 0.95);
+  }),
+};
+const monSound = (k) => { const key = `mon:${k}#${k === 'step' ? Math.floor(Math.random() * 3) : 0}`; if (!cache.has(key)) cache.set(key, MON[k]()); return cache.get(key); };
+export function playMonsterStep(pos, occ = 0, chase = false) {
+  play(monSound('step'), { pos, gain: chase ? 1.4 : 1.0, ref: 3, roll: 1.1, air: 40, occ, wet: 0.5, rate: 0.85 + Math.random() * 0.25 });
+  if (chase && Math.random() < 0.6) play(monSound('rattle'), { pos, gain: 0.8, ref: 3, roll: 1.1, air: 30, occ, wet: 0.4 });
+}
+export function playScreech(pos, occ = 0) { play(monSound('screech'), { pos, gain: 1.6, ref: 6, roll: 0.7, air: 60, occ, wet: 0.7, important: true }); }
+export function playGrab() { play(monSound('grab'), { gain: 1.1, wet: 0.3, important: true }); }
+// an exit door's hum: played once as you escape
+export function playEscape() { play(sound('chimeUp'), { gain: 0.7, wet: 0.6, important: true, rate: 0.8 }); }
+
 export function playHurt() { play(sound('hurt'), { gain: 0.6, wet: 0.05, important: true }); }
 
 // ---------- the bomb ----------
@@ -580,6 +620,7 @@ const AMB = {
   railyard: { wind: 0.4, windTone: 400, events: ['horn', 'clank', 'clank', 'bird'] },
   village: { wind: 0.3, windTone: 380, water: 0.35, lap: 0.6, events: ['bird', 'bell', 'bird', 'bird', 'bell', 'gust'] },
   tuscan: { wind: 0.35, windTone: 400, events: ['bird', 'bird', 'bell', 'gust', 'bird'] },
+  backrooms: { buzz: 1, events: ['thud', 'creak', 'thud', 'clank'] },    // the endless fluorescent buzz
 };
 function ambienceBed(a, night) {
   const secs = 10;
@@ -593,6 +634,20 @@ function ambienceBed(a, night) {
       biquad(w, 'lowpass', a.windTone * (night ? 0.8 : 1), 0.8, sr);
       const p1 = Math.random() * 6, p2 = Math.random() * 6;
       for (let i = 0; i < n; i++) { const t = i / sr; x[i] += w[i] * a.wind * 3 * (0.55 + 0.3 * Math.sin(t * 0.63 + p1 + ch) + 0.15 * Math.sin(t * 1.7 + p2)); }
+    }
+    // fluorescent lights: a 120 Hz buzz with a raspy top, drifting slightly, plus electrical hiss
+    if (a.buzz) {
+      const hiss = new Float32Array(n);
+      for (let i = 0; i < n; i++) hiss[i] = rnd();
+      biquad(hiss, 'bandpass', 6200, 0.8, sr);
+      const p = Math.random() * 6;
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, f = 120 * (1 + 0.0015 * Math.sin(t * 0.37 + p));
+        let v = 0;
+        for (let h = 1; h <= 14; h++) v += Math.sin(6.283 * f * h * t + h * h * 0.7 + ch) / (h * (h < 4 ? 1 : 1.6));
+        const swell = 0.75 + 0.25 * Math.sin(t * 0.21 + p) + 0.08 * Math.sin(t * 2.9 + ch);
+        x[i] += (v * 0.05 + hiss[i] * 0.06) * swell * a.buzz;
+      }
     }
     if (a.hum) for (let i = 0; i < n; i++) { const t = i / sr; x[i] += (Math.sin(6.283 * 60 * t) * 0.5 + Math.sin(6.283 * 120 * t) * 0.3 + Math.sin(6.283 * 180 * t + ch) * 0.12) * a.hum * 0.08; }
     if (a.water) {
@@ -643,6 +698,8 @@ const AMB_EVENT = {
     for (let i = 0; i < fl; i++) x[x.length - fl + i] *= 1 - i / fl;   // fade so the ringing doesn't cut off
     normalize(x, 0.5);
   }),
+  // something heavy somewhere in the walls
+  thud: () => buf(1.6, (x, sr) => { thump(x, sr, 0, 70, 40, 0.3, 1); noiseHit(x, sr, 0, 'lowpass', 300, 0.7, 0.08, 0.5); if (Math.random() < 0.6) thump(x, sr, 0.45 + Math.random() * 0.3, 60, 38, 0.25, 0.7); normalize(x, 0.5); }),
   creak: () => buf(1.2, (x, sr) => { for (let i = 0; i < 0.9 * sr; i++) { const t = i / sr; x[i] = Math.sign(Math.sin(6.283 * (60 + 25 * Math.sin(t * 7)) * t)) * Math.sin(Math.PI * t / 0.9) * 0.3; } biquad(x, 'bandpass', 900, 2, sr); normalize(x, 0.35); }),
 };
 // start the ambience for a map (theme name from mapview.js); centre: middle of the map

@@ -56,7 +56,7 @@ function closeRoom(room) {
 }
 
 function joinRoom(ws, room, name) {
-  if (room.game.humanCount() >= CONFIG.maxPlayers) {
+  if (room.game.humans().length >= CONFIG.maxPlayers) {      // real people only (the Backrooms monster doesn't count)
     send(ws, { t: 'error', text: `That room is full (${CONFIG.maxPlayers} players max).` });
     return;
   }
@@ -66,7 +66,7 @@ function joinRoom(ws, room, name) {
   if (!room.game.ownerId) room.game.ownerId = id;
   send(ws, { t: 'room', code: room.code });
   room.game.addPlayer(id, name);
-  log(`${id} (${String(name).slice(0, 16)}) joined ${room.code} — ${room.game.humanCount()} in room`);
+  log(`${id} (${String(name).slice(0, 16)}) joined ${room.code} — ${room.game.humans().length} in room`);
 }
 
 function leave(ws) {

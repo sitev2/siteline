@@ -70,7 +70,7 @@ The only folder is `server/` (the optional home game server).
   `admin_overview()` / `admin_players()` check `is_admin()`. Never expose emails, passwords or chat text (owner agreed).
 - `icons.js` — white line icons (SVG drawn in code) used INSTEAD of emojis everywhere (owner's choice): `<i data-icon="cart">` in HTML
   (`fillIcons()` at start-up), `[[cart]]` tokens in hint / centre / toast text (`iconHTML()` escapes the rest), `icon(name)` in code.
-  Don't add emojis to the UI; add an icon to `PATHS` instead. Plain text marks (✓ ✕ → arrows) are fine.
+  Don't add emojis to the UI; add an icon to `PATHS` instead. New game .js files must also go in the `files` list in `index.html`. Plain text marks (✓ ✕ → arrows) are fine.
 - No crouching (the owner removed it): no crouch key/button, no `duck` anywhere; everyone is always standing (`PLAYER_HEIGHT`, `EYE`).
 - `keys.js` (rebindable keys), `crosshair.js` (incl. "follow recoil": HUD moves it to the next bullet's spot), `touchlayout.js` (phone button layout), `graphics.js` (presets),
   `post.js` (own AO / bloom / FXAA, no three.js add-ons), `anim.js` (draw + inspect poses, `poseViewModel`: first-person hands, reloads, slides, bolts, pumps), `filter.js` (chat filter)
@@ -98,6 +98,18 @@ The only folder is `server/` (the optional home game server).
 - Maps: 2v2 `outpost`, `foundry`, `frostline`, `canal`, `flame` (one bomb site each, plus `dm` spawns for 3-player deathmatch);
   deathmatch `quarry`, `railyard` (`mode: 'dm'`, small/large variants via `build(b, size)`; `resolveMap()` in `maps.js`)
 - Deathmatch rules: `RULES.dm` in `config.js`; server phase `'dm'`, everyone on team `'ffa'` during the match
+- The Backrooms (`settings.mode = 'br'`, lobby button + Practice "The Backrooms"; server phase `'br'`, `this.br`): 1–4 players co-op,
+  no guns (`p.w = 'none'`, empty hands), find the exit door. A new random maze every game: `brmap.js` (`planMaze(seed)` / `backroomsMap(seed)`;
+  NOT in `MAPS`, `resolveMap('backrooms', seed)`, the seed travels as `variant`): 18×18 rooms of 4 m, spanning tree + loops + bigger rooms,
+  pillar halls (repeating 1 m pillars), free pillars, pitfalls (`b.pit` → `world.pitGrid`, `isPit`: no floor, you fall; below y −3 the host
+  kills you), exit door in the outer wall (`b.exit` → `world.exit`). `node check_br.mjs 40` checks many seeds are escapable.
+  `brview.js` draws it with baked lighting (per-vertex light from every ceiling panel with 2D wall shadows, soft edges, bounce, AO;
+  MeshBasic + vertex colours, so it's cheap), canvas textures (chevron wallpaper, carpet, ceiling tiles, panels, own EXIT sign), pits,
+  flicker + "dread" dimming when the monster is near (`group.userData.update`). `monster.js` = the monster's brain on the host (player
+  id `'monster'`, team `'monster'` = snapshot team index 3, `use` = chasing): waits `MONSTER.wake` s, wanders towards players, hears running
+  (> 3.5 m/s) within 16 m, sees 28 m in front, chases, kills on contact (`monsterKill`). Model `makeMonsterModel` / `animateMonster` in
+  `models.js` is OUR OWN design (the owner asked for a known character from someone else's Backrooms videos; we declined to copy it).
+  Sounds in `audio.js` (fluorescent buzz bed, monster steps/screech/grab). Account stats are not reported for this mode.
 - `check_map.mjs` — `node check_map.mjs outpost` / `node check_map.mjs quarry large` checks every area and spawn is reachable
 
 - Rejoin: the last room joined as a guest is kept in localStorage for 30 min (`siteline-lastroom`); the menu shows

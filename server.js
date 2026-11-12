@@ -5,6 +5,7 @@ import { World, CELL, EYE, blastField, blastDamage } from './world.js';
 import { MAPS, resolveMap, mapsFor, isDmMap, dmVariant } from './maps.js';
 import { RULES } from './config.js';
 import { NavGrid, BotBrain, BOT_NAMES } from './bots.js';
+import { MonsterBrain } from './monster.js';
 import { cleanChat, CHAT_LIMIT } from './filter.js';
 import {
   WEAPONS, EQUIPMENT, MONEY, STARTER_PISTOL, canTeamBuy, rawDamage, applyArmor, isArmored, penMetres, HITGROUPS,
@@ -37,8 +38,9 @@ export class Server {
     this.ownerId = ownerId;
     this.localId = localId;
     this.players = new Map();
-    this.settings = { map: 'outpost', winRounds: RULES.winRounds, mode: 'wingman' };   // mode: 'wingman' (2v2 bomb) or 'dm' (deathmatch)
+    this.settings = { map: 'outpost', winRounds: RULES.winRounds, mode: 'wingman' };   // mode: 'wingman' (2v2 bomb), 'dm' (deathmatch) or 'br' (Backrooms)
     this.dm = false;               // true while a deathmatch is being played
+    this.br = false;               // true while a Backrooms escape is being played
     this.variant = null;           // deathmatch map size: 'small' or 'large'
     this.swapped = false;          // true after the halftime side swap
     this.squadScore = [0, 0];      // squad 0 starts as attackers, squad 1 as defenders
@@ -108,13 +110,18 @@ export class Server {
     p.spoon = hasSpoon(p.name);    // the secret spoon: only for the player with that name
     this.players.set(id, p);
     const back = this.phase !== 'lobby' && this.phase !== 'over' ? this.restoreLeaver(p) : false;
-    if (this.botCfg && this.phase !== 'lobby') this.replaceBotWith(p);
+    if (this.botCfg && this.phase !== 'lobby' && !this.br) this.replaceBotWith(p);
     this.send(id, { t: 'welcome', id, settings: this.settings, phase: this.phase, roster: this.roster(), practice: this.practice });
     if (this.practice && this.phase === 'practice') {
       // practice range: start shooting straight away
       this.send(id, this.startMsg());
       this.send(id, this.dropsMsg());
       this.later(0.3, () => this.respawn(p));
+    } else if (this.br) {
+      // a friend joins a running Backrooms game: they start in the starting room with nothing
+      this.brPrepare(p);
+      this.send(id, this.startMsg());
+      if (this.phase === 'br') this.later(0.3, () => this.brSpawn(p));
     } else if (this.phase === 'dm') {
       // jump straight into a running deathmatch
       p.team = 'ffa';
@@ -154,7 +161,7 @@ export class Server {
   // Someone who leaves a running match is remembered by name, so if they rejoin they get their
   // team, score and money back.
   rememberLeaver(p) {
-    if (p.bot || p.dummy || this.practice || this.phase === 'lobby' || this.phase === 'over') return;
+    if (p.bot || p.dummy || this.practice || this.br || this.phase === 'lobby' || this.phase === 'over') return;
     if (!this.gone) this.gone = new Map();
     this.gone.set(p.name.toLowerCase(), {
       dm: this.dm, squad: p.squad, kills: p.kills, deaths: p.deaths, hs: p.hs, dmg: p.dmg, money: p.money, dmLoadout: p.dmLoadout,
@@ -194,7 +201,9 @@ export class Server {
     }
     this.broadcastRoster();
     this.broadcast({ t: 'toast', text: `${p.name} left the game` });
-    if (this.phase === 'dm' && this.humanCount() < RULES.dm.minPlayers) {
+    if (this.phase === 'br') {
+      this.brCheck();
+    } else if (this.phase === 'dm' && this.humanCount() < RULES.dm.minPlayers) {
       const last = [...this.players.values()].find(q => !q.dummy);
       this.matchOver(last ? last.id : null, 'forfeit');
     } else if (!this.practice && ['freeze', 'live', 'planted', 'end'].includes(this.phase)) {
@@ -236,7 +245,7 @@ export class Server {
         return;
       case 'settings':
         if (id !== this.ownerId || this.phase !== 'lobby') return;
-        if (msg.mode === 'wingman' || msg.mode === 'dm') this.settings.mode = msg.mode;
+        if (msg.mode === 'wingman' || msg.mode === 'dm' || msg.mode === 'br') this.settings.mode = msg.mode;
         if (typeof msg.night === 'boolean') this.settings.night = msg.night;
         if (MAPS[msg.map]) this.settings.map = msg.map;
         this.broadcastRoster();
@@ -677,6 +686,7 @@ export class Server {
       from: from ? from.map(r2) : null, part: part || 'chest',
     });
     if (this.bomb.carrier === tgt.id && this.bomb.state === 'carried') this.dropBomb(tgt, this.throwSpot(tgt, 0.4, Math.PI));
+    if (this.br) { this.brCheck(); return; }
     if (this.dm) {
       if (attacker && attacker !== tgt && attacker.kills >= RULES.dm.killLimit) this.dmOver('kills');
       else this.later(RULES.dm.respawn, () => { if (this.phase === 'dm') this.respawn(tgt); });
@@ -722,12 +732,14 @@ export class Server {
   startMsg() {
     return {
       t: 'start', map: this.settings.map, settings: this.settings, roster: this.roster(), practice: this.practice, phase: this.phase,
-      mode: this.dm ? 'dm' : 'wingman', variant: this.variant,
+      mode: this.br ? 'br' : this.dm ? 'dm' : 'wingman', variant: this.variant,
     };
   }
 
   // keep the chosen map valid for the mode and the number of players in the room
   fixMap() {
+    if (this.settings.mode === 'br') { this.settings.map = 'backrooms'; return; }
+    if (this.settings.map === 'backrooms') this.settings.map = 'outpost';
     const ok = mapsFor(this.settings.mode, this.humanCount());
     if (!ok.includes(this.settings.map)) this.settings.map = ok[0];
   }
@@ -788,10 +800,16 @@ export class Server {
     for (const [id, p] of [...this.players]) if (p.dummy) this.players.delete(id);
     this.phase = 'lobby';
     this.dm = false;
+    if (this.br) this.brEnd();
     const humans = [...this.players.values()];
     if (cfg.kind === 'range') {
       for (const p of humans) p.team = 'atk';
       this.startPractice(cfg.map, cfg.count || 0, cfg.behavior || 'still', cfg.level);
+      return;
+    }
+    if (cfg.kind === 'br') {
+      this.settings.mode = 'br';
+      this.startBackrooms();
       return;
     }
     if (cfg.kind === 'dm') {
@@ -915,6 +933,99 @@ export class Server {
     this.sendInv(p, fresh ? [item] : []);
   }
 
+  // ---------- the Backrooms: co-op escape from a random maze, with a monster ----------
+  startBackrooms() {
+    if (!this.humans().length) return;
+    for (const id of [...this.bots.keys()]) { this.bots.delete(id); this.players.delete(id); }
+    this.br = true;
+    this.dm = false;
+    this.brDone = false;
+    this.settings.map = 'backrooms';
+    this.variant = 1 + Math.floor(Math.random() * 2147483000);      // the maze's seed: a new maze every game
+    this.world = new World(resolveMap('backrooms', this.variant));
+    this.round = 1;
+    this.timer = 0;
+    this.bomb = this.freshBomb();
+    this.drops.clear();
+    for (const p of this.humans()) { p.lobbyTeam = p.team; this.brPrepare(p); p.kills = 0; p.deaths = 0; }
+    const m = this.world.spawns.def[0];
+    const mp = {
+      id: 'monster', name: 'It', team: 'monster', x: m.x, y: 0, z: m.z, yaw: 0, pitch: 0, w: 'none', hp: 100, alive: true,
+      kills: 0, deaths: 0, lastShot: 0, use: false, moved: 0, dummy: false, bot: true, ping: 0, squad: 0, money: 0,
+      inv: { primary: null, secondary: null }, armor: 0, helmet: false, kit: false, hs: 0, dmg: 0, ammo: {},
+    };
+    this.players.set(mp.id, mp);
+    this.bots.set(mp.id, new MonsterBrain(this, mp));
+    this.phase = 'br';
+    this.broadcast(this.startMsg());
+    this.broadcastRoster();
+    this.humans().forEach((p, i) => this.brSpawn(p, i));
+  }
+
+  humans() { return [...this.players.values()].filter(p => !p.dummy && !p.bot); }
+
+  // no guns, no money: just you and your torch-less hands
+  brPrepare(p) {
+    Object.assign(p, {
+      team: 'atk', w: 'none', inv: { primary: null, secondary: null }, ammo: {}, armor: 0, helmet: false, kit: false,
+      money: 0, alive: false, escaped: false, escapeTime: null, brDeath: null, use: false,
+    });
+  }
+
+  brSpawn(p, i = Math.floor(Math.random() * 4)) {
+    if (!this.players.has(p.id) || this.phase !== 'br') return;
+    const s = this.world.spawns.atk[i % this.world.spawns.atk.length];
+    Object.assign(p, { x: s.x, y: 0, z: s.z, yaw: s.yaw, pitch: 0, hp: 100, alive: true, escaped: false, moved: 0 });
+    this.send(p.id, { t: 'spawn', x: r2(s.x), y: 0, z: r2(s.z), yaw: r2(s.yaw), rd: this.round });
+  }
+
+  brTick() {
+    const door = this.world.exit;
+    for (const p of this.humans()) {
+      if (!p.alive || p.escaped) continue;
+      // down a pitfall
+      if (p.y < -3) { p.brDeath = 'fell'; this.kill(p, null, 'fall', false); continue; }
+      // through the exit door
+      if (door) {
+        const dx = p.x - door.x, dz = p.z - door.z;
+        const ahead = dx * door.nx + dz * door.nz, side = Math.abs(-dx * door.nz + dz * door.nx);
+        if (ahead < 0.9 && side < 1.1 && Math.abs(p.y) < 0.5) {
+          p.escaped = true; p.alive = false; p.escapeTime = Math.round(this.timer);
+          this.broadcast({ t: 'escaped', id: p.id, name: p.name, time: p.escapeTime });
+          this.brCheck();
+        }
+      }
+    }
+  }
+
+  // the monster caught someone
+  monsterKill(m, q) {
+    if (!q.alive || this.phase !== 'br') return;
+    q.brDeath = 'monster';
+    q.hp = 0;
+    this.kill(q, m, 'monster', false, [m.x, m.y + 1.4, m.z]);
+  }
+
+  // the monster has just spotted this player: they hear it scream
+  monsterAlert(m, q) { this.send(q.id, { t: 'spotted' }); }
+
+  // is anyone still inside? if not, the game is over (won if anyone got out)
+  brCheck() {
+    if (this.phase !== 'br' || this.brDone) return;
+    const hs = this.humans();
+    if (!hs.length || hs.some(p => p.alive && !p.escaped)) return;
+    this.brDone = true;
+    const out = hs.filter(p => p.escaped).length;
+    this.later(2, () => { if (this.phase === 'br') this.matchOver(out ? 'escaped' : 'lost', out === hs.length ? 'all' : out ? 'some' : 'none'); });
+  }
+
+  brEnd() {
+    this.bots.delete('monster');
+    this.players.delete('monster');
+    for (const p of this.humans()) { p.team = p.lobbyTeam === 'def' ? 'def' : 'atk'; p.escaped = false; p.w = STARTER_PISTOL[p.team]; }
+    this.br = false;
+  }
+
   dmOver(reason) {
     const humans = [...this.players.values()].filter(p => !p.dummy).sort((a, b) => b.kills - a.kills || a.deaths - b.deaths);
     const tie = humans.length > 1 && humans[0].kills === humans[1].kills && humans[0].deaths === humans[1].deaths;
@@ -929,6 +1040,7 @@ export class Server {
 
   startMatch() {
     if (this.phase !== 'lobby') return;
+    if (this.settings.mode === 'br' && !this.practice) return this.startBackrooms();
     if (this.settings.mode === 'dm' && !this.practice) return this.startDeathmatch();
     this.dm = false;
     this.variant = null;
@@ -1128,13 +1240,15 @@ export class Server {
   // winner: a team ('atk' / 'def') in 2v2, a player id in deathmatch, null for a draw
   matchOver(winner, reason) {
     this.phase = 'over';
-    const stats = [...this.players.values()].filter(p => !p.dummy)
+    const stats = [...this.players.values()].filter(p => !p.dummy && !(this.br && p.bot))
       .map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, hs: p.hs, dmg: p.dmg }));
-    this.broadcast({ t: 'over', winner, reason, score: this.score, stats, mode: this.dm ? 'dm' : 'wingman' });
+    if (this.br) for (const s of stats) { const p = this.players.get(s.id); s.escaped = !!(p && p.escaped); s.time = p && p.escapeTime; s.how = p && p.brDeath; }
+    this.broadcast({ t: 'over', winner, reason, score: this.score, stats, mode: this.br ? 'br' : this.dm ? 'dm' : 'wingman', time: this.br ? Math.round(this.timer) : undefined });
   }
 
   toLobby() {
     this.phase = 'lobby';
+    if (this.br) this.brEnd();
     if (this.dm) {
       // back to the 2v2 teams everyone had before the deathmatch
       for (const p of this.players.values()) if (!p.dummy) p.team = p.lobbyTeam === 'def' ? 'def' : 'atk';
@@ -1198,6 +1312,10 @@ export class Server {
       case 'dm':
         this.timer -= dt;
         if (this.timer <= 0) this.dmOver('time');
+        break;
+      case 'br':
+        this.timer += dt;      // the clock counts up: how long you have been in there
+        this.brTick();
         break;
       case 'end':
         this.timer -= dt;
@@ -1305,7 +1423,8 @@ export class Server {
     const ps = [];
     for (const p of this.players.values()) {
       ps.push([p.id, r2(p.x), r2(p.y), r2(p.z), r2(p.yaw), r2(p.pitch), p.alive ? 1 : 0, p.hp, p.w, p.kills, p.deaths,
-        p.team === 'atk' ? 0 : p.team === 'def' ? 1 : 2, p.use ? 1 : 0, p.ping, p.armor | 0, (p.helmet ? 1 : 0) | (p.kit ? 2 : 0) | (p.light ? 4 : 0), p.money | 0]);
+        p.team === 'atk' ? 0 : p.team === 'def' ? 1 : p.team === 'monster' ? 3 : 2, p.use ? 1 : 0, p.ping, p.armor | 0,
+        (p.helmet ? 1 : 0) | (p.kit ? 2 : 0) | (p.light ? 4 : 0) | (p.escaped ? 8 : 0), p.money | 0]);
     }
     const b = this.bomb;
     const timeLeft = this.phase === 'planted' || (this.practice && b.state === 'planted') ? b.timer : this.timer;

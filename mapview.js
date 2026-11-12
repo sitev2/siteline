@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { CELL, hash2 } from './world.js';
 import { makeTexture, letterTexture } from './textures.js';
 import { decorateMap } from './mapdeco.js';
+import { buildBackroomsScene } from './brview.js';
 
 export const THEMES = {
   desert: {
@@ -449,6 +450,7 @@ function buildWater(world, theme, group, night) {
 
 // gfx: resolved graphics settings (graphics.js); night: dark map lit by the moon and flashlights
 export function buildMapScene(world, renderer, gfx = {}, night = false) {
+  if (world.def.theme === 'backrooms') return buildBackroomsScene(world, renderer, gfx);
   const theme = THEMES[world.def.theme] || THEMES.desert;
   const group = new THREE.Group();
   const shadows = !!gfx.shadows && gfx.shadows !== 'off';

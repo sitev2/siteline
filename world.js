@@ -103,6 +103,16 @@ class Builder {
     this.cells(x0, z0, x1, z1, (ix, iz, i) => { this.wd.spans[i] = [{ y0: 0, y1: h, m: opts.mat || 'stucco', pen: false, prop: -1, house: id }]; });
   }
 
+  // a pitfall: a hole in the floor you fall down (and don't come back from)
+  pit(x0, z0, x1, z1) {
+    const w = this.wd;
+    if (!w.pitGrid) w.pitGrid = new Uint8Array(w.w * w.h);
+    w.pits.push({ x0, z0, x1, z1 });
+    this.cells(x0, z0, x1, z1, (ix, iz, i) => { w.spans[i] = w.spans[i].filter(s => s.y0 > 0.5); w.pitGrid[i] = 1; });
+  }
+  // the way out of the Backrooms: a door in a wall at (x, z), (nx, nz) pointing into the maze
+  exit(door) { this.wd.exit = door; }
+
   spawn(team, x, z, yaw) { this.wd.spawns[team].push({ x, z, yaw }); }
   site(name, x0, z0, x1, z1) { this.wd.siteRects.push({ name, x0, z0, x1, z1 }); }
 }
@@ -139,6 +149,9 @@ export class World {
     this.houses = [];     // village maps: each house block with its look
     this.spawns = { atk: [], def: [], dm: [] };   // dm = deathmatch spawn points
     this.siteRects = [];
+    this.pits = [];       // holes in the floor (Backrooms)
+    this.pitGrid = null;
+    this.exit = null;     // Backrooms exit door
     mapDef.build(new Builder(this));
     if (mapDef.village) this.fillHouses(mapDef.village);
     for (const list of this.spans) list.sort((a, b) => a.y0 - b.y0);
@@ -248,6 +261,14 @@ export class World {
     return this.spans[iz * this.w + ix];
   }
 
+  // is there a hole in the floor at this point?
+  isPit(x, z) {
+    if (!this.pitGrid) return false;
+    const ix = Math.floor(x / CELL), iz = Math.floor(z / CELL);
+    return ix >= 0 && iz >= 0 && ix < this.w && iz < this.h && this.pitGrid[iz * this.w + ix] === 1;
+  }
+  pitCell(ix, iz) { return !!this.pitGrid && ix >= 0 && iz >= 0 && ix < this.w && iz < this.h && this.pitGrid[iz * this.w + ix] === 1; }
+
   // the water surface height here (0 = dry)
   waterAt(x, z) {
     for (const w of this.water) if (x >= w.x0 && x <= w.x1 && z >= w.z0 && z <= w.z1) return w.y;
@@ -286,6 +307,11 @@ export class World {
 
   // would a player with feet at y collide at (x,z)? `step` = how high a ledge can be walked up
   blocked(x, z, r, y, step = STEP, height = PLAYER_HEIGHT) {
+    // down a pitfall: the floor around the hole is solid, so you can't walk out under it
+    if (y < -0.3 && this.pitGrid) {
+      const x0 = Math.floor((x - r) / CELL), x1 = Math.floor((x + r) / CELL), z0 = Math.floor((z - r) / CELL), z1 = Math.floor((z + r) / CELL);
+      for (let iz = z0; iz <= z1; iz++) for (let ix = x0; ix <= x1; ix++) if (!this.pitCell(ix, iz)) return true;
+    }
     return this.forCircle(x, z, r, spans => {
       for (const s of spans) if (s.y1 > y + step && s.y0 < y + height) return true;
       return false;
@@ -294,7 +320,8 @@ export class World {
 
   // highest surface at or below y + step
   groundAt(x, z, r, y, step = STEP) {
-    let g = 0;
+    // over a hole (your middle, not just an edge of you): nothing to stand on
+    let g = this.pitGrid && this.isPit(x, z) ? -60 : 0;
     this.forCircle(x, z, r, spans => {
       for (const s of spans) if (s.y1 <= y + step && s.y1 > g) g = s.y1;
     });
