@@ -435,6 +435,19 @@ body.touch #hint { bottom: calc(76px + var(--sab)); }
 
 /* ---------- practice menu ---------- */
 .mode-pick.three { grid-template-columns: repeat(3, 1fr); }
+.mode-pick.four { grid-template-columns: repeat(4, 1fr); }
+/* the Backrooms: no map choice, teams, night or bot options */
+.p-br { display: none; }
+#practice.m-br .p-br { display: block; }
+#practice.m-br .p-map, #practice.m-br .p-nightopt, #practice.m-br #p-note { display: none; }
+#lobby.br .ffa-list { display: block; }
+#lobby.br .teams, #lobby.br #btn-shuffle, #lobby.br #map-cards, #lobby.br .night-toggle, #lobby.br .lobby-settings > .eyebrow { display: none; }
+/* in the Backrooms you have nothing in your hands: no ammo, money, armour, map, crosshair or gun buttons */
+body.br-mode #ammo, body.br-mode #econ, body.br-mode #armor, body.br-mode #radar, body.br-mode #crosshair, body.br-mode #buy-chip,
+body.br-mode #hp, body.br-mode #team-label { display: none !important; }
+body.br-mode #touch #btn-fire, body.br-mode #touch #btn-fire-left, body.br-mode #touch #btn-reload, body.br-mode #touch #btn-alt,
+body.br-mode #touch #btn-swap, body.br-mode #touch #btn-drop, body.br-mode #touch #btn-inspect, body.br-mode #touch #btn-buy,
+body.br-mode #touch #btn-use, body.br-mode #touch #btn-light { display: none !important; }
 #practice .panel { display: grid; gap: 12px; }
 #practice .p-range, #practice .p-match, #practice .p-count, #practice .p-botopt, #practice .p-behavior { display: none; }
 #practice.m-range.bots-on .p-behavior { display: grid; }
@@ -445,7 +458,7 @@ body.touch #hint { bottom: calc(76px + var(--sab)); }
 .pause-invite { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-radius: 12px;
   background: rgba(255,255,255,.05); border: 1px solid var(--line); }
 .pause-invite b { display: block; font: 700 1.4rem var(--display); letter-spacing: .2em; color: var(--accent); }
-@media (max-width: 700px) { .mode-pick.three { grid-template-columns: 1fr; } }
+@media (max-width: 700px) { .mode-pick.three { grid-template-columns: 1fr; } .mode-pick.four { grid-template-columns: 1fr 1fr; } }
 
 /* ---------- settings tabs ---------- */
 .panel.wide { max-width: 760px; width: 100%; }

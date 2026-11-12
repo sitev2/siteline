@@ -547,7 +547,7 @@ function practiceMaps(kind, count) {
 function renderPracticeMenu() {
   const P = settings.practice;
   const el = $('practice');
-  el.classList.remove('m-range', 'm-match', 'm-dm');
+  el.classList.remove('m-range', 'm-match', 'm-dm', 'm-br');
   el.classList.add(`m-${P.kind}`);
   el.classList.toggle('bots-on', !!P.bots);
   for (const b of document.querySelectorAll('.pmode-btn')) b.classList.toggle('selected', b.dataset.pmode === P.kind);
@@ -653,8 +653,8 @@ function showLobby() {
 
 // what friends see next to your name (friends.js)
 function activityText() {
-  if (app.mode === 'practice') return app.botGame === 'range' ? 'At the practice range' : 'Playing against bots';
-  if (app.game) return app.lobby.mode === 'dm' ? 'In a deathmatch' : 'In a 2v2 match';
+  if (app.mode === 'practice') return app.botGame === 'range' ? 'At the practice range' : app.botGame === 'br' ? 'In the Backrooms' : 'Playing against bots';
+  if (app.game) return app.lobby.mode === 'dm' ? 'In a deathmatch' : app.lobby.mode === 'br' ? 'In the Backrooms' : 'In a 2v2 match';
   if (app.mode === 'host' || app.mode === 'client') return 'In a lobby';
   return 'In the menu';
 }
@@ -711,8 +711,9 @@ function renderLobby() {
   if ($('lobby').classList.contains('hidden')) return;
   document.body.classList.toggle('is-host', isLeader());
   $('room-code').textContent = app.code || '-----';
-  const dm = app.lobby.mode === 'dm';
+  const dm = app.lobby.mode === 'dm', br = app.lobby.mode === 'br';
   $('lobby').classList.toggle('dm', dm);
+  $('lobby').classList.toggle('br', br);
   $('lobby-night').checked = !!app.lobby.night;
   $('lobby-night').disabled = !isLeader();
   for (const b of document.querySelectorAll('.mode-btn[data-mode]')) {
@@ -763,11 +764,15 @@ function renderLobby() {
   const n = humans().length;
   const counts = { atk: app.roster.filter(p => p.team === 'atk').length, def: app.roster.filter(p => p.team === 'def').length };
   const D = RULES.dm;
-  $('match-rules').innerHTML = dm
-    ? `<b>Deathmatch</b> · everyone for themselves · first to <b>${D.killLimit}</b> kills or <b>${D.timeLimit / 60}</b> minutes · ${n === 3 ? 'played on a 2v2 map with 3 players' : 'small map for 2, large for 4'}`
+  $('match-rules').innerHTML = br
+    ? '<b>The Backrooms</b> · 1–4 players together · a new random maze every game · no guns · find the exit before it finds you'
+    : dm ? `<b>Deathmatch</b> · everyone for themselves · first to <b>${D.killLimit}</b> kills or <b>${D.timeLimit / 60}</b> minutes · ${n === 3 ? 'played on a 2v2 map with 3 players' : 'small map for 2, large for 4'}`
     : '<b>2v2</b> · first to <b>9</b> · sides swap after round <b>8</b> · 8–8 is a draw';
   let note, ready;
-  if (dm) {
+  if (br) {
+    ready = n >= 1 && n <= 4;
+    note = !isLeader() ? 'Waiting for the host to start…' : `${n} player${n === 1 ? '' : 's'} ready. Friends can also join after it has started.`;
+  } else if (dm) {
     ready = n >= D.minPlayers && n <= D.maxPlayers;
     note = !isLeader() ? 'Waiting for the host to start the match…'
       : n < D.minPlayers ? `Deathmatch needs ${D.minPlayers} to ${D.maxPlayers} players. Share the room code or invite link.`
@@ -866,6 +871,7 @@ function showOver(msg) {
   reportToAccount(msg);
   const names = { atk: 'Attackers', def: 'Defenders' };
   if (msg.mode === 'dm') return showDmOver(msg);
+  if (msg.mode === 'br') return showBrOver(msg);
   $('over-title').textContent = msg.reason === 'draw' ? 'Draw — 8 rounds each'
     : msg.reason === 'forfeit' ? `${names[msg.winner]} win — the other team left` : `${names[msg.winner]} win the match`;
   $('over-title').style.color = msg.winner === 'atk' ? 'var(--atk)' : msg.winner === 'def' ? 'var(--def)' : 'var(--text)';
@@ -891,6 +897,26 @@ function finishOver() {
   if (app.game) app.game.paused = true;
   $('pause').classList.add('hidden');
   $('over').classList.remove('hidden');
+}
+
+function showBrOver(msg) {
+  const me = msg.stats.find(s => s.id === app.myId);
+  const clock = s => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`;
+  $('over-title').textContent = msg.reason === 'all' ? (msg.stats.length > 1 ? 'Everyone escaped!' : 'You escaped!')
+    : msg.reason === 'some' ? (me && me.escaped ? 'You escaped!' : 'Some of you escaped') : 'Nobody made it out';
+  $('over-title').style.color = msg.winner === 'escaped' ? '#9dffb5' : '#ff6b4a';
+  $('over-score').innerHTML = `<span>${clock(msg.time)}</span>`;
+  const table = document.createElement('table');
+  table.innerHTML = '<tr><th>Player</th><th>What happened</th></tr>';
+  for (const s of msg.stats.slice().sort((a, b) => (b.escaped - a.escaped) || ((a.time || 0) - (b.time || 0)))) {
+    const tr = document.createElement('tr');
+    const how = s.escaped ? `Escaped (${clock(s.time)})` : s.how === 'fell' ? 'Fell into a pit' : s.how === 'monster' ? 'Caught by it' : 'Left the game';
+    for (const v of [s.name, how]) { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); }
+    tr.lastChild.style.color = s.escaped ? '#9dffb5' : '#ff8a6a';
+    table.appendChild(tr);
+  }
+  $('over-stats').replaceChildren(table);
+  finishOver();
 }
 
 function showDmOver(msg) {
@@ -1158,7 +1184,7 @@ function onLogin() {
 
 // After a real online match, add it to the account (practice and bot games never count).
 async function reportToAccount(msg) {
-  if (!acct.loggedIn() || app.botGame || app.mode === 'practice' || !app.game) return;
+  if (!acct.loggedIn() || app.botGame || app.mode === 'practice' || !app.game || msg.mode === 'br') return;
   const me = msg.stats.find(s => s.id === app.myId);
   if (!me) return;
   const dm = msg.mode === 'dm';

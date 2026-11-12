@@ -43,7 +43,7 @@ export class NavGrid {
     const tops = new Array(W * H);
     for (let iz = 0; iz < H; iz++) for (let ix = 0; ix < W; ix++) {
       const spans = world.cellSpans(ix, iz);
-      const list = [0, ...spans.map(s => s.y1)].filter((t, i, a) => a.indexOf(t) === i)
+      const list = [...(world.pitCell(ix, iz) ? [] : [0]), ...spans.map(s => s.y1)].filter((t, i, a) => a.indexOf(t) === i)
         .filter(t => !spans.some(s => (s.y0 < t + 1.8 && s.y1 > t + 0.01) || (s.y0 < t - 0.01 && s.y1 > t + 0.01)));
       tops[iz * W + ix] = list;
     }

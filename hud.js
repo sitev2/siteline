@@ -160,6 +160,19 @@ export class Hud {
     $('team-label').style.color = TEAM_COLORS.ffa.css;
   }
 
+  // Backrooms top bar: how many are still inside, and how many have got out
+  setBackrooms(inside, out) {
+    this.set('tname-atk', 'INSIDE');
+    this.set('tname-def', 'OUT');
+    this.set('score-atk', String(inside));
+    this.set('score-def', String(out));
+    this.set('round-no', 'Find the exit');
+    this.set('alive-atk', '');
+    this.set('alive-def', '');
+    this.set('team-label', 'The Backrooms');
+    $('team-label').style.color = '#e8dc8a';
+  }
+
   setScore(score, round, alive, myTeam, practice) {
     this.set('tname-atk', 'ATK');
     this.set('tname-def', 'DEF');
@@ -177,7 +190,7 @@ export class Hud {
     row.className = 'kf';
     // weapon silhouette (or the bomb), a headshot mark, then the victim
     const wIcon = WEAPON_ICONS[weapon] ? `<svg class="kf-icon" viewBox="0 0 120 40" aria-label="${esc(itemName(weapon))}">${WEAPON_ICONS[weapon]}</svg>`
-      : `<span class="kf-w">${weapon === 'bomb' ? icon('blast') : esc(itemName(weapon))}</span>`;
+      : `<span class="kf-w">${weapon === 'bomb' ? icon('blast') : weapon === 'monster' ? icon('skull') : weapon === 'fall' ? 'fell' : esc(itemName(weapon))}</span>`;
     const col = t => (TEAM_COLORS[t] || TEAM_COLORS.ffa).css;
     const k = killer ? `<b style="color:${col(killer.team)}">${esc(killer.name)}</b> ` : '';
     row.innerHTML = `${k}${wIcon}${head ? `<span class="kf-hs" title="Headshot">${icon('star')}</span>` : ''} <b style="color:${col(victim.team)}">${esc(victim.name)}</b>`;

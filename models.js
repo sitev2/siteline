@@ -971,6 +971,8 @@ export function setModelWeapon(model, weapon) {
   if (model.weapon === weapon) return;
   model.weapon = weapon;
   model.gunHolder.clear();
+  // empty hands (the Backrooms): nothing to hold, both arms hang free
+  if (weapon === 'none') { model.gunData = { kind: 'melee' }; model.gunHolder.position.copy(HOLD.melee); return; }
   const gun = weapon === 'c4' ? bombInHand() : gunMesh(weapon);
   model.gunHolder.add(gun);
   model.gunData = gun.userData;
@@ -1061,7 +1063,7 @@ export function animateModel(model, dt, state) {
   model.spine.rotation.x = lean;
   model.spine.rotation.z = -Math.sin(ph) * 0.03 * run;
   // aim pitch and gun hold
-  const aim = (state.pitch || 0) * (1 - kw) - 0.35 * kw;
+  const aim = model.weapon === 'none' ? 0 : (state.pitch || 0) * (1 - kw) - 0.35 * kw;
   model.armsPitch = model.armsPitch == null ? aim : model.armsPitch + (aim - model.armsPitch) * Math.min(1, dt * 12);
   model.arms.rotation.x = model.armsPitch - lean + model.kick * 0.12;
   model.arms.position.y = 0.44 + Math.sin(ph * 2) * 0.01 * run - model.air * 0.01;
@@ -1101,7 +1103,8 @@ export function animateModel(model, dt, state) {
       if (!right && (gd.foreKind === 'under' || gd.foreKind === 'pump')) _hp.y += 0.026;
       _hp.applyMatrix4(_gm);
       _hq.copy(_gq).multiply(right ? _qa.setFromEuler(_eu.set(-(gd.gripTilt || 0), 0, 0)) : leftHoldQuat(gd, _qa));
-    } else { _hp.set(right ? 0.1 : -0.2, -0.3, -0.26); _hq.identity(); }      // a free hand (the spoon is held in one)
+    } else if (model.weapon === 'none') { _hp.set(right ? 0.25 : -0.25, -0.58 + Math.sin(model.phase + (right ? 0 : Math.PI)) * 0.03, -0.02 - Math.sin(model.phase + (right ? Math.PI : 0)) * 0.12 * Math.min(1, (state.speed || 0) / 3)); _hq.identity(); }   // empty hands swing at your sides
+    else { _hp.set(right ? 0.1 : -0.2, -0.3, -0.26); _hq.identity(); }      // a free hand (the spoon is held in one)
     // working on the bomb: palms down, hands busy
     if (kw > 0.001) {
       _t.set(right ? 0.1 : -0.1, -0.55 + (right ? work : -work), -0.4);
@@ -1202,4 +1205,146 @@ export function makeDropModel(kind, weapon) {
   }
   g.traverse(o => { o.castShadow = false; });
   return g;
+}
+
+// ---------- the Backrooms monster (our own design) ----------
+// About 2.75 m tall and very thin: black jointed limbs like tubing and machine parts, cables running
+// down its spine and arms, arms long enough to drag near the floor ending in three long claws, and
+// instead of a face a narrow head with a cluster of small pale lights. It faces -z like the players.
+export function makeMonsterModel() {
+  const black = new THREE.MeshStandardMaterial({ color: '#0c0c0e', roughness: 0.32, metalness: 0.45 });
+  const joint = new THREE.MeshStandardMaterial({ color: '#1c1c21', roughness: 0.45, metalness: 0.6 });
+  const cable = new THREE.MeshStandardMaterial({ color: '#050506', roughness: 0.6, metalness: 0.2 });
+  const eye = new THREE.MeshBasicMaterial({ color: new THREE.Color(2.2, 2.3, 2.6) });
+  const rod = (len, r0, r1 = r0) => { const g = new THREE.CylinderGeometry(r1, r0, len, 8); g.translate(0, -len / 2, 0); return g; };   // hangs down from its top
+  const ball = r => new THREE.SphereGeometry(r, 10, 8);
+  const add = (parent, geo, m, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = true; parent.add(o); return o; };
+  const tube = (parent, pts, r = 0.012) => add(parent, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(p => new THREE.Vector3(...p))), 16, r, 5), cable);
+
+  const root = new THREE.Group();
+  const hips = new THREE.Group();
+  hips.position.y = 1.5;
+  root.add(hips);
+  add(hips, new THREE.BoxGeometry(0.3, 0.07, 0.1), black);
+  add(hips, new THREE.TorusGeometry(0.1, 0.022, 6, 14), joint, 0, 0.02, 0).rotation.x = Math.PI / 2;
+
+  // legs: long thighs and shins, knuckled knees, three-toed spikes for feet
+  const legs = [];
+  for (const sx of [-0.13, 0.13]) {
+    const thigh = new THREE.Group(); thigh.position.set(sx, -0.02, 0); hips.add(thigh);
+    add(thigh, ball(0.05), joint);
+    add(thigh, rod(0.76, 0.03, 0.042), black);
+    add(thigh, new THREE.CylinderGeometry(0.018, 0.018, 0.5, 6), cable, 0.035 * Math.sign(sx), -0.36, -0.03);
+    const shin = new THREE.Group(); shin.position.y = -0.76; thigh.add(shin);
+    add(shin, ball(0.045), joint);
+    add(shin, rod(0.7, 0.018, 0.034), black);
+    add(shin, new THREE.BoxGeometry(0.03, 0.12, 0.03), joint, 0, -0.32, 0.03);
+    const foot = new THREE.Group(); foot.position.y = -0.7; shin.add(foot);
+    add(foot, ball(0.03), joint);
+    for (const a of [-0.45, 0, 0.45]) {
+      const toe = add(foot, rod(0.2, 0.004, 0.016), black);
+      toe.rotation.set(-1.35, a, 0);
+    }
+    legs.push({ thigh, shin, foot });
+  }
+
+  // spine: stacked rings on a rod, bending forward into a hunch
+  const spine = new THREE.Group(); spine.position.y = 0.04; hips.add(spine);
+  const verts = [];
+  let parent = spine;
+  for (let i = 0; i < 6; i++) {
+    const v = new THREE.Group(); v.position.y = i ? 0.15 : 0; parent.add(v);
+    add(v, new THREE.CylinderGeometry(0.035, 0.045, 0.07, 10), i % 2 ? black : joint, 0, 0.035, 0);
+    add(v, new THREE.CylinderGeometry(0.012, 0.012, 0.16, 6), black, 0, 0.1, 0);
+    verts.push(v); parent = v;
+  }
+  tube(spine, [[0.05, 0, 0.04], [0.07, 0.35, 0.07], [0.06, 0.7, 0.05], [0.12, 0.9, 0.02]]);
+  tube(spine, [[-0.05, 0, 0.04], [-0.08, 0.4, 0.08], [-0.06, 0.75, 0.04], [-0.13, 0.9, 0.02]], 0.01);
+  // chest: a ring, a bar across the shoulders, a dangling cable loop
+  const chest = new THREE.Group(); chest.position.y = 0.18; parent.add(chest);
+  add(chest, new THREE.TorusGeometry(0.15, 0.02, 6, 18), black, 0, 0, 0).rotation.x = Math.PI / 2;
+  add(chest, new THREE.BoxGeometry(0.62, 0.05, 0.07), black, 0, 0.06, 0);
+  add(chest, new THREE.BoxGeometry(0.12, 0.1, 0.09), joint, 0, 0.0, 0.0);
+  tube(chest, [[-0.1, 0.0, -0.1], [-0.05, -0.22, -0.16], [0.06, -0.24, -0.15], [0.12, 0.0, -0.1]], 0.009);
+
+  // neck and head: a narrow tilted pod with a cluster of small pale lights where a face would be
+  const neck = new THREE.Group(); neck.position.y = 0.08; chest.add(neck);
+  add(neck, new THREE.CylinderGeometry(0.016, 0.02, 0.24, 8), black, 0, 0.12, 0);
+  const head = new THREE.Group(); head.position.set(0, 0.24, -0.03); neck.add(head);
+  add(head, new THREE.CapsuleGeometry(0.06, 0.2, 4, 10), black, 0, 0.08, 0);
+  add(head, new THREE.TorusGeometry(0.07, 0.012, 6, 14), joint, 0, 0.02, 0).rotation.x = Math.PI / 2;
+  const eyes = [[0.02, 0.13, -0.055, 0.011], [-0.025, 0.1, -0.056, 0.008], [0.03, 0.06, -0.054, 0.007], [-0.012, 0.16, -0.05, 0.007], [0.0, 0.05, -0.058, 0.009], [-0.032, 0.03, -0.05, 0.006], [0.018, 0.2, -0.045, 0.006]];
+  for (const [x, y, z, r] of eyes) add(head, ball(r * 1.8), eye, x * 1.2, y, z - 0.008);
+
+  // arms: very long, two joints, three claws that open and close
+  const arms = [];
+  for (const sx of [-0.31, 0.31]) {
+    const sh = new THREE.Group(); sh.position.set(sx, 0.06, 0); chest.add(sh);
+    add(sh, ball(0.045), joint);
+    add(sh, rod(0.82, 0.02, 0.032), black);
+    tube(sh, [[0.03 * Math.sign(sx), 0, 0.02], [0.05 * Math.sign(sx), -0.4, 0.04], [0.02 * Math.sign(sx), -0.8, 0.02]], 0.009);
+    const el = new THREE.Group(); el.position.y = -0.82; sh.add(el);
+    add(el, ball(0.038), joint);
+    add(el, rod(0.86, 0.016, 0.026), black);
+    add(el, new THREE.BoxGeometry(0.035, 0.18, 0.035), joint, 0, -0.45, 0);
+    const hand = new THREE.Group(); hand.position.y = -0.86; el.add(hand);
+    add(hand, ball(0.03), joint);
+    const claws = [];
+    for (const a of [-0.55, 0, 0.55]) {
+      const f = new THREE.Group(); f.rotation.y = a; hand.add(f);
+      const k1 = new THREE.Group(); f.add(k1);
+      add(k1, rod(0.17, 0.008, 0.013), black);
+      const k2 = new THREE.Group(); k2.position.y = -0.17; k1.add(k2);
+      add(k2, ball(0.012), joint);
+      add(k2, rod(0.16, 0.002, 0.009), black);
+      claws.push({ k1, k2 });
+    }
+    arms.push({ sh, el, hand, claws, side: Math.sign(sx) });
+  }
+  root.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return { root, hips, legs, spine, verts, chest, neck, head, arms, monster: true, phase: 0, t: Math.random() * 10, twitch: 0, twitchT: 0, chase: 0, label: null };
+}
+
+// walk, dangle, twitch; chase: hunched forward, arms reaching out, claws open
+export function animateMonster(m, dt, { speed = 0, chase = false } = {}) {
+  m.t += dt;
+  m.chase += ((chase ? 1 : 0) - m.chase) * Math.min(1, dt * 4);
+  const moving = Math.min(1, speed / 1.5);
+  m.phase += dt * (1.4 + speed * 0.9);
+  const ph = m.phase, c = m.chase;
+  const amp = (0.32 + 0.25 * c) * moving;
+  m.hips.position.y = 1.5 - 0.06 * c + Math.abs(Math.sin(ph)) * 0.05 * moving;
+  m.hips.rotation.z = Math.sin(ph) * 0.06 * moving;
+  m.legs.forEach((L, i) => {
+    const s = Math.sin(ph + i * Math.PI), co = Math.cos(ph + i * Math.PI);
+    L.thigh.rotation.x = s * amp - 0.12 - 0.15 * c;
+    L.shin.rotation.x = -(0.2 + Math.max(0, co) * 0.9 * moving + 0.2 * c);
+    L.foot.rotation.x = 0.25 * moving * Math.max(0, -co);
+  });
+  // spine bends forward into a hunch (more when chasing), sways with each step
+  const hunch = 0.06 + 0.1 * c;
+  m.verts.forEach((v, i) => { v.rotation.x = -hunch * (i / 5) - (i === 5 ? 0.2 * c : 0); v.rotation.z = Math.sin(ph + i * 0.4) * 0.025 * moving; });
+  // twitches: the head (and an arm) snap to a new angle every second or two, then hold
+  m.twitchT -= dt;
+  if (m.twitchT <= 0) {
+    m.twitchT = (chase ? 0.25 : 0.8) + Math.random() * (chase ? 0.5 : 1.8);
+    m.twitch = { hy: (Math.random() - 0.5) * 1.1, hz: (Math.random() - 0.5) * 0.9, hx: (Math.random() - 0.5) * 0.4, arm: Math.floor(Math.random() * 2), a: (Math.random() - 0.5) * 0.6 };
+  }
+  const tw = m.twitch || { hy: 0, hz: 0, hx: 0, arm: 0, a: 0 };
+  const snap = Math.min(1, dt * 30);
+  m.head.rotation.y += (tw.hy - m.head.rotation.y) * snap;
+  m.head.rotation.z += (tw.hz - m.head.rotation.z) * snap;
+  m.head.rotation.x += (tw.hx - 0.1 * c - m.head.rotation.x) * snap;
+  m.neck.rotation.x = 0.35 * c;
+  // arms: dangling and swinging behind the steps, or raised and reaching when it chases you
+  m.arms.forEach((A, i) => {
+    const s = Math.sin(ph + (i ? 0 : Math.PI) - 0.6);
+    const reach = -1.25 - Math.sin(m.t * 9 + i) * 0.08;
+    const dangle = s * 0.35 * moving + 0.08 + Math.sin(m.t * 1.3 + i) * 0.04 + (tw.arm === i ? tw.a * (1 - c) : 0);
+    A.sh.rotation.x = dangle * (1 - c) + reach * c;
+    A.sh.rotation.z = A.side * (0.12 + 0.1 * c);
+    A.el.rotation.x = -(0.15 + 0.1 * moving) * (1 - c) - 0.45 * c;
+    const open = c * (0.6 + 0.3 * Math.sin(m.t * 14 + i)) + (1 - c) * 0.12;
+    A.claws.forEach((f, k) => { f.k1.rotation.x = -open * 0.8 + (k - 1) * 0.05; f.k2.rotation.x = open * 0.9 + 0.3; });
+  });
 }

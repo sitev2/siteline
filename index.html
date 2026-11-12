@@ -22,7 +22,7 @@
     // New .js files: add them to this list (libraries stay unversioned).
     (function () {
       var v = Date.parse(document.lastModified) || Date.now();
-      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'buy', 'config', 'crosshair', 'filter', 'friends', 'game', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'models', 'net', 'netlog', 'nettest', 'post', 'ragdoll', 'server', 'textures', 'touchlayout', 'weapons', 'world'];
+      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'brmap', 'brview', 'buy', 'config', 'crosshair', 'filter', 'friends', 'game', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'models', 'monster', 'net', 'netlog', 'nettest', 'post', 'ragdoll', 'server', 'textures', 'touchlayout', 'weapons', 'world'];
       var imports = { three: './three.module.js' };
       for (var i = 0; i < files.length; i++) imports['./' + files[i] + '.js'] = './' + files[i] + '.js?v=' + v;
       window.SITELINE_V = v;
@@ -175,9 +175,10 @@
             <button id="btn-leave-lobby" class="ghost">Leave</button>
           </div>
         </div>
-        <div class="mode-pick">
+        <div class="mode-pick three">
           <button class="mode-btn" data-mode="wingman"><b>2v2 Bomb</b><small>Plant or defuse, first to 9 rounds</small></button>
           <button class="mode-btn" data-mode="dm"><b>Deathmatch</b><small>2–4 players, everyone for themselves</small></button>
+          <button class="mode-btn" data-mode="br"><b>The Backrooms</b><small>1–4 players together: find the exit, no guns</small></button>
         </div>
         <div class="ffa-list team"><h3>Players <small>free-for-all</small></h3><ul id="list-ffa"></ul></div>
         <div class="teams">
@@ -201,12 +202,14 @@
     <section id="practice" class="screen hidden">
       <div class="panel">
         <h2>Practice</h2>
-        <div class="mode-pick three">
+        <div class="mode-pick four">
           <button class="pmode-btn mode-btn" data-pmode="range"><b>Practice range</b><small>Try guns on bot targets</small></button>
           <button class="pmode-btn mode-btn" data-pmode="match"><b>Bot match</b><small>2v2 bomb: you + a bot vs 2 bots</small></button>
           <button class="pmode-btn mode-btn" data-pmode="dm"><b>Bot deathmatch</b><small>Everyone for themselves</small></button>
+          <button class="pmode-btn mode-btn" data-pmode="br"><b>The Backrooms</b><small>Find the exit before it finds you</small></button>
         </div>
-        <label class="field"><span>Map</span><select id="p-map"></select></label>
+        <label class="field p-map"><span>Map</span><select id="p-map"></select></label>
+        <p class="note p-br">A new random maze every time. No guns: find the exit door and get out. Something else is in there with you — walk to stay quiet, and watch out for holes in the floor. Friends can join you from the pause menu.</p>
         <label class="check p-range"><input type="checkbox" id="p-bots"> Bots on the range</label>
         <label class="field p-count"><span>Number of bots <output id="p-count-out"></output></span><input type="range" id="p-count" min="1" max="8" step="1"></label>
         <label class="field p-behavior"><span>What the bots do</span>
@@ -218,7 +221,7 @@
         <label class="field p-botopt"><span>Bot difficulty</span>
           <select id="p-level"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select>
         </label>
-        <label class="check"><input type="checkbox" id="p-night"> <i data-icon="moon"></i> Night mode (dark map, flashlights)</label>
+        <label class="check p-nightopt"><input type="checkbox" id="p-night"> <i data-icon="moon"></i> Night mode (dark map, flashlights)</label>
         <p class="note" id="p-note">Friends can join with the room code or invite link from the pause menu. They take a bot's place.</p>
         <button id="p-start" class="primary">Start</button>
         <button class="ghost back">Back</button>
@@ -424,6 +427,8 @@
             <p>Stand still to be accurate: guns only shoot straight once you've slowed to about a third of your speed — tap the opposite key to stop instantly. Automatic guns kick in a fixed pattern you can learn. Armour stops part of the damage and stops your aim being knocked around. Bullets pass through boxes, crates and barrels with reduced damage; solid walls stop everything.</p>
             <h3>Teamwork</h3>
             <p>Jump onto a teammate's head to reach high spots — they can walk around with you on top. The dead drop their gun (and kit) for anyone to pick up.</p>
+            <h3>The Backrooms</h3>
+            <p>1–4 players together, no guns. Every game is a new random maze of yellow rooms, pillar halls and holes in the floor. Find the exit door and walk through it. Something tall lives in there too: it wanders, hears running feet through the walls and chases anyone it sees. Walk (Shift, or push the stick only part way) to stay quiet, and don't fall down the pits. Friends can join after it has started.</p>
           </div>
           <div>
             <h3>Keyboard &amp; mouse</h3>
