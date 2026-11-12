@@ -5,7 +5,7 @@ import { World, CELL, EYE, blastField, blastDamage } from './world.js';
 import { MAPS, resolveMap, mapsFor, isDmMap, dmVariant } from './maps.js';
 import { RULES } from './config.js';
 import { NavGrid, BotBrain, BOT_NAMES } from './bots.js';
-import { MonsterBrain } from './monster.js';
+import { MonsterBrain, outerCorners } from './monster.js';
 import { cleanChat, CHAT_LIMIT } from './filter.js';
 import {
   WEAPONS, EQUIPMENT, MONEY, STARTER_PISTOL, canTeamBuy, rawDamage, applyArmor, isArmored, penMetres, HITGROUPS,
@@ -231,6 +231,7 @@ export class Server {
       case 'chat': return this.onChat(p, msg);
       case 'light': p.light = !!msg.on; return;
       case 'pick': return this.onPick(p, msg);
+      case 'note': return this.onNote(p, msg);
       case 'door':
         if (this.phase === 'br' && p.alive && !p.escaped && Number.isInteger(msg.i)) {
           const d = this.world.doors[msg.i];
@@ -740,6 +741,7 @@ export class Server {
       t: 'start', map: this.settings.map, settings: this.settings, roster: this.roster(), practice: this.practice, phase: this.phase,
       mode: this.br ? 'br' : this.dm ? 'dm' : 'wingman', variant: this.variant,
       doors: this.br && this.world ? this.world.doors.map(d => (d.open ? 1 : 0)) : undefined,
+      notes: this.br ? this.notes : undefined,
     };
   }
 
@@ -966,6 +968,10 @@ export class Server {
     // then the doors that start shut are shut
     this.world.doors.forEach((d, i) => this.world.setDoor(i, d.open));
     this.doorAt = this.world.doors.map(() => 0);
+    this.corners = outerCorners(this.world);       // for the corner snatch and the monster's peeking
+    this.cornerUsed = false;                        // the corner snatch happens at most once a game
+    this.notes = [];                                // paper notes people have left
+    this.noteSeq = 0;
     this.phase = 'br';
     this.broadcast(this.startMsg());
     this.broadcastRoster();
@@ -990,9 +996,21 @@ export class Server {
   }
 
   brTick() {
-    const door = this.world.exit;
+    const door = this.world.exit, now = performance.now();
+    // where everyone has been in the last second or so (for the corner snatch)
     for (const p of this.humans()) {
       if (!p.alive || p.escaped) continue;
+      const tr = p.trail || (p.trail = []);
+      tr.push({ x: p.x, z: p.z, t: now });
+      while (tr.length > 30) tr.shift();
+    }
+    if (!this.cornerUsed && this.timer > 45 && now >= (this.cornerCheckAt || 0)) { this.cornerCheckAt = now + 200; this.cornerSnatch(now); }
+    const holes = (this.world.def.br && this.world.def.br.holes) || [];
+    for (const p of this.humans()) {
+      if (!p.alive || p.escaped) continue;
+      // walked under a hole in the ceiling: something up there takes you
+      const h = holes.find(o => Math.abs(p.x - o.x) < o.size / 2 + 0.12 && Math.abs(p.z - o.z) < o.size / 2 + 0.12 && Math.abs(p.y) < 0.6);
+      if (h) { this.snatch(p, 'ceiling', h.x, h.z); continue; }
       // down a pitfall
       if (p.y < -3) { p.brDeath = 'fell'; this.kill(p, null, 'fall', false); continue; }
       // through the exit door
@@ -1031,6 +1049,73 @@ export class Server {
     const m = this.bots.get('monster');
     if (m && by && !by.bot) m.hearNoise(d.cx, d.cz, 14);
     return true;
+  }
+
+  // taken: by the thing in the ceiling, or by something round a corner. The body is never seen again.
+  snatch(p, kind, x, z) {
+    if (!p.alive || this.phase !== 'br') return;
+    this.broadcast({ t: 'snatch', id: p.id, kind, x: r2(x), z: r2(z) });
+    p.brDeath = kind;
+    p.hp = 0;
+    this.kill(p, null, kind, false);
+  }
+
+  // The corner snatch (once a game): two or more people walking together, the one behind watching the
+  // one in front. As the one behind passes close to the outside corner of a wall, something reaches out
+  // from just round the corner and takes them — but only if nobody at all is looking at that spot.
+  cornerSnatch(now) {
+    const hs = this.humans().filter(p => p.alive && !p.escaped);
+    if (hs.length < 2 || !this.corners) return;
+    const w = this.world, eye = q => q.y + EYE;
+    const facing = (q, x, z) => { const dx = x - q.x, dz = z - q.z, d = Math.hypot(dx, dz) || 1; return (-Math.sin(q.yaw) * dx - Math.cos(q.yaw) * dz) / d; };
+    for (const v of hs) {
+      const tr = v.trail || [];
+      if (tr.length < 12) continue;
+      const back = tr[tr.length - 12], speed = Math.hypot(v.x - back.x, v.z - back.z) / Math.max(0.1, (now - back.t) / 1000);
+      if (speed < 0.6) continue;
+      // following someone: they're 1.5–8 m away, in front, and v is watching them
+      const lead = hs.find(l => l !== v && Math.hypot(l.x - v.x, l.z - v.z) > 1.5 && Math.hypot(l.x - v.x, l.z - v.z) < 8
+        && facing(v, l.x, l.z) > Math.cos(0.6) && (l.x - v.x) * (v.x - back.x) + (l.z - v.z) * (v.z - back.z) > 0
+        && w.los(v.x, eye(v), v.z, l.x, l.y + 1.2, l.z));
+      if (!lead) continue;
+      for (const c of this.corners.near(v.x, v.z, 0.85)) {
+        const key = `${c.x},${c.z}`;
+        if (v.cornerTried === key) continue;     // one chance per corner as you pass it
+        v.cornerTried = key;
+        // just round the corner: beside one wall face, on the side v couldn't see a moment ago
+        const spots = [[c.qx, -c.qz], [-c.qx, c.qz]].map(([sx, sz]) => ({ x: c.x + sx * 0.75, z: c.z + sz * 0.75 }))
+          .filter(h => !w.blocked(h.x, h.z, 0.2, 0) && !w.isPit(h.x, h.z) && !w.los(back.x, 1.4, back.z, h.x, 1.2, h.z));
+        const h = spots[0];
+        if (!h || facing(v, h.x, h.z) > Math.cos(0.9)) continue;
+        // nobody may be looking at that spot
+        if (hs.some(q => q !== v && facing(q, h.x, h.z) > Math.cos(0.95) && w.los(q.x, eye(q), q.z, h.x, 1.2, h.z))) continue;
+        if (Math.random() > 0.15) continue;      // only a chance, at each corner
+        this.cornerUsed = true;
+        this.snatch(v, 'corner', h.x, h.z);
+        return;
+      }
+    }
+  }
+
+  // a paper note left on the floor or taped to a wall. m: { x, y, z, wall, nx, nz, yaw, text, img }
+  onNote(p, m) {
+    if (this.phase !== 'br' || !p.alive || p.escaped) return;
+    const now = performance.now();
+    if (now - (p.noteAt || 0) < 2500) { this.send(p.id, { t: 'toast', text: 'Wait a moment before leaving another note' }); return; }
+    if (this.notes.filter(n => n.by === p.id).length >= 10) { this.send(p.id, { t: 'toast', text: 'You have left 10 notes already' }); return; }
+    if (this.notes.length >= 80 || ![m.x, m.y, m.z, m.yaw].every(Number.isFinite)) return;
+    if (Math.hypot(m.x - p.x, m.z - p.z) > 3 || m.y < -0.1 || m.y > 2.6) return;
+    const img = typeof m.img === 'string' && m.img.startsWith('data:image/png;base64,') && m.img.length < 60000 ? m.img : '';
+    const text = cleanChat(String(m.text || ''), 140);
+    if (!text && !img) return;
+    p.noteAt = now;
+    const wall = !!m.wall;
+    const note = {
+      id: ++this.noteSeq, by: p.id, name: p.name, x: r2(m.x), y: r2(m.y), z: r2(m.z), wall, yaw: r2(m.yaw),
+      nx: wall ? Math.sign(Number(m.nx) || 0) : 0, nz: wall ? Math.sign(Number(m.nz) || 0) : 0, text, img,
+    };
+    this.notes.push(note);
+    this.broadcast({ t: 'note', note });
   }
 
   // the monster caught someone

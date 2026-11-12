@@ -171,7 +171,33 @@ export function planMaze(seed) {
     if (blankDoors.some(d => d.x === x && d.z === z && d.v === v)) continue;
     blankDoors.push({ v, x, z, side });
   }
-  return { seed, N, vWall, hWall, halls, pitRooms, doorways, blankDoors, start: { x: sx, z: sz }, exit, monster: mon, pits, flicker: R() };
+  // 9. dark areas: blocks of rooms whose lights are all dead (bring a flashlight); never the start or the exit
+  const darkZones = [];
+  for (let tries = 0; darkZones.length < 3 && tries < 80; tries++) {
+    const r = { w: pick(2, 4), d: pick(2, 4) };
+    r.x = pick(0, N - r.w); r.z = pick(0, N - r.d);
+    if (darkZones.some(o => overlaps(o, r))) continue;
+    let bad = false;
+    for (let z = r.z; z < r.z + r.d && !bad; z++) for (let x = r.x; x < r.x + r.w; x++) if (Math.abs(x - sx) <= 1 && Math.abs(z - sz) <= 1 || (x === exit.x && z === exit.z)) bad = true;
+    if (!bad) darkZones.push(r);
+  }
+  const inDark = (x, z) => darkZones.some(r => x >= r.x && x < r.x + r.w && z >= r.z && z < r.z + r.d);
+  // 10. ceiling holes: a missing or pushed-aside ceiling tile (0.6 m tiles), off the middle of a room so it
+  // isn't under the light. Something lives up there: walk under one and it takes you.
+  const holes = [];
+  const T = 0.6;
+  for (let tries = 0; holes.length < 13 && tries < 400; tries++) {
+    const x = pick(0, N - 1), z = pick(0, N - 1);
+    if (Math.abs(x - sx) <= 1 && Math.abs(z - sz) <= 1) continue;
+    if ((x === exit.x && z === exit.z) || inPitRoom(x, z) || pits.some(p => p.x === x && p.z === z)) continue;
+    if (holes.some(h => Math.abs(h.rx - x) + Math.abs(h.rz - z) < 2)) continue;
+    // a tile about 1.1 m from the middle of the room, to one side
+    const cx = BR.border + x * BR.cell + 2.25, cz = BR.border + z * BR.cell + 2.25;
+    const ang = pick(0, 3) * Math.PI / 2 + Math.PI / 4;
+    const tx = Math.floor((cx + Math.cos(ang) * 1.1) / T) * T, tz = Math.floor((cz + Math.sin(ang) * 1.1) / T) * T;
+    holes.push({ rx: x, rz: z, x: tx + T / 2, z: tz + T / 2, size: T, kind: R() < 0.5 ? 'missing' : 'shifted', dir: pick(0, 3) });
+  }
+  return { seed, N, vWall, hWall, halls, pitRooms, doorways, blankDoors, darkZones, holes, start: { x: sx, z: sz }, exit, monster: mon, pits, flicker: R() };
 }
 
 // Where the holes go along one side of a pit room (length in metres, walls take the first 0.5 m):

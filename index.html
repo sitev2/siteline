@@ -22,7 +22,7 @@
     // New .js files: add them to this list (libraries stay unversioned).
     (function () {
       var v = Date.parse(document.lastModified) || Date.now();
-      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'brmap', 'brview', 'buy', 'config', 'crosshair', 'filter', 'friends', 'game', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'models', 'monster', 'net', 'netlog', 'nettest', 'post', 'ragdoll', 'server', 'textures', 'touchlayout', 'weapons', 'world'];
+      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'brfx', 'brmap', 'brview', 'buy', 'config', 'crosshair', 'filter', 'friends', 'game', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'models', 'monster', 'net', 'netlog', 'nettest', 'post', 'ragdoll', 'server', 'textures', 'touchlayout', 'weapons', 'world'];
       var imports = { three: './three.module.js' };
       for (var i = 0; i < files.length; i++) imports['./' + files[i] + '.js'] = './' + files[i] + '.js?v=' + v;
       window.SITELINE_V = v;
@@ -79,6 +79,26 @@
       <button type="button" id="chat-close" class="chat-send" aria-label="Close chat">✕</button>
     </form>
 
+  <!-- the Backrooms: write or draw a note; read one you're looking at; going dark when you're taken -->
+  <div id="note-editor" class="hidden">
+    <div class="note-panel">
+      <div class="note-head"><b>Leave a note</b><small>Write, draw, or both</small></div>
+      <canvas id="note-canvas" width="256" height="256"></canvas>
+      <input id="note-text" maxlength="140" placeholder="Write something… (optional)" autocomplete="off">
+      <div class="note-buttons nb1">
+        <button id="note-floor" class="primary">Put on the floor</button>
+        <button id="note-wall" class="primary">Tape to the wall</button>
+      </div>
+      <div class="note-buttons nb2">
+        <button id="note-clear" class="ghost">Clear drawing</button>
+        <button id="note-cancel" class="ghost">Cancel</button>
+      </div>
+      <p id="note-msg" class="note-msg"></p>
+    </div>
+  </div>
+  <div id="note-read" class="hidden"><canvas id="note-read-canvas" width="256" height="256"></canvas><small id="note-read-who"></small></div>
+  <div id="br-black" class="hidden"></div>
+
   <!-- ================= TOUCH CONTROLS ================= -->
   <div id="touch">
     <div id="joy-hint"></div>
@@ -93,6 +113,7 @@
     <button data-act="inspect" id="btn-inspect" aria-label="Inspect weapon"><i data-icon="search"></i></button>
     <button data-act="chatAll" id="btn-chat" aria-label="Chat"><i data-icon="chat"></i></button>
     <button data-act="flashlight" id="btn-light" class="hidden" aria-label="Flashlight"><i data-icon="light"></i></button>
+    <button data-act="note" id="btn-note" class="hidden" aria-label="Leave a note"><i data-icon="note"></i></button>
     <button data-act="use" id="btn-use" class="hidden" aria-label="Plant or defuse"><i data-icon="hand"></i></button>
     <button data-act="buy" id="btn-buy" class="hidden" aria-label="Buy menu"><i data-icon="cart"></i></button>
     <button data-act="score" id="btn-score" aria-label="Scoreboard"><i data-icon="list"></i></button>
@@ -429,7 +450,7 @@
             <h3>Teamwork</h3>
             <p>Jump onto a teammate's head to reach high spots — they can walk around with you on top. The dead drop their gun (and kit) for anyone to pick up.</p>
             <h3>The Backrooms</h3>
-            <p>1–4 players together, no guns. Every game is a new random maze of yellow rooms, pillar halls and holes in the floor. Find the exit door and walk through it. Something tall lives in there too: it wanders, hears running feet through the walls and chases anyone it sees. Walk (Shift, or push the stick only part way) to stay quiet, and don't fall down the pits. Doors open and shut with E (or the hand button): shut one behind you and it has to stop and open it. Friends can join after it has started.</p>
+            <p>1–4 players together, no guns. Every game is a new random maze of yellow rooms, pillar halls and holes in the floor. Find the exit door and walk through it. Something tall lives in there too: it wanders, hears running feet through the walls and chases anyone it sees. Walk (Shift, or push the stick only part way) to stay quiet, and don't fall down the pits. Doors open and shut with E (or the hand button): shut one behind you and it has to stop and open it. Some areas are dark: use your flashlight (L). Don't walk under holes in the ceiling. Leave notes for each other with N (or the note button): write or draw, then put it on the floor or tape it to a wall. Friends can join after it has started.</p>
           </div>
           <div>
             <h3>Keyboard &amp; mouse</h3>

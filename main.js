@@ -828,6 +828,7 @@ function startGame(msg) {
     mode: msg.mode,
     variant: msg.variant,
     doors: msg.doors,
+    notes: msg.notes,
     night: !!(msg.settings && msg.settings.night),
     settings,
     quality: resolvedQuality(),
@@ -911,7 +912,8 @@ function showBrOver(msg) {
   table.innerHTML = '<tr><th>Player</th><th>What happened</th></tr>';
   for (const s of msg.stats.slice().sort((a, b) => (b.escaped - a.escaped) || ((a.time || 0) - (b.time || 0)))) {
     const tr = document.createElement('tr');
-    const how = s.escaped ? `Escaped (${clock(s.time)})` : s.how === 'fell' ? 'Fell into a pit' : s.how === 'monster' ? 'Caught by it' : 'Left the game';
+    const how = s.escaped ? `Escaped (${clock(s.time)})` : s.how === 'fell' ? 'Fell into a pit' : s.how === 'monster' ? 'Caught by it'
+      : s.how === 'ceiling' ? 'Taken by the ceiling' : s.how === 'corner' ? 'Vanished' : 'Left the game';
     for (const v of [s.name, how]) { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); }
     tr.lastChild.style.color = s.escaped ? '#9dffb5' : '#ff8a6a';
     table.appendChild(tr);

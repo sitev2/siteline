@@ -186,6 +186,7 @@ export class Hud {
   }
 
   killfeed(killer, victim, weapon, head) {
+    if (weapon === 'ceiling' || weapon === 'corner') return;     // nobody saw what happened
     const row = document.createElement('div');
     row.className = 'kf';
     // weapon silhouette (or the bomb), a headshot mark, then the victim

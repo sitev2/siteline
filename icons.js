@@ -18,6 +18,7 @@ const PATHS = {
   // the defuse kit as it looks in the game: a flat case seen at an angle, tan patch on top, black strap round one end
   kit: `<path ${L(1.5)} d="M2 12l5.5-5H22l-5.5 5zM2 12h14.5v5H2zM16.5 12L22 7v5l-5.5 5"/>`
     + `<path ${F} d="M4.8 11l1.9-1.8h4.4L9.2 11z"/><path ${F} d="M11.6 12l5.5-5h2.1l-5.5 5zM11.6 12h2.1v5h-2.1z"/>`,
+  note: `<path ${S} d="M5 3h10l4 4v14H5z"/><path ${S} d="M15 3v4h4M8 11h8M8 14.5h8M8 18h5"/>`,
   search: `<circle ${S} cx="10.5" cy="10.5" r="6"/><path ${S} d="M15 15l5.5 5.5"/>`,
   light: `<path ${S} d="M6 3h12l-2.5 6h-7z"/><path ${S} d="M8.5 9h7v12h-7z"/><path ${S} d="M12 12.5v3"/>`,
   hand: `<path ${S} d="M8 13V6.5a1.5 1.5 0 0 1 3 0V11M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v6M17 12V9.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1a6 6 0 0 1-4.9-2.6l-2.8-4a1.5 1.5 0 0 1 2.4-1.8L8 14.5"/>`,
