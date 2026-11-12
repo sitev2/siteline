@@ -147,11 +147,13 @@ The only folder is `server/` (the optional home game server).
   15 % per corner. Both broadcast `{t:'snatch', id, kind, x, z}` then a kill with weapon 'ceiling' / 'corner' (no kill feed, no
   ragdoll: the body is gone). `brfx.js` animates the arm (`makeSnatchArm` in `models.js`), the victim's body and the victim's
   own camera (fades to `#br-black`).
-  Dark areas: `plan.darkZones` (blocks of rooms with dead lights, light from next door fades out over 1.5 m, `darkK`: down to 3.5 %,
-  nearly pitch black — owner asked for darker; people dim to 3.5 % and the haze to 2 % there; `coldDark()` in the shader drains the
-  colour from very dim baked light, so it reads as cold black instead of dark-red streaks on the wallpaper/carpet); flashlights
-  work in the Backrooms (F or L / light button) and reach further there (shader: a tight bright cone, smoothstep 0.915–0.975, + a faint spill round it, 2.3 / (1 + 0.022 d²) — owner
-  asked for a smaller circle; SpotLight for people 16 / 14 intensity, 48 / 42 m, 0.34 rad; 2v2 night mode keeps the old flashlight); the baked surfaces get flashlight cones through a shader hook (`addFlash` / `FLASH`
+  Dark areas: `plan.darkZones` (blocks of rooms with dead lights, light from next door fades out smoothly over 2.5 m (smoothstep, no hard
+  line), `darkK`: down to 3.5 %, nearly pitch black — owner asked for darker; people dim to 3.5 % and the haze to 2 % there; `keepHue()` in the
+  shader keeps very dim baked light in the surface's own colour, just darker (owner: walls must not lose their colour in the dark; plain
+  dim bounce light turned the wallpaper/carpet into dark-red streaks). The wallpaper is 5 % darker (`material.userData.base` 0.95, owner's
+  request). Flashlights work in the Backrooms (F or L / light button) and reach further there (shader: a small cone whose edge melts into the
+  dark, core = smoothstep 0.86–0.995 squared + a faint spill, 2.3 / (1 + 0.022 d²) — owner asked for a smaller circle that blends better;
+  SpotLight for people 16 / 14 intensity, 48 / 42 m, 0.36 rad, penumbra 0.9; 2v2 night mode keeps the old flashlight); the baked surfaces get flashlight cones through a shader hook (`addFlash` / `FLASH`
   uniforms in `brview.js`, filled by `brfx.js`); people and the haze dim with the light where you stand (`lightAt`, `dimPeople`).
   Flickering panels throw sparks + a zap when they stutter back on (`userData.update(dt, dread, cam)`, `onSpark`).
   Notes: N / note button → `#note-editor` (draw on a canvas + up to 140 characters), put on the floor or taped to the wall in front

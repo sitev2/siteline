@@ -224,11 +224,12 @@ export const FLASH = {
 };
 const DARK_FN = `uniform vec4 uDark;
 float darkAt(vec3 P) { return 1.0 - uDark.w * (1.0 - smoothstep(uDark.z * 0.4, uDark.z, length(P.xz - uDark.xy))); }
-// the last of the light in the dark is cold and colourless: very dim warm light otherwise turns the yellow wallpaper
-// and the carpet into muddy dark-red streaks on screen, like stains
-vec3 coldDark(vec3 c) {
-  float l = dot(c, vec3(0.299, 0.587, 0.114));
-  return mix(c, vec3(l) * vec3(0.86, 0.95, 1.18), 1.0 - smoothstep(0.015, 0.09, l));
+// in the dark the walls keep their own colour (just darker): very dim light is mostly warm bounce light,
+// which would otherwise turn the yellow wallpaper and the carpet into muddy dark-red streaks
+vec3 keepHue(vec3 c, vec3 albedo) {
+  const vec3 W = vec3(0.299, 0.587, 0.114);
+  float l = dot(c, W), la = max(dot(albedo, W), 0.0001);
+  return mix(c, albedo * (l / la), 1.0 - smoothstep(0.02, 0.14, l));
 }`;
 const WORLD_POS = 'vec4 fwp = vec4(transformed, 1.0);\n#ifdef USE_INSTANCING\nfwp = instanceMatrix * fwp;\n#endif\n';
 // the ceiling panels (and anything else lit by nothing but itself) go dark around the monster too
@@ -263,14 +264,16 @@ vec3 flashLight(vec3 P, vec3 N) {
     vec3 L = P - uFlashPos[i]; float d = length(L); L /= max(d, 0.001);
     float c = dot(L, uFlashDir[i]);
     // a bright beam reaching well down a corridor, with a soft dim spill round its edge
-    float cone = smoothstep(0.915, 0.975, c) + 0.1 * smoothstep(0.8, 0.93, c);      // (a tighter circle: owner's request)
+    // a small beam (owner's request) whose edge melts into the dark instead of ending in a hard ring
+    float core = smoothstep(0.86, 0.995, c);
+    float cone = core * core * 1.15 + 0.07 * smoothstep(0.7, 0.95, c);
     float lam = abs(dot(N, L)) * 0.85 + 0.15;
     s += uFlashOn[i] * cone * lam * 2.3 / (1.0 + d * d * 0.022);
   }
   return s * vec3(1.0, 0.95, 0.82);
 }`)
       .replace('#include <map_fragment>', '#include <map_fragment>\nvec3 flashAlbedo = diffuseColor.rgb;')
-      .replace('vec3 outgoingLight = reflectedLight.indirectDiffuse;', 'vec3 outgoingLight = coldDark(reflectedLight.indirectDiffuse * darkAt(vFlashPos)) + flashAlbedo * flashLight(vFlashPos, length(vFlashN) > 0.001 ? normalize(vFlashN) : vec3(0.0, 1.0, 0.0));');
+      .replace('vec3 outgoingLight = reflectedLight.indirectDiffuse;', 'vec3 outgoingLight = keepHue(reflectedLight.indirectDiffuse * darkAt(vFlashPos), flashAlbedo) + flashAlbedo * flashLight(vFlashPos, length(vFlashN) > 0.001 ? normalize(vFlashN) : vec3(0.0, 1.0, 0.0));');
   };
   material.customProgramCacheKey = () => 'flash';
   return material;
@@ -409,13 +412,14 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
   // per-area tint so it isn't the same everywhere (low frequency grime)
   const grime = (x, z) => 0.9 + 0.12 * hash2(Math.floor(x / 3) + 101, Math.floor(z / 3) + 57) + 0.04 * hash2(Math.floor(x) + 7, Math.floor(z) + 3);
   const EXPO = 1.05, AMB = 0.035;
-  // inside a dark area even the light that spills in from next door fades out (soft over 1.5 m)
+  // inside a dark area even the light that spills in from next door fades out (smoothly, over 2.5 m)
   const zones = (plan.darkZones || []).map(d => ({ x0: at(d.x) + 0.5, z0: at(d.z) + 0.5, x1: at(d.x + d.w), z1: at(d.z + d.d) }));
   const darkK = (x, z) => {
     let k = 1;
     for (const d of zones) {
       const inside = Math.min(x - d.x0, d.x1 - x, z - d.z0, d.z1 - z);
-      if (inside > 0) k = Math.min(k, 1 - 0.965 * Math.min(1, inside / 1.5));      // (nearly pitch black: bring a flashlight)
+      // (nearly pitch black: bring a flashlight); no hard line where the dark begins
+      if (inside > 0) { const f = Math.min(1, inside / 2.5); k = Math.min(k, 1 - 0.965 * f * f * (3 - 2 * f)); }
     }
     return k;
   };
@@ -559,6 +563,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
   }
   const wallTex = wallpaperTexture(renderer);
   surfaces.push(mesh(wPos, wUV, wCol, null, baked(wallTex)));
+  surfaces[surfaces.length - 1].material.userData.base = 0.95;       // the wallpaper a touch darker (owner's request)
   if (bPos.length) {
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(bPos, 3));
@@ -908,7 +913,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     sGeo.attributes.position.needsUpdate = true;
     // dread: everything buzzes and dips when the monster is close
     const k = dread > 0 ? 1 - dread * (0.25 + 0.25 * (Math.sin(t * 23) > 0.6 ? 1 : 0) * (Math.sin(t * 3.1) > 0 ? 1 : 0.3)) : 1;
-    for (const m of surfMats) m.color.setScalar(k);
+    for (const m of surfMats) m.color.setScalar(k * (m.userData.base || 1));
     panelMats.on.color.setRGB(1.6 * k, 1.55 * k, 1.38 * k);
   };
 
