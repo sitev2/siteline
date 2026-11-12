@@ -469,17 +469,20 @@ export function playShot(weaponId, opts = {}) {
   }
 }
 
+// how loud footsteps are on this map (1 = normal; the owner asked for quieter ones on some maps)
+let stepVol = 1;
+export function setStepVolume(k) { stepVol = k; }
 // opts: { pos, surface, occ, walk } — no pos for your own feet
 export function playStep(opts = {}) {
   if (!ctx) return;
   const b = stepBuffer(opts.surface || 'hard', false);
-  if (!opts.pos) { play(b, { gain: 0.22, wet: 0.15, rate: 0.92 + Math.random() * 0.16 }); return; }
-  play(b, { pos: opts.pos, gain: 1.1, ref: 1.5, roll: 1.5, air: 25, occ: opts.occ, wet: 0.3, rate: 0.92 + Math.random() * 0.16 });
+  if (!opts.pos) { play(b, { gain: 0.22 * stepVol, wet: 0.15, rate: 0.92 + Math.random() * 0.16 }); return; }
+  play(b, { pos: opts.pos, gain: 1.1 * stepVol, ref: 1.5, roll: 1.5, air: 25, occ: opts.occ, wet: 0.3, rate: 0.92 + Math.random() * 0.16 });
 }
 export function playLand(opts = {}) {
   if (!ctx) return;
   const b = stepBuffer(opts.surface || 'hard', true);
-  const k = 0.5 + (opts.hard || 0) * 0.5;
+  const k = (0.5 + (opts.hard || 0) * 0.5) * stepVol;
   if (!opts.pos) { play(b, { gain: 0.35 * k, wet: 0.2 }); return; }
   play(b, { pos: opts.pos, gain: 1.3 * k, ref: 1.5, roll: 1.3, air: 25, occ: opts.occ, wet: 0.35 });
 }

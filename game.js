@@ -52,6 +52,9 @@ function angleLerp(a, b, t) {
 // 83 → "1:23"
 const fmtClock = s => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`;
 
+// footsteps (and landings) quieter on these maps: 0.6 = 40 % quieter (owner's request)
+const STEP_VOLUME = { outpost: 0.6, flame: 0.6 };
+
 export class Game {
   constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night, doors, notes }) {
     this.transport = transport;
@@ -121,6 +124,7 @@ export class Game {
     this.pendingNotes = notes;
     // this map's acoustics and background sound
     sfx.setRoom(this.world.def.theme);
+    sfx.setStepVolume(STEP_VOLUME[this.mapId] ?? 1);
     sfx.startAmbience(this.world.def.theme, this.night, { x: this.world.width / 2, z: this.world.depth / 2 }, Math.max(this.world.width, this.world.depth) * 0.6);
     this.scene.add(built.group);
     this.scene.fog = built.fog;
