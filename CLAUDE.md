@@ -102,12 +102,21 @@ The only folder is `server/` (the optional home game server).
   no guns (`p.w = 'none'`, empty hands), find the exit door. A new random maze every game: `brmap.js` (`planMaze(seed)` / `backroomsMap(seed)`;
   NOT in `MAPS`, `resolveMap('backrooms', seed)`, the seed travels as `variant`): 18×18 rooms of 4 m, spanning tree + loops + bigger rooms,
   pillar halls (repeating 1 m pillars), free pillars, pitfalls (`b.pit` → `world.pitGrid`, `isPit`: no floor, you fall; below y −3 the host
-  kills you), exit door in the outer wall (`b.exit` → `world.exit`). `node check_br.mjs 40` checks many seeds are escapable.
+  kills you), pit rooms (owner's reference picture: a big room whose floor is a grid of square holes, `holeRow()`), doorways (a wall with a
+  1.5 × 2.2 m gap; the wall above is a `wallpaper` span from 2.2 m), exit door in the outer wall (`b.exit` → `world.exit`). Walls fill the
+  cell [line, line + 0.5) east/south of each room line. `backroomsMap` checks every maze (`mazeOk`: player start→exit, monster→start with
+  3×3 clearance) and deterministically tries seed variations if one fails. `node check_br.mjs 300` checks many seeds. The NavGrid treats a
+  hole next to a cell as no wall (walk along its edge). Free pillars never sit next to a hole.
   `brview.js` draws it with baked lighting (per-vertex light from every ceiling panel with 2D wall shadows, soft edges, bounce, AO;
-  MeshBasic + vertex colours, so it's cheap), canvas textures (chevron wallpaper, carpet, ceiling tiles, panels, own EXIT sign), pits,
-  flicker + "dread" dimming when the monster is near (`group.userData.update`). `monster.js` = the monster's brain on the host (player
-  id `'monster'`, team `'monster'` = snapshot team index 3, `use` = chasing): waits `MONSTER.wake` s, wanders towards players, hears running
-  (> 3.5 m/s) within 16 m, sees 28 m in front, chases, kills on contact (`monsterKill`). Model `makeMonsterModel` / `animateMonster` in
+  MeshBasic + vertex colours, so it's cheap), canvas textures (chevron wallpaper, carpet, ceiling tiles, panels, doors, outlets, own EXIT
+  sign), pits, skirting boards (the board on the x-facing face runs past outside corners and gets an end cap, so corners close), the wall
+  above doorways, door frames + open double doors, closed doors that never open, wall outlets, flicker + "dread" dimming when the monster
+  is near (`group.userData.update`). Hand-held camera sway in `Game.updateCamera` (Backrooms only, more when running or near the
+  monster), strength = `settings.camShake` (Settings → General "Camera shake in the Backrooms", default 0.5, 0 = off). `monster.js` = the monster's brain on the host (player
+  id `'monster'`, team `'monster'` = snapshot team index 3, `use` = chasing): waits `MONSTER.wake` s; states chase (aims ahead of a running
+  target), stalk (creeps up on someone far away looking the other way, charges when they turn or it's within 9 m), pursue (runs to where you
+  were heading), search (4 nearby spots, in your direction first, listening at each), wander (towards players, more surely the longer it has
+  no clue; stops to listen now and then). Hears running (> 3.5 m/s) within 16 m and walking within 3.5 m; kills on contact (`monsterKill`). Model `makeMonsterModel` / `animateMonster` in
   `models.js` is OUR OWN design (the owner asked for a known character from someone else's Backrooms videos; we declined to copy it).
   Sounds in `audio.js` (fluorescent buzz bed, monster steps/screech/grab). Account stats are not reported for this mode.
 - `check_map.mjs` — `node check_map.mjs outpost` / `node check_map.mjs quarry large` checks every area and spawn is reachable
