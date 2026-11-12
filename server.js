@@ -185,6 +185,8 @@ export class Server {
   removePlayer(id) {
     const p = this.players.get(id);
     if (!p) return;
+    // the monster was wearing them: it changes back now (they can't be shown any more)
+    if (this.brSkin && this.brSkin.id === id) { const b = this.bots.get('monster'); if (b && b.unmask) b.unmask(b.lastNow || 0); else this.brSkin = null; }
     this.bots.delete(id);
     // a friend left a practice game: a bot takes their place again
     if (this.botCfg && !p.bot && id !== this.localId && this.phase !== 'lobby' && this.phase !== 'over') {
@@ -769,9 +771,12 @@ export class Server {
     p.chatTimes.push(now);
     const team = !!m.team && !this.dm;
     const out = { t: 'chat', id: p.id, name: p.name, team: p.team, text, toTeam: team, dead: !p.alive && this.phase !== 'lobby' };
+    // while the monster wears someone, the dead and those who got out can only talk among themselves
+    const hush = this.phase === 'br' && this.brSkin && !p.alive;
     for (const q of this.players.values()) {
       if (q.dummy || q.bot) continue;
       if (team && q.team !== p.team) continue;
+      if (hush && q.alive) continue;
       this.send(q.id, out);
     }
   }
@@ -974,6 +979,7 @@ export class Server {
     this.doorAt = this.world.doors.map(() => 0);
     this.corners = outerCorners(this.world);       // for the corner snatch and the monster's peeking
     this.cornerUsed = false;                        // the corner snatch happens at most once a game
+    this.brSkin = null;                             // { id }: the player whose skin the monster is wearing
     this.notes = [];                                // paper notes people have left
     this.noteSeq = 0;
     this.phase = 'br';
@@ -1128,7 +1134,31 @@ export class Server {
     if (!q.alive || this.phase !== 'br') return;
     q.brDeath = 'monster';
     q.hp = 0;
+    const brain = this.bots.get('monster');
+    if (brain && !this.brSkin && brain.canWear(q)) {
+      // nobody saw: it takes their skin and wears it. Only they (and anyone already dead or out) are told;
+      // to everyone else they are still alive and walking about (snapshot()) until it changes back.
+      q.alive = false; q.use = false; q.brDeath = 'skin';
+      this.brSkin = { id: q.id };
+      const msg = { t: 'kill', killer: m.id, victim: q.id, w: 'skin', head: false, from: null, part: 'chest' };
+      for (const h of this.humans()) if (h === q || !h.alive) this.send(h.id, msg);
+      brain.wear(q);
+      this.brCheck();
+      return;
+    }
     this.kill(q, m, 'monster', false, [m.x, m.y + 1.4, m.z]);
+  }
+
+  // it changes back out of the skin it was wearing: everyone sees it happen, and learns who it was
+  revealSkin(m, id) {
+    if (!this.brSkin) return;
+    this.brSkin = null;
+    const q = this.players.get(id);
+    this.broadcast({ t: 'skinReveal', id, name: q ? q.name : '', x: r2(m.x), z: r2(m.z), yaw: r2(m.yaw) });
+    if (q) {
+      q.deaths++;
+      this.broadcast({ t: 'kill', killer: m.id, victim: id, w: 'skin', head: false, from: null, part: 'chest' });
+    }
   }
 
   // the monster has just spotted this player: they hear it scream
@@ -1145,6 +1175,7 @@ export class Server {
   }
 
   brEnd() {
+    this.brSkin = null;
     this.bots.delete('monster');
     this.players.delete('monster');
     for (const p of this.humans()) { p.team = p.lobbyTeam === 'def' ? 'def' : 'atk'; p.escaped = false; p.w = STARTER_PISTOL[p.team]; }
@@ -1546,7 +1577,18 @@ export class Server {
 
   snapshot() {
     const ps = [];
+    const worn = this.brSkin && this.players.get('monster');
     for (const p of this.players.values()) {
+      if (worn && p.id === this.brSkin.id) {
+        // the monster wearing them: alive, where it is, no flashlight (a clue), never holding "use"
+        ps.push([p.id, r2(worn.x), r2(worn.y), r2(worn.z), r2(worn.yaw), r2(worn.pitch), 1, 100, 'none', p.kills, p.deaths,
+          0, 0, p.ping, 0, 0, 0]);
+        continue;
+      }
+      if (worn && p === worn) {
+        ps.push([p.id, r2(p.x), r2(p.y), r2(p.z), r2(p.yaw), 0, 0, 100, p.w, 0, 0, 3, 0, 0, 0, 0, 0]);
+        continue;
+      }
       ps.push([p.id, r2(p.x), r2(p.y), r2(p.z), r2(p.yaw), r2(p.pitch), p.alive ? 1 : 0, p.hp, p.w, p.kills, p.deaths,
         p.team === 'atk' ? 0 : p.team === 'def' ? 1 : p.team === 'monster' ? 3 : 2, p.use ? 1 : 0, p.ping, p.armor | 0,
         (p.helmet ? 1 : 0) | (p.kit ? 2 : 0) | (p.light ? 4 : 0) | (p.escaped ? 8 : 0), p.money | 0]);
