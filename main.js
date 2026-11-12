@@ -23,9 +23,16 @@ import { WEAPONS } from './weapons.js';
 const $ = (id) => document.getElementById(id);
 const screens = ['menu', 'lobby', 'settings', 'practice', 'account', 'nettest', 'friends', 'admin'];
 
-// The Backrooms is hidden for now (the owner's call): no lobby button, no practice button.
-// Set this to true to bring it back; everything else about it still works.
+// The Backrooms isn't released yet (the owner's call): only the owner's test account sees its lobby and
+// practice buttons (friends who join that account's room play along). true = everyone sees it again.
+// (The lock is only in the page: it hides the mode, it isn't real security.)
 const BACKROOMS_OPEN = false;
+const BACKROOMS_TESTERS = ['test123'];
+function backroomsAllowed() {
+  if (BACKROOMS_OPEN) return true;
+  const p = acct.loggedIn() && acct.currentProfile();
+  return !!(p && BACKROOMS_TESTERS.includes(String(p.username || '').toLowerCase()));
+}
 
 // ---------- settings ----------
 const STORE = 'siteline-settings';
@@ -545,13 +552,15 @@ function updatePauseInvite() {
   if (show) $('pause-code').textContent = app.code;
 }
 
-// the Backrooms buttons go while it is hidden (BACKROOMS_OPEN); the other buttons close up
+// the Backrooms buttons show only for its testers (backroomsAllowed); for everyone else the other buttons close up.
+// Checked at start-up and whenever someone logs in or out.
 function hideBackrooms() {
-  if (BACKROOMS_OPEN) return;
-  for (const el of document.querySelectorAll('[data-mode="br"], [data-pmode="br"]')) el.remove();
-  $('lobby').querySelector('.mode-pick').classList.remove('three');
-  $('practice').querySelector('.mode-pick').classList.replace('four', 'three');
-  if (settings.practice.kind === 'br') settings.practice.kind = 'range';
+  const ok = backroomsAllowed();
+  for (const el of document.querySelectorAll('[data-mode="br"], [data-pmode="br"]')) el.classList.toggle('hidden', !ok);
+  $('lobby').querySelector('.mode-pick').classList.toggle('three', ok);
+  const pm = $('practice').querySelector('.mode-pick');
+  pm.classList.toggle('four', ok); pm.classList.toggle('three', !ok);
+  if (!ok && settings.practice.kind === 'br') { settings.practice.kind = 'range'; if (!$('practice').classList.contains('hidden')) renderPracticeMenu(); }
 }
 
 // ---------- practice menu ----------
@@ -986,7 +995,7 @@ function showBrOver(msg) {
   for (const s of msg.stats.slice().sort((a, b) => (b.escaped - a.escaped) || ((a.time || 0) - (b.time || 0)))) {
     const tr = document.createElement('tr');
     const how = s.escaped ? `Escaped (${clock(s.time)})` : s.how === 'fell' ? 'Fell into a pit' : s.how === 'monster' ? 'Caught by it'
-      : s.how === 'ceiling' ? 'Taken by the ceiling' : s.how === 'corner' ? 'Vanished' : 'Left the game';
+      : s.how === 'ceiling' ? 'Taken by the ceiling' : s.how === 'corner' ? 'Vanished' : s.how === 'skin' ? 'It wore their skin' : 'Left the game';
     for (const v of [s.name, how]) { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); }
     tr.lastChild.style.color = s.escaped ? '#9dffb5' : '#ff8a6a';
     table.appendChild(tr);
@@ -1208,7 +1217,7 @@ function bindAccount() {
     } catch (e) { $('acct-newpass-msg').textContent = e.message || String(e); }
   });
   $('btn-acct-logout').addEventListener('click', () => acct.logOut());
-  acct.onAccountChange(() => { renderAccount(); onLogin(); });
+  acct.onAccountChange(() => { renderAccount(); onLogin(); hideBackrooms(); });
   setMode('login');
 }
 
