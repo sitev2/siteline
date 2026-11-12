@@ -970,7 +970,7 @@ export class Game {
     if (!this.night && !this.br) return;
     const me = this.me, cam = this.camera;
     const on = me.alive && me.light;
-    this.myLight.intensity = on ? (this.br ? 16 : 9) : 0;
+    this.myLight.intensity = on ? (this.br ? 12.8 : 9) : 0;
     if (on) {
       const fwd = TMP.set(0, 0, -1).applyQuaternion(cam.quaternion);
       this.myLight.position.copy(cam.position).addScaledVector(fwd, 0.2).y -= 0.12;
@@ -980,7 +980,7 @@ export class Game {
       if (!r.model) continue;
       const f = this.flashlightFor(r);
       const lit = r.alive && r.light && r.model.root.visible;
-      f.spot.intensity = lit ? (this.br ? 14 : 9) : 0;
+      f.spot.intensity = lit ? (this.br ? 11.2 : 9) : 0;
       f.group.visible = lit;
       if (!lit) continue;
       const eye = r.rp.y + EYE - 0.15;
@@ -991,7 +991,7 @@ export class Game {
       f.spot.target.position.set(x + dx * 10, y + dy * 10, z + dz * 10);
       f.group.position.set(x, y, z);
       f.group.lookAt(x - dx, y - dy, z - dz);   // the cone points along the group's -z
-      f.beam.material.uniforms.uOn.value = 1;
+      f.beam.material.uniforms.uOn.value = this.br ? 0.8 : 1;
     }
   }
 
