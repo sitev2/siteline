@@ -228,8 +228,8 @@ The only folder is `server/` (the optional home game server).
   2–4 s, else drifts at 1.4 m/s; stand still and it walks past you. Can't open or kick doors (doorCost Infinity). Kills on contact
   (`Server.listenerKill`, weapon 'listener', an ordinary death: "The Listener heard you"). Looks (owner: must look different from It):
   `makeMonsterModel({ blind: true })` builds its own body on the same joints (so `animateMonster` moves it): squat (root 1.08 × 0.88),
-  fleshy waxy-pale limbs, a lumpy hunched back, a barrel rib cage, a swollen eyeless head with a slit mouth, pores and two big pink ear
-  flaps, padded feet, thick fingers. Sound: dry clicks (`BRS.clicks`) every 1.2–2.6 s, faster when rushing (`monsterSounds`). The main
+  fleshy waxy-pale limbs, a lumpy hunched back, a barrel rib cage, a swollen eyeless head with a slit mouth and pores (no ears: the
+  owner had them removed), padded feet, thick fingers. Sound: dry clicks (`BRS.clicks`) every 1.2–2.6 s, faster when rushing (`monsterSounds`). The main
   monster's effects (dread, heartbeat, darkness, screech) stay tied to id 'monster' only (`brfx.monster()`).
   Monster peeking: now and then it picks one player (the most alone), finds a spot by an outside corner 7–16 m away where its body is
   hidden but its head leaning out is clearly visible (`findPeek`), leans out (mode `peek:±1`), and leaves 0.5 s after that player
