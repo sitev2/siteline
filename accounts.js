@@ -36,7 +36,11 @@ async function call(path, { method = 'GET', body, auth = true, headers = {} } = 
   try { data = text ? JSON.parse(text) : null; } catch (e) { data = text; }
   if (!res.ok) {
     const msg = (data && (data.msg || data.message || data.error_description || data.error)) || `Request failed (${res.status})`;
-    throw new Error(friendly(String(msg)));
+    // (.raw / .status: what the server really said — code that falls back to an older database function
+    // must look at these, not at the friendly text)
+    const err = new Error(friendly(String(msg)));
+    err.raw = String(msg); err.status = res.status;
+    throw err;
   }
   return data;
 }
@@ -176,7 +180,10 @@ let oldBeat = false;
 export async function heartbeat(activity, room) {
   if (!oldBeat) {
     try { return await rpc('heartbeat', { p_activity: activity, p_room: room || null }); } catch (e) {
-      if (!/heartbeat|function|schema cache/i.test(e.message || '')) throw e;
+      // The database only has the older one-argument heartbeat (supabase.sql not re-run since). This used to test
+      // e.message, which is the friendly text and never matched: every heartbeat then failed silently, so everyone
+      // showed as offline and invites never arrived.
+      if (!(e.status === 404 || /could not find the function|schema cache|heartbeat/i.test(e.raw || ''))) throw e;
       oldBeat = true;
     }
   }

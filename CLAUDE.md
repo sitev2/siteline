@@ -58,7 +58,7 @@ The only folder is `server/` (the optional home game server).
 - `friends.js` — Friends screen (logged-in only): add by username + accept, online dot + activity (`activityText()` in `main.js`), friends'
   stats, Invite button (sends `app.code`) → friend gets the `#invite-pop` "Join" pop-up. `heartbeat(activity, room)` also saves your room
   code (`profiles.room`, only shown to friends via `friend_list`) → friends see a Join button and can join mid-match (joining in buy time
-  spawns you at once, `snapScore.now`; later you wait for the next round). `accounts.heartbeat` falls back to the old one-argument call.
+  spawns you at once, `snapScore.now`; later you wait for the next round). `accounts.heartbeat` falls back to the old one-argument call when the database hasn't got the newer one (it must test `e.raw` / `e.status` from `call()`, NOT `e.message`: that is the friendly text, and testing it made every heartbeat fail silently — everyone showed offline and invites never arrived). A failing heartbeat now shows on the Friends screen (`beatError`).
   Friend messages show in game: heartbeat's `latest` (`unread_latest()`, newest 5 unread, NOT marked read) → `hooks.friendMessage` →
   the usual toast, now with the text ("💬 New message from Name: text"), in game and in the menus. All via Supabase RPCs in `supabase.sql`
   (`heartbeat` every 20 s returns requests + invites; online = seen in the last 90 s; tables `friends`, `game_invites` have no direct
@@ -125,7 +125,7 @@ The only folder is `server/` (the optional home game server).
   or at least 1 m — never a thinner ledge, which nobody could walk along. Big black spray-painted arrows (`plan.arrows`, drawn in `brview.js` from
   `arrowTexture`): just lines, big but skinny (owner: a ~3.3 × 1.6 m quad, the size of a wall, 5 cm lines: a shaft + an open head,
   overspray, drips); in few rooms (arrows 0.22 / 0.15 / 0.09 of the rooms where the way splits, plus the start) and vague (owner): they
-  point the rough compass direction of the exit as the crow flies (the bigger axis; nearly diagonal = either), not the way through the maze. Doorways: 3 a maze (owner wanted fewer), each where going round is a real detour (6+ rooms, `goodDoor`) and nothing is
+  point the rough compass direction of the exit as the crow flies (the bigger axis; nearly diagonal = either), not the way through the maze. Doorways: `L.doors` = 28 / 20 / 12 a maze by difficulty (easy / normal / hard; owner: "enough doors to evade the monster" — it was 3), at least 4 rooms apart, each where going round is a real detour (6+ rooms, `goodDoor`) and nothing is
   ever sealed off with every door shut (`walkShut`); a wall with a
   1.5 × 2.2 m gap; the wall above is a `wallpaper` span from 2.2 m. Walls fill the
   cell [line, line + 0.5) east/south of each room line. `backroomsMap` checks every maze (`mazeOk`: player start→exit, monster→start with

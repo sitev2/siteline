@@ -28,15 +28,15 @@ export const BR = {
 // how far it hears running / walking, how many places it searches and when it wakes up (s).
 export const BR_LEVELS = {
   easy: {
-    bridge: 1.5, holes: 4, dark: 4, arrows: 0.22,
+    bridge: 1.5, holes: 4, dark: 4, arrows: 0.22, doors: 28,
     monster: { speed: 1.05, sight: 16, chaseSight: 13, fov: 1.0, lose: 0.25, lead: 0.7, hear: 11, hearWalk: 2.5, search: 3, wake: 30 },
   },
   normal: {
-    bridge: 1, holes: 6, dark: 6, arrows: 0.15,
+    bridge: 1, holes: 6, dark: 6, arrows: 0.15, doors: 20,
     monster: { speed: 1.10, sight: 22, chaseSight: 19, fov: 1.2, lose: 0.55, lead: 1.2, hear: 14, hearWalk: 3, search: 4, wake: 20 },
   },
   hard: {
-    bridge: 0.5, holes: 7, dark: 8, arrows: 0.09,
+    bridge: 0.5, holes: 7, dark: 8, arrows: 0.09, doors: 12,
     monster: { speed: 1.15, sight: 28, chaseSight: 28, fov: 1.3, lose: 0.9, lead: 1.6, hear: 16, hearWalk: 3.5, search: 5, wake: 15 },
   },
 };
@@ -210,14 +210,17 @@ export function planMaze(seed, level = 'normal') {
     r.bridge = L.bridge;          // the walkways between its holes (all its holes are the same size: PIT_HOLE)
   }
   const inPitRoom = (x, z) => pitRooms.find(r => x >= r.x && x < r.x + r.w && z >= r.z && z < r.z + r.d);
-  // 6. doorways: three openings between ordinary rooms get a wall back with a door in it. The monster can't
+  // 6. doorways: openings between ordinary rooms get a wall back with a door in it — enough of them that one is
+  // usually within a few rooms when it is after you (owner: "enough doors to evade the monster", by difficulty:
+  // L.doors = 28 / 20 / 12; it was 3 a maze). The monster can't
   // open doors, so a door only goes where there is another way round even with every door shut (a long
   // one: 6+ rooms): shutting one makes it go the long way, but never seals anyone in (or it out).
   const doorways = [];
   const plain = (x, z) => !inHall(x, z) && !inPitRoom(x, z) && !byExit(x, z);
   // rooms reachable from (x0, z0) with every door in `list` shut: steps to each (-1 = can't get there)
   const walkShut = (list, x0, z0) => {
-    const isDoor = (x, z, dx, dz) => list.some(d => (dx ? d.dir === 'v' && d.z === z && d.x === Math.min(x, x + dx) : d.dir === 'h' && d.x === x && d.z === Math.min(z, z + dz)));
+    const set = new Set(list.map(d => `${d.dir}${d.x},${d.z}`));      // (a set: with 20-odd doors this runs thousands of times)
+    const isDoor = (x, z, dx, dz) => (dx ? set.has(`v${Math.min(x, x + dx)},${z}`) : set.has(`h${x},${Math.min(z, z + dz)}`));
     const dist = new Int16Array(N * N).fill(-1), q = [[x0, z0]];
     dist[z0 * N + x0] = 0;
     for (let i = 0; i < q.length; i++) {
@@ -236,9 +239,9 @@ export function planMaze(seed, level = 'normal') {
     if (dist.some(v => v < 0)) return false;
     return dist[(d.dir === 'v' ? d.z * N + d.x + 1 : (d.z + 1) * N + d.x)] >= 6;
   };
-  for (let tries = 0; doorways.length < 3 && tries < 1500; tries++) {
+  for (let tries = 0; doorways.length < L.doors && tries < 6000; tries++) {
     const x = pick(0, N - 1), z = pick(0, N - 1);
-    if (doorways.some(d => Math.abs(d.x - x) + Math.abs(d.z - z) < 5)) continue;      // spread out
+    if (doorways.some(d => Math.abs(d.x - x) + Math.abs(d.z - z) < 4)) continue;      // spread out
     let d;
     if (R() < 0.5) {
       if (x >= N - 1 || vWall[z][x] || !plain(x, z) || !plain(x + 1, z)) continue;
