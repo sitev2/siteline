@@ -675,6 +675,34 @@ export function playBR(kind, pos = null, occ = 0, gain = 1) {
   play(cache.get(key), { pos, gain, ref: pos ? 2.5 : 1, roll: 1.0, air: 40, occ, wet: kind === 'whisper' ? 0.15 : 0.45, important: kind === 'ceiling' || kind === 'corner' || kind === 'tear' });
 }
 
+// close to it: a low, distorted rumble that swells in your head (not in the world), with a sick wavering whine on
+// top. One loop, its loudness follows how close it is (setDread 0 … 1). (It replaced the old screen grain.)
+let dread = null;
+export function setDread(level) {
+  if (!ctx) return;
+  level = Math.max(0, Math.min(1, level || 0));
+  if (!dread) {
+    if (level < 0.01) return;
+    const b = buf(6, (x, sr) => {
+      const n = x.length, a = new Float32Array(n), m = new Float32Array(n);
+      for (let i = 0; i < n; i++) { a[i] = Math.random() * 2 - 1; m[i] = Math.random() * 2 - 1; }
+      biquad(a, 'lowpass', 110, 0.9, sr); biquad(m, 'bandpass', 320, 1.6, sr);
+      for (let i = 0; i < n; i++) {
+        const t = i / sr, wob = 1 + 0.35 * Math.sin(2 * Math.PI * t / 1.5) + 0.2 * Math.sin(2 * Math.PI * t / 0.37);   // (loops cleanly: 6 s)
+        x[i] = a[i] * 3.2 * wob + Math.sin(2 * Math.PI * 41 * t) * 0.35 * wob + m[i] * 0.9 * (0.6 + 0.4 * Math.sin(2 * Math.PI * t / 2))
+          + Math.sin(2 * Math.PI * (2150 + 40 * Math.sin(2 * Math.PI * t / 3)) * t) * 0.025;
+      }
+      softclip(x, 2.2);
+      normalize(x, 0.8);
+    });
+    const src = ctx.createBufferSource(), g = ctx.createGain();
+    src.buffer = b; src.loop = true; g.gain.value = 0;
+    src.connect(g); g.connect(master); src.start();
+    dread = { src, g };
+  }
+  dread.g.gain.setTargetAtTime(level * level * 0.9, ctx.currentTime, 0.15);
+}
+
 // your heartbeat (not in the world: inside your head), louder and harder the closer it is
 export function playHeart(gain = 1) {
   const key = 'br:heart';

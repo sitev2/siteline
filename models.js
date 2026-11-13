@@ -1317,11 +1317,15 @@ function glowTexture() {
 export function makeMonsterModel(opts = {}) {
   // a shadow more than a body: matte black that takes almost no light, and two small eyes that glow in the
   // dark (game.js turns them up when it stands somewhere dark or in a flashlight: setGlow).
-  // opts.blind: the second creature (the Listener): the same long frame, but pale as old bone and with no eyes
+  // opts.blind: the second creature, the Listener: a different animal on the same joints (so it moves with the same
+  // animation): squat and fleshy, waxy pale skin, a lumpy hunched back, a swollen eyeless head with two huge ear
+  // flaps and a slit of a mouth, padded feet (it walks quietly) and long thick fingers. Our own design.
   const blind = !!opts.blind;
-  const black = new THREE.MeshStandardMaterial({ color: blind ? '#a9a395' : '#030304', roughness: blind ? 0.85 : 0.96, metalness: 0.0 });
-  const joint = new THREE.MeshStandardMaterial({ color: blind ? '#8d877a' : '#08080a', roughness: 0.9, metalness: 0.05 });
-  const cable = new THREE.MeshStandardMaterial({ color: blind ? '#6f6a60' : '#020203', roughness: 0.95, metalness: 0.0 });
+  const black = new THREE.MeshStandardMaterial({ color: blind ? '#c4b7a8' : '#030304', roughness: blind ? 0.6 : 0.96, metalness: 0.0 });
+  const joint = new THREE.MeshStandardMaterial({ color: blind ? '#a6958a' : '#08080a', roughness: blind ? 0.65 : 0.9, metalness: 0.05 });
+  const cable = new THREE.MeshStandardMaterial({ color: blind ? '#8f7d74' : '#020203', roughness: 0.95, metalness: 0.0 });
+  const membrane = blind ? new THREE.MeshStandardMaterial({ color: '#d99a90', roughness: 0.5, side: THREE.DoubleSide }) : null;
+  const dark = blind ? new THREE.MeshBasicMaterial({ color: '#160c0c' }) : null;
   const eye = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 0.52, 0.58) });
   const rod = (len, r0, r1 = r0) => { const g = new THREE.CylinderGeometry(r1, r0, len, 8); g.translate(0, -len / 2, 0); return g; };   // hangs down from its top
   const ball = r => new THREE.SphereGeometry(r, 10, 8);
@@ -1332,25 +1336,37 @@ export function makeMonsterModel(opts = {}) {
   const hips = new THREE.Group();
   hips.position.y = 1.5;
   root.add(hips);
-  add(hips, new THREE.BoxGeometry(0.3, 0.07, 0.1), black);
-  add(hips, new THREE.TorusGeometry(0.1, 0.022, 6, 14), joint, 0, 0.02, 0).rotation.x = Math.PI / 2;
+  if (blind) add(hips, ball(0.17), black, 0, 0.02, 0).scale.set(1.25, 0.7, 0.95);      // a heavy pelvis
+  else {
+    add(hips, new THREE.BoxGeometry(0.3, 0.07, 0.1), black);
+    add(hips, new THREE.TorusGeometry(0.1, 0.022, 6, 14), joint, 0, 0.02, 0).rotation.x = Math.PI / 2;
+  }
 
   // legs: long thighs and shins, knuckled knees, three-toed spikes for feet
   const legs = [];
   for (const sx of [-0.13, 0.13]) {
     const thigh = new THREE.Group(); thigh.position.set(sx, -0.02, 0); hips.add(thigh);
-    add(thigh, ball(0.05), joint);
-    add(thigh, rod(0.76, 0.03, 0.042), black);
-    add(thigh, new THREE.CylinderGeometry(0.018, 0.018, 0.5, 6), cable, 0.035 * Math.sign(sx), -0.36, -0.03);
+    if (blind) { add(thigh, ball(0.085), black); add(thigh, rod(0.76, 0.055, 0.085), black); }
+    else {
+      add(thigh, ball(0.05), joint);
+      add(thigh, rod(0.76, 0.03, 0.042), black);
+      add(thigh, new THREE.CylinderGeometry(0.018, 0.018, 0.5, 6), cable, 0.035 * Math.sign(sx), -0.36, -0.03);
+    }
     const shin = new THREE.Group(); shin.position.y = -0.76; thigh.add(shin);
-    add(shin, ball(0.045), joint);
-    add(shin, rod(0.7, 0.018, 0.034), black);
-    add(shin, new THREE.BoxGeometry(0.03, 0.12, 0.03), joint, 0, -0.32, 0.03);
+    if (blind) { add(shin, ball(0.07), joint); add(shin, rod(0.7, 0.035, 0.06), black); }
+    else {
+      add(shin, ball(0.045), joint);
+      add(shin, rod(0.7, 0.018, 0.034), black);
+      add(shin, new THREE.BoxGeometry(0.03, 0.12, 0.03), joint, 0, -0.32, 0.03);
+    }
     const foot = new THREE.Group(); foot.position.y = -0.7; shin.add(foot);
-    add(foot, ball(0.03), joint);
-    for (const a of [-0.45, 0, 0.45]) {
-      const toe = add(foot, rod(0.2, 0.004, 0.016), black);
-      toe.rotation.set(-1.35, a, 0);
+    if (blind) add(foot, ball(0.07), joint, 0, -0.02, -0.05).scale.set(1.1, 0.45, 1.9);     // soft padded feet: it walks quietly
+    else {
+      add(foot, ball(0.03), joint);
+      for (const a of [-0.45, 0, 0.45]) {
+        const toe = add(foot, rod(0.2, 0.004, 0.016), black);
+        toe.rotation.set(-1.35, a, 0);
+      }
     }
     legs.push({ thigh, shin, foot });
   }
@@ -1361,25 +1377,52 @@ export function makeMonsterModel(opts = {}) {
   let parent = spine;
   for (let i = 0; i < 6; i++) {
     const v = new THREE.Group(); v.position.y = i ? 0.15 : 0; parent.add(v);
-    add(v, new THREE.CylinderGeometry(0.035, 0.045, 0.07, 10), i % 2 ? black : joint, 0, 0.035, 0);
-    add(v, new THREE.CylinderGeometry(0.012, 0.012, 0.16, 6), black, 0, 0.1, 0);
+    if (blind) {
+      // a fat, lumpy back: one swelling per vertebra, bulging out behind
+      add(v, ball(0.12 + Math.sin(i * 0.9) * 0.02), black, 0, 0.08, 0.03).scale.set(1.25, 1, 1);
+      add(v, ball(0.04), joint, 0, 0.1, 0.13);
+    } else {
+      add(v, new THREE.CylinderGeometry(0.035, 0.045, 0.07, 10), i % 2 ? black : joint, 0, 0.035, 0);
+      add(v, new THREE.CylinderGeometry(0.012, 0.012, 0.16, 6), black, 0, 0.1, 0);
+    }
     verts.push(v); parent = v;
   }
-  tube(spine, [[0.05, 0, 0.04], [0.07, 0.35, 0.07], [0.06, 0.7, 0.05], [0.12, 0.9, 0.02]]);
-  tube(spine, [[-0.05, 0, 0.04], [-0.08, 0.4, 0.08], [-0.06, 0.75, 0.04], [-0.13, 0.9, 0.02]], 0.01);
+  if (!blind) {
+    tube(spine, [[0.05, 0, 0.04], [0.07, 0.35, 0.07], [0.06, 0.7, 0.05], [0.12, 0.9, 0.02]]);
+    tube(spine, [[-0.05, 0, 0.04], [-0.08, 0.4, 0.08], [-0.06, 0.75, 0.04], [-0.13, 0.9, 0.02]], 0.01);
+  }
   // chest: a ring, a bar across the shoulders, a dangling cable loop
   const chest = new THREE.Group(); chest.position.y = 0.18; parent.add(chest);
-  add(chest, new THREE.TorusGeometry(0.15, 0.02, 6, 18), black, 0, 0, 0).rotation.x = Math.PI / 2;
-  add(chest, new THREE.BoxGeometry(0.62, 0.05, 0.07), black, 0, 0.06, 0);
-  add(chest, new THREE.BoxGeometry(0.12, 0.1, 0.09), joint, 0, 0.0, 0.0);
-  tube(chest, [[-0.1, 0.0, -0.1], [-0.05, -0.22, -0.16], [0.06, -0.24, -0.15], [0.12, 0.0, -0.1]], 0.009);
+  if (blind) {
+    // a barrel of a rib cage, the ribs showing through the skin, and big rounded shoulders
+    add(chest, ball(0.2), black, 0, -0.04, 0).scale.set(1.35, 1.1, 1.0);
+    for (let k = 0; k < 4; k++) { const r = add(chest, new THREE.TorusGeometry(0.2 - k * 0.01, 0.012, 5, 16, Math.PI), joint, 0, -0.16 + k * 0.07, -0.01); r.rotation.set(Math.PI / 2, 0, Math.PI); r.scale.set(1.3, 1, 1); }
+    for (const x of [-0.3, 0.3]) add(chest, ball(0.09), black, x, 0.05, 0);
+  } else {
+    add(chest, new THREE.TorusGeometry(0.15, 0.02, 6, 18), black, 0, 0, 0).rotation.x = Math.PI / 2;
+    add(chest, new THREE.BoxGeometry(0.62, 0.05, 0.07), black, 0, 0.06, 0);
+    add(chest, new THREE.BoxGeometry(0.12, 0.1, 0.09), joint, 0, 0.0, 0.0);
+    tube(chest, [[-0.1, 0.0, -0.1], [-0.05, -0.22, -0.16], [0.06, -0.24, -0.15], [0.12, 0.0, -0.1]], 0.009);
+  }
 
   // neck and head: a narrow tilted pod with a cluster of small pale lights where a face would be
   const neck = new THREE.Group(); neck.position.y = 0.08; chest.add(neck);
-  add(neck, new THREE.CylinderGeometry(0.016, 0.02, 0.24, 8), black, 0, 0.12, 0);
+  add(neck, blind ? new THREE.CylinderGeometry(0.06, 0.09, 0.24, 10) : new THREE.CylinderGeometry(0.016, 0.02, 0.24, 8), black, 0, 0.12, 0);
   const head = new THREE.Group(); head.position.set(0, 0.24, -0.03); neck.add(head);
-  add(head, new THREE.CapsuleGeometry(0.06, 0.2, 4, 10), black, 0, 0.08, 0);
-  add(head, new THREE.TorusGeometry(0.07, 0.012, 6, 14), joint, 0, 0.02, 0).rotation.x = Math.PI / 2;
+  if (blind) {
+    // a swollen bulb of a head with no eyes: a slit of a mouth, pores, and two huge ears like fans
+    add(head, ball(0.15), black, 0, 0.1, 0).scale.set(1, 1.15, 1.08);
+    add(head, new THREE.BoxGeometry(0.012, 0.11, 0.02), dark, 0, 0.03, -0.155);
+    for (const [x, y] of [[-0.05, 0.19], [0.04, 0.21], [-0.01, 0.24], [0.07, 0.15], [-0.08, 0.14]]) add(head, ball(0.012), dark, x, y, -0.13);
+    for (const sx of [-1, 1]) {
+      const ear = add(head, new THREE.CircleGeometry(0.32, 20, -Math.PI / 2, Math.PI), membrane, sx * 0.13, 0.12, 0.02);
+      ear.rotation.set(0, sx * 0.75, sx * 0.25); ear.scale.set(0.9 * sx, 1.25, 1);
+      for (const a of [-0.65, -0.2, 0.25, 0.7]) { const ridge = add(ear, rod(0.29, 0.005, 0.014), joint, 0, 0, 0.004); ridge.rotation.z = -Math.PI / 2 + a; }
+    }
+  } else {
+    add(head, new THREE.CapsuleGeometry(0.06, 0.2, 4, 10), black, 0, 0.08, 0);
+    add(head, new THREE.TorusGeometry(0.07, 0.012, 6, 14), joint, 0, 0.02, 0).rotation.x = Math.PI / 2;
+  }
   // two small eyes, set a little unevenly, each with a soft glow round it
   const halos = [];
   const haloMat = new THREE.SpriteMaterial({ map: glowTexture(), color: new THREE.Color(0.75, 0.82, 1), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
@@ -1392,28 +1435,35 @@ export function makeMonsterModel(opts = {}) {
   const arms = [];
   for (const sx of [-0.31, 0.31]) {
     const sh = new THREE.Group(); sh.position.set(sx, 0.06, 0); chest.add(sh);
-    add(sh, ball(0.045), joint);
-    add(sh, rod(0.82, 0.02, 0.032), black);
-    tube(sh, [[0.03 * Math.sign(sx), 0, 0.02], [0.05 * Math.sign(sx), -0.4, 0.04], [0.02 * Math.sign(sx), -0.8, 0.02]], 0.009);
+    if (blind) add(sh, rod(0.82, 0.04, 0.07), black);
+    else {
+      add(sh, ball(0.045), joint);
+      add(sh, rod(0.82, 0.02, 0.032), black);
+      tube(sh, [[0.03 * Math.sign(sx), 0, 0.02], [0.05 * Math.sign(sx), -0.4, 0.04], [0.02 * Math.sign(sx), -0.8, 0.02]], 0.009);
+    }
     const el = new THREE.Group(); el.position.y = -0.82; sh.add(el);
-    add(el, ball(0.038), joint);
-    add(el, rod(0.86, 0.016, 0.026), black);
-    add(el, new THREE.BoxGeometry(0.035, 0.18, 0.035), joint, 0, -0.45, 0);
+    if (blind) { add(el, ball(0.05), joint); add(el, rod(0.86, 0.03, 0.045), black); }
+    else {
+      add(el, ball(0.038), joint);
+      add(el, rod(0.86, 0.016, 0.026), black);
+      add(el, new THREE.BoxGeometry(0.035, 0.18, 0.035), joint, 0, -0.45, 0);
+    }
     const hand = new THREE.Group(); hand.position.y = -0.86; el.add(hand);
-    add(hand, ball(0.03), joint);
+    add(hand, ball(blind ? 0.055 : 0.03), joint);
     const claws = [];
     for (const a of [-0.55, 0, 0.55]) {
       const f = new THREE.Group(); f.rotation.y = a; hand.add(f);
       const k1 = new THREE.Group(); f.add(k1);
-      add(k1, rod(0.17, 0.008, 0.013), black);
+      add(k1, rod(0.17, blind ? 0.014 : 0.008, blind ? 0.02 : 0.013), black);
       const k2 = new THREE.Group(); k2.position.y = -0.17; k1.add(k2);
-      add(k2, ball(0.012), joint);
-      add(k2, rod(0.16, 0.002, 0.009), black);
+      add(k2, ball(blind ? 0.017 : 0.012), joint);
+      add(k2, rod(0.16, blind ? 0.009 : 0.002, blind ? 0.014 : 0.009), black);
       claws.push({ k1, k2 });
     }
     arms.push({ sh, el, hand, claws, side: Math.sign(sx) });
   }
   root.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  if (blind) root.scale.set(1.08, 0.88, 1.08);        // squatter and wider than It
   // k: 0 = in bright light (eyes barely there) … 1 = pitch dark or caught in a flashlight (two burning points)
   const setGlow = (k) => {
     const v = 0.35 + 2.6 * k;

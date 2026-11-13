@@ -981,8 +981,8 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
       if (sPos[j * 3 + 1] < 0.01) { sPos[j * 3 + 1] = 0.01; sVel[j * 3 + 1] *= -0.3; sVel[j * 3] *= 0.5; sVel[j * 3 + 2] *= 0.5; }
     }
     sGeo.attributes.position.needsUpdate = true;
-    // dread: everything buzzes and dips when the monster is close
-    const k = dread > 0 ? 1 - dread * (0.25 + 0.25 * (Math.sin(t * 23) > 0.6 ? 1 : 0) * (Math.sin(t * 3.1) > 0 ? 1 : 0.3)) : 1;
+    // (the lights used to dip and flicker when the monster was close; the owner asked for no darkness round it)
+    const k = 1;
     for (const m of surfMats) m.color.setScalar(k * (m.userData.base || 1));
     panelMats.on.color.setRGB(1.6 * k, 1.55 * k, 1.38 * k);
   };
