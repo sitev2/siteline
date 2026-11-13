@@ -1318,13 +1318,12 @@ export function makeMonsterModel(opts = {}) {
   // a shadow more than a body: matte black that takes almost no light, and two small eyes that glow in the
   // dark (game.js turns them up when it stands somewhere dark or in a flashlight: setGlow).
   // opts.blind: the second creature, the Listener: a different animal on the same joints (so it moves with the same
-  // animation): squat and fleshy, waxy pale skin, a lumpy hunched back, a swollen eyeless head with two huge ear
-  // flaps and a slit of a mouth, padded feet (it walks quietly) and long thick fingers. Our own design.
+  // animation): squat and fleshy, waxy pale skin, a lumpy hunched back, a swollen eyeless, earless head with a
+  // slit of a mouth, padded feet (it walks quietly) and long thick fingers. Our own design.
   const blind = !!opts.blind;
   const black = new THREE.MeshStandardMaterial({ color: blind ? '#c4b7a8' : '#030304', roughness: blind ? 0.6 : 0.96, metalness: 0.0 });
   const joint = new THREE.MeshStandardMaterial({ color: blind ? '#a6958a' : '#08080a', roughness: blind ? 0.65 : 0.9, metalness: 0.05 });
   const cable = new THREE.MeshStandardMaterial({ color: blind ? '#8f7d74' : '#020203', roughness: 0.95, metalness: 0.0 });
-  const membrane = blind ? new THREE.MeshStandardMaterial({ color: '#d99a90', roughness: 0.5, side: THREE.DoubleSide }) : null;
   const dark = blind ? new THREE.MeshBasicMaterial({ color: '#160c0c' }) : null;
   const eye = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 0.52, 0.58) });
   const rod = (len, r0, r1 = r0) => { const g = new THREE.CylinderGeometry(r1, r0, len, 8); g.translate(0, -len / 2, 0); return g; };   // hangs down from its top
@@ -1410,15 +1409,10 @@ export function makeMonsterModel(opts = {}) {
   add(neck, blind ? new THREE.CylinderGeometry(0.06, 0.09, 0.24, 10) : new THREE.CylinderGeometry(0.016, 0.02, 0.24, 8), black, 0, 0.12, 0);
   const head = new THREE.Group(); head.position.set(0, 0.24, -0.03); neck.add(head);
   if (blind) {
-    // a swollen bulb of a head with no eyes: a slit of a mouth, pores, and two huge ears like fans
+    // a swollen bulb of a head with no eyes and no ears (the owner had the ears taken off): a slit of a mouth and pores
     add(head, ball(0.15), black, 0, 0.1, 0).scale.set(1, 1.15, 1.08);
     add(head, new THREE.BoxGeometry(0.012, 0.11, 0.02), dark, 0, 0.03, -0.155);
     for (const [x, y] of [[-0.05, 0.19], [0.04, 0.21], [-0.01, 0.24], [0.07, 0.15], [-0.08, 0.14]]) add(head, ball(0.012), dark, x, y, -0.13);
-    for (const sx of [-1, 1]) {
-      const ear = add(head, new THREE.CircleGeometry(0.32, 20, -Math.PI / 2, Math.PI), membrane, sx * 0.13, 0.12, 0.02);
-      ear.rotation.set(0, sx * 0.75, sx * 0.25); ear.scale.set(0.9 * sx, 1.25, 1);
-      for (const a of [-0.65, -0.2, 0.25, 0.7]) { const ridge = add(ear, rod(0.29, 0.005, 0.014), joint, 0, 0, 0.004); ridge.rotation.z = -Math.PI / 2 + a; }
-    }
   } else {
     add(head, new THREE.CapsuleGeometry(0.06, 0.2, 4, 10), black, 0, 0.08, 0);
     add(head, new THREE.TorusGeometry(0.07, 0.012, 6, 14), joint, 0, 0.02, 0).rotation.x = Math.PI / 2;
