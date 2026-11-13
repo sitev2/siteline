@@ -6,7 +6,7 @@ export const ACTIONS = [
   ['jump', 'Jump'], ['walk', 'Walk quietly (sprint in the Backrooms)'],
   ['reload', 'Reload'], ['alt', 'Scope / burst mode'], ['use', 'Plant / defuse / pick up'],
   ['buy', 'Buy menu'], ['inspect', 'Inspect weapon (flashlight in the Backrooms)'], ['flashlight', 'Flashlight'], ['drop', 'Drop weapon'],
-  ['chatAll', 'All chat'], ['chatTeam', 'Team chat'], ['note', 'Leave a note (Backrooms)'],
+  ['chatAll', 'All chat'], ['chatTeam', 'Team chat'], ['note', 'Leave a note (Backrooms)'], ['map', 'Your map (Backrooms)'],
   ['w1', 'Main gun'], ['w2', 'Pistol'], ['w5', 'Bomb'],
   ['score', 'Scoreboard'], ['menu', 'Menu'],
 ];
@@ -16,7 +16,7 @@ export const DEFAULT_KEYS = {
   jump: 'Space', walk: 'ShiftLeft',
   reload: 'KeyR', alt: 'KeyQ', use: 'KeyE',
   buy: 'KeyB', inspect: 'KeyF', flashlight: 'KeyL', drop: 'KeyG',
-  chatAll: 'KeyY', chatTeam: 'KeyU', note: 'KeyN',
+  chatAll: 'KeyY', chatTeam: 'KeyU', note: 'KeyN', map: 'KeyM',
   w1: 'Digit1', w2: 'Digit2', w5: 'Digit5',
   score: 'Tab', menu: 'Escape',
 };

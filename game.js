@@ -55,6 +55,10 @@ const fmtClock = s => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0)
 // footsteps (and landings) quieter on these maps: 0.6 = 40 % quieter (owner's request)
 const STEP_VOLUME = { outpost: 0.6, flame: 0.6 };
 
+// the ending scene's spot: in the exit doorway
+const d0 = (esc) => ({ x: esc.door.x + esc.door.nx * 0.15, z: esc.door.z + esc.door.nz * 0.15 });
+const smoothstep = t => t * t * (3 - 2 * t);
+
 export class Game {
   constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night, doors, notes }) {
     this.transport = transport;
@@ -463,9 +467,13 @@ export class Game {
       case 'escaped':
         if (m.id === this.myId) {
           this.me.alive = false; this.me.escaped = true; this.me.deathTime = performance.now();
-          this.hud.center('You escaped!', `${fmtClock(m.time)} in the Backrooms`, '#9dffb5', 5);
           sfx.playEscape();
-          this.escapeFlash = 1;
+          // the ending: you walk up to the door and into the white, then your time (updateCamera plays it)
+          const ex = this.world.exit;
+          if (ex) {
+            this.escapeScene = { t0: this.clock, x: this.me.pos.x, z: this.me.pos.z, yaw: this.me.yaw, pitch: this.me.pitch, door: ex };
+            document.getElementById('br-escape-time').textContent = `${fmtClock(m.time)} in the Backrooms`;
+          } else this.hud.center('You escaped!', `${fmtClock(m.time)} in the Backrooms`, '#9dffb5', 5);
         } else this.hud.center('', `${m.name} found the exit and escaped!`, '#9dffb5', 3);
         return;
       case 'shot': return this.onRemoteShot(m);
@@ -1375,6 +1383,8 @@ export class Game {
       for (const a of ['reload', 'alt', 'w1', 'w2', 'w3', 'w5', 'next', 'prev', 'swap', 'drop', 'click', 'buy']) inp.consume(a);
       // N / the note button: write or draw a note; nothing else happens while the note is open
       if (inp.consume('note') && this.fx) this.fx.openEditor();
+      // M / the map button: the map you've drawn by walking (open or shut)
+      if (inp.consume('map') && this.fx) this.fx.toggleMap();
       if (this.fx && this.fx.editing) { inp.consume('use'); inp.consume('inspect'); if (inp.consume('escape')) this.fx.closeEditor(); return; }
       // F (the inspect key) is the flashlight in here, as well as L
       if (inp.consume('inspect')) this.toggleFlashlight();
@@ -1974,7 +1984,24 @@ export class Game {
     let x = me.pos.x, y = me.pos.y + me.eyeOff, z = me.pos.z;
     // you see about half of the recoil; bullets go where the full recoil puts them
     let yaw = me.yaw - me.recY * 0.5 + me.hurtY, pitch = me.pitch + me.recP * 0.5 + me.hurtP;
-    if (!me.alive) {
+    const esc = this.escapeScene, escT = esc ? this.clock - esc.t0 : 0;      // (game time: it runs with the frames)
+    if (esc) {
+      // the ending scene: up to the door, the white swallows everything, your time, then it fades back to watching the others
+      const el = document.getElementById('br-escape'), d = esc.door;
+      el.classList.toggle('hidden', escT > 7);
+      el.style.opacity = String(escT < 1.9 ? 0 : escT < 2.9 ? (escT - 1.9) : escT < 6 ? 1 : Math.max(0, 1 - (escT - 6)));
+      el.classList.toggle('words', escT > 3.1 && escT < 6.2);
+      if (escT > 7) { this.escapeScene = null; me.deathTime = performance.now() - 2000; }
+    }
+    if (!me.alive && esc && escT < 6.5) {
+      // you are in the doorway: step into it, turn round for one last look back at the Backrooms, then the white
+      const s = smoothstep(Math.min(1, escT / 0.6)), tx = d0(esc).x, tz = d0(esc).z;
+      x = esc.x + (tx - esc.x) * s; z = esc.z + (tz - esc.z) * s; y = EYE;
+      const back = Math.atan2(-esc.door.nx, -esc.door.nz), k = smoothstep(Math.max(0, Math.min(1, (escT - 0.35) / 1.3)));
+      let dy = back - esc.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+      if (Math.abs(dy) < 0.4) dy += Math.PI * 2 * Math.sign(dy || 1);      // (always a real turn)
+      yaw = esc.yaw + dy * k; pitch = esc.pitch * (1 - k) - 0.05 * k;
+    } else if (!me.alive) {
       const since = (performance.now() - me.deathTime) / 1000;
       if (since > 2 && !me.spectate) this.cycleSpectate();
       const target = me.spectate && this.remotes.get(me.spectate);
@@ -2258,6 +2285,8 @@ export class Game {
     const lightBtn = document.getElementById('btn-light');
     lightBtn.classList.toggle('hidden', !this.night && !this.br);
     document.getElementById('btn-note').classList.toggle('hidden', !this.br || !me.alive);
+    document.getElementById('btn-map').classList.toggle('hidden', !this.br || !me.alive);
+    document.getElementById('btn-map').classList.toggle('on', !!(this.fx && this.fx.mapOpen));
     lightBtn.classList.toggle('on', !!me.light);
     document.getElementById('btn-drop').classList.toggle('hidden', !me.alive || this.dm || me.weapon === me.melee || (!!WEAPONS[me.weapon] && !(me.inv.primary && me.inv.secondary)));
     hud.buyButton(canBuy && !touch && !this.buyOpen && !this.dm);
@@ -2273,7 +2302,8 @@ export class Game {
       let text = me.killedBy ? `Killed by ${me.killedBy}` : 'You are dead';
       if (target && since > 2) text = `Spectating ${target.name} — ${touch ? 'tap' : 'click'} to switch`;
       if (this.practice || this.dm) text = me.killedBy ? `Killed by ${me.killedBy} — respawning…` : 'Respawning…';
-      if (this.br && !(target && since > 2)) text = me.escaped ? 'You escaped!' : me.skinned ? 'It is wearing your skin' : me.killedBy === 'It' ? 'It caught you' : me.killedBy === 'the fall' ? 'You fell into the dark' : 'You are out';
+      if (this.br && this.escapeScene) text = null;     // (the ending scene says it)
+      else if (this.br && !(target && since > 2)) text = me.escaped ? 'You escaped!' : me.skinned ? 'It is wearing your skin' : me.killedBy === 'It' ? 'It caught you' : me.killedBy === 'the fall' ? 'You fell into the dark' : 'You are out';
       hud.death(text);
     } else hud.death(null);
 

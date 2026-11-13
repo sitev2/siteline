@@ -41,6 +41,8 @@ export const BR_LEVELS = {
   },
 };
 export const brLevel = (lv) => (BR_LEVELS[lv] ? lv : 'normal');
+// explorer logs (clue notes) per maze: brfx.js has the clues (LOGS), the first is always in the start room
+export const LOG_COUNT = 7;
 
 // The map variant carries the maze's seed and the difficulty: "12345:hard" (a plain number = normal)
 export function brVariant(seed, level) { return `${seed >>> 0}:${brLevel(level)}`; }
@@ -296,8 +298,27 @@ export function planMaze(seed, level = 'normal') {
     const [wx, wz] = walls[Math.floor(R() * walls.length)];
     arrows.push({ x, z, wx, wz, dx, dz, tilt: (R() - 0.5) * 0.18, s: 0.95 + R() * 0.1 });
   }
+  // 10. explorer logs: notes taped up by people who were here before, each a clue (text + a little drawing,
+  // brfx.js LOGS) about what to do. Clue 0 is always in the start room; the rest are spread out, never on a wall
+  // that has an arrow on it.
+  const logs = [];
+  {
+    const kinds = [1, 2, 3, 4, 5, 6, 7, 8];
+    for (let i = kinds.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [kinds[i], kinds[j]] = [kinds[j], kinds[i]]; }
+    const want = [0, ...kinds.slice(0, LOG_COUNT - 1)];
+    const free = (x, z) => [[0, -1], [0, 1], [-1, 0], [1, 0]].filter(([wx, wz]) => wallTo(x, z, wx, wz) && !arrows.some(a => a.x === x && a.z === z && a.wx === wx && a.wz === wz));
+    for (let tries = 0; logs.length < want.length && tries < 3000; tries++) {
+      const first = !logs.length;
+      const x = first ? sx : pick(0, N - 1), z = first ? sz : pick(0, N - 1);
+      if (!first && (inPitRoom(x, z) || (x === exit.x && z === exit.z) || logs.some(l => Math.abs(l.x - x) + Math.abs(l.z - z) < 6))) continue;
+      const walls = free(x, z);
+      if (!walls.length) { if (first) logs.push(null); continue; }
+      const [wx, wz] = walls[Math.floor(R() * walls.length)];
+      logs.push({ x, z, wx, wz, k: want[logs.length], off: (R() - 0.5) * 1.6, who: pick(0, 5) });
+    }
+  }
   return {
-    seed, level: brLevel(level), N, vWall, hWall, halls, pitRooms, doorways, blankDoors: [], darkZones, holes, arrows,
+    seed, level: brLevel(level), N, vWall, hWall, halls, pitRooms, doorways, blankDoors: [], darkZones, holes, arrows, logs: logs.filter(Boolean),
     start: { x: sx, z: sz }, exit, monster: mon, pits: [], flicker: R(),
   };
 }
