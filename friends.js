@@ -23,6 +23,7 @@ let invite = null;              // the invite pop-up on screen: { id, from, code
 let openStats = null;           // friend id whose stats are expanded
 let confirmRemove = null;       // friend id waiting for "Yes, remove"
 let lastError = '';
+let beatError = '';        // why the last "I'm online" call failed (shown on the Friends screen instead of failing silently)
 let unread = {};                // friend id → unread messages
 let chatWith = null;            // friend we're chatting with
 let chatMsgs = [], chatLast = 0, chatTimer = null, sending = false;
@@ -61,6 +62,7 @@ async function beat() {
   if (!acct.loggedIn()) return;
   try {
     const r = await acct.heartbeat(hooks.activity(), hooks.roomCode());
+    beatError = '';
     requests = r.requests | 0;
     const before = unread;
     unread = r.unread || {};
@@ -88,7 +90,7 @@ async function beat() {
       showInvite(inv);
       break;   // one at a time
     }
-  } catch (e) { /* offline or not set up yet: try again next time */ }
+  } catch (e) { beatError = navigator.onLine === false ? '' : (e && e.message) || 'unknown error'; /* tried again next time */ }
 }
 // call when the player starts/leaves a game so friends see it straight away
 export function activityChanged() { if (acct.loggedIn()) beat(); }
@@ -326,6 +328,7 @@ function render() {
   const code = hooks.roomCode();
   $('friends-room').textContent = code ? `You're in room ${code}: tap Invite next to an online friend to bring them in.` : 'Host or join a game, then come back here to invite friends.';
   if (lastError) msg(lastError, true);
+  else if (beatError) msg(`Friends can't see that you're online right now: ${beatError}`, true);
 
   const incoming = friends.filter(f => f.state === 'incoming');
   const outgoing = friends.filter(f => f.state === 'outgoing');
