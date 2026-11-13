@@ -320,7 +320,7 @@ export class Game {
       rem.name = r.name;
       rem.bot = !!r.bot;
       if (!rem.model && r.team === 'monster') {
-        rem.model = makeMonsterModel();
+        rem.model = makeMonsterModel({ blind: r.id === 'listener' });     // (the Listener: pale, no eyes)
         rem.model.root.visible = false;
         this.scene.add(rem.model.root);
       }
@@ -434,7 +434,7 @@ export class Game {
       case 'spotted':
         // the monster has seen you
         this.shake = Math.min(1.2, this.shake + 0.8);
-        for (const r of this.remotes.values()) if (r.team === 'monster') sfx.playScreech({ x: r.rp.x, y: r.rp.y + 2.4, z: r.rp.z }, this.occlusion(r.rp.x, r.rp.y + 2, r.rp.z));
+        for (const r of this.remotes.values()) if (r.id === 'monster') sfx.playScreech({ x: r.rp.x, y: r.rp.y + 2.4, z: r.rp.z }, this.occlusion(r.rp.x, r.rp.y + 2, r.rp.z));
         this.hud.center('', 'It has seen you — RUN', '#ff6b4a', 2);
         return;
       case 'snatch': case 'note': case 'skinReveal': case 'lure': case 'dropBody': case 'hangBody':
@@ -670,7 +670,8 @@ export class Game {
       this.me.zoom = 0;
       this.me.using = false;
       this.toggleBuy(false);
-      this.me.killedBy = m.w === 'monster' || m.w === 'skin' ? 'It' : m.w === 'fall' ? 'the fall' : m.w === 'ceiling' ? 'the ceiling' : m.w === 'corner' ? 'something' : killer && m.killer !== this.myId ? `${killer.name} (${itemName(m.w)}${m.head ? ', headshot' : ''})` : (m.w === 'bomb' ? 'the bomb' : '');
+      this.me.killedBy = m.w === 'monster' || m.w === 'skin' ? 'It' : m.w === 'listener' ? 'The Listener' : m.w === 'fall' ? 'the fall' : m.w === 'ceiling' ? 'the ceiling' : m.w === 'corner' ? 'something' : killer && m.killer !== this.myId ? `${killer.name} (${itemName(m.w)}${m.head ? ', headshot' : ''})` : (m.w === 'bomb' ? 'the bomb' : '');
+      if (m.w === 'listener') { sfx.playGrab(); this.shake = 2.2; this.hud.center('', 'It heard you', '#ff4a3a', 3); }
       if (m.w === 'monster') { sfx.playGrab(); this.shake = 2.5; this.hud.center('', 'It got you', '#ff4a3a', 3); if (this.fx) this.fx.caughtMe(m); }
       if (m.w === 'skin') {
         // nobody else knows: to them you are still walking about
@@ -1970,7 +1971,14 @@ export class Game {
   // the monster's footsteps, and how close it is (the lights dip and buzz when it's near)
   monsterSounds(r, dt, speed) {
     const d = Math.hypot(r.rp.x - this.me.pos.x, r.rp.z - this.me.pos.z);
-    this.monsterDist = Math.min(this.monsterDist ?? Infinity, r.alive ? d : Infinity);
+    if (r.id === 'listener') {
+      // the Listener clicks as it goes (faster when it's going for a sound), so you can hear where it is
+      r.clickT = (r.clickT ?? Math.random()) - dt;
+      if (r.alive && r.clickT <= 0 && d < 30) {
+        r.clickT = r.use ? 0.45 + Math.random() * 0.35 : 1.2 + Math.random() * 1.4;
+        sfx.playBR('clicks', { x: r.rp.x, y: r.rp.y + 2.3, z: r.rp.z }, this.occlusion(r.rp.x, r.rp.y + 2, r.rp.z), r.use ? 1.2 : 0.85);
+      }
+    } else this.monsterDist = Math.min(this.monsterDist ?? Infinity, r.alive ? d : Infinity);
     if (!r.alive || speed < 0.6) return;
     r.stepTimer -= dt;
     if (r.stepTimer > 0) return;
@@ -2303,7 +2311,7 @@ export class Game {
       if (target && since > 2) text = `Spectating ${target.name} — ${touch ? 'tap' : 'click'} to switch`;
       if (this.practice || this.dm) text = me.killedBy ? `Killed by ${me.killedBy} — respawning…` : 'Respawning…';
       if (this.br && this.escapeScene) text = null;     // (the ending scene says it)
-      else if (this.br && !(target && since > 2)) text = me.escaped ? 'You escaped!' : me.skinned ? 'It is wearing your skin' : me.killedBy === 'It' ? 'It caught you' : me.killedBy === 'the fall' ? 'You fell into the dark' : 'You are out';
+      else if (this.br && !(target && since > 2)) text = me.escaped ? 'You escaped!' : me.skinned ? 'It is wearing your skin' : me.killedBy === 'It' ? 'It caught you' : me.killedBy === 'The Listener' ? 'The Listener heard you' : me.killedBy === 'the fall' ? 'You fell into the dark' : 'You are out';
       hud.death(text);
     } else hud.death(null);
 
@@ -2387,7 +2395,9 @@ export class Game {
     requestAnimationFrame(this.loop);
     // FPS cap: skip frames that come too soon
     if (this.gfx.fpsCap && now - this.last < 1000 / this.gfx.fpsCap - 1.5) return;
-    const dt = Math.min(0.05, (now - this.last) / 1000);
+    // (never below 0: a frame's timestamp can come before the moment the game finished loading, which used to
+    // wind the game clock back by seconds and freeze anything timed by it, like the monsters' jerky steps)
+    const dt = Math.max(0, Math.min(0.05, (now - this.last) / 1000));
     this.last = now;
     this.clock += dt;
     // the screen changed size without telling us (phones): catch up

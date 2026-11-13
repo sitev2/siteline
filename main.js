@@ -597,6 +597,7 @@ function renderPracticeMenu() {
   $('p-level').value = P.level;
   $('p-level-label').textContent = P.kind === 'br' ? 'Difficulty' : 'Bot difficulty';
   $('p-night').checked = !!P.night;
+  $('p-listener').checked = !!P.listener;
 }
 
 function bindPracticeMenu() {
@@ -610,13 +611,14 @@ function bindPracticeMenu() {
   $('p-side').addEventListener('change', e => { P().side = e.target.value; save(); });
   $('p-level').addEventListener('change', e => { P().level = e.target.value; save(); });
   $('p-night').addEventListener('change', e => { P().night = e.target.checked; save(); });
+  $('p-listener').addEventListener('change', e => { P().listener = e.target.checked; save(); });
   $('p-start').addEventListener('click', () => {
     const p = P();
     const maps = practiceMaps(p.kind, p.kind === 'dm' ? p.dmCount : p.count);
     const map = $('p-map').value || maps[0];
     const side = p.side === 'random' ? (Math.random() < 0.5 ? 'atk' : 'def') : p.side;
     practice({
-      kind: p.kind, map, level: p.level, behavior: p.behavior, side, night: !!p.night,
+      kind: p.kind, map, level: p.level, behavior: p.behavior, side, night: !!p.night, listener: !!p.listener,
       count: p.kind === 'dm' ? p.dmCount : (p.bots ? p.count : 0),
     });
   });
@@ -744,6 +746,8 @@ function renderLobby() {
   $('lobby-night').disabled = !isLeader();
   $('lobby-level').value = app.lobby.level || 'normal';
   $('lobby-level').disabled = !isLeader();
+  $('lobby-listener').checked = !!app.lobby.listener;
+  $('lobby-listener').disabled = !isLeader();
   for (const b of document.querySelectorAll('.mode-btn[data-mode]')) {
     b.classList.toggle('selected', b.dataset.mode === (app.lobby.mode || 'wingman'));
     b.disabled = !isLeader();
@@ -993,7 +997,7 @@ function showBrOver(msg) {
   table.innerHTML = '<tr><th>Player</th><th>What happened</th></tr>';
   for (const s of msg.stats.slice().sort((a, b) => (b.escaped - a.escaped) || ((a.time || 0) - (b.time || 0)))) {
     const tr = document.createElement('tr');
-    const how = s.escaped ? `Escaped (${clock(s.time)})` : s.how === 'fell' ? 'Fell into a pit' : s.how === 'monster' ? 'Caught by it'
+    const how = s.escaped ? `Escaped (${clock(s.time)})` : s.how === 'fell' ? 'Fell into a pit' : s.how === 'monster' ? 'Caught by it' : s.how === 'listener' ? 'The Listener heard them'
       : s.how === 'ceiling' ? 'Taken by the ceiling' : s.how === 'corner' ? 'Vanished' : s.how === 'skin' ? 'It wore their skin' : 'Left the game';
     for (const v of [s.name, how]) { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); }
     tr.lastChild.style.color = s.escaped ? '#9dffb5' : '#ff8a6a';
@@ -1372,6 +1376,7 @@ function init() {
   for (const b of document.querySelectorAll('.mode-btn[data-mode]')) b.addEventListener('click', () => sendToServer({ t: 'settings', mode: b.dataset.mode }));
   $('lobby-night').addEventListener('change', e => sendToServer({ t: 'settings', night: e.target.checked }));
   $('lobby-level').addEventListener('change', e => sendToServer({ t: 'settings', level: e.target.value }));
+  $('lobby-listener').addEventListener('change', e => sendToServer({ t: 'settings', listener: e.target.checked }));
   $('btn-start').addEventListener('click', () => { initAudio(); tryFullscreen(); sendToServer({ t: 'startMatch' }); });
 
   $('btn-resume').addEventListener('click', resume);

@@ -659,11 +659,18 @@ const BRS = {
   heart: () => buf(0.5, (x, sr) => { thump(x, sr, 0, 62, 38, 0.11, 1); thump(x, sr, 0.17, 55, 34, 0.09, 0.7); normalize(x, 0.9); }),
   // something heavy and round hitting the carpet
   thud: () => buf(0.5, (x, sr) => { thump(x, sr, 0, 95, 50, 0.14, 1); noiseHit(x, sr, 0, 'lowpass', 600, 0.7, 0.06, 0.4); normalize(x, 0.8); }),
+  // the Listener: a run of dry clicks from its throat, like something tapping a tooth (it 'sees' by them)
+  clicks: () => buf(0.9, (x, sr) => {
+    const n = 4 + Math.floor(Math.random() * 4);
+    let at = 0;
+    for (let k = 0; k < n; k++) { click(x, sr, at, 2200 + Math.random() * 1600, 6, 0.6 + Math.random() * 0.4); noiseHit(x, sr, at, 'bandpass', 3200, 3, 0.006, 0.5); at += 0.06 + Math.random() * 0.07; }
+    normalize(x, 0.8);
+  }),
   // three knocks on the other side of a wall
   knock: () => buf(1.3, (x, sr) => { for (const at of [0, 0.32, 0.64]) { thump(x, sr, at, 170, 110, 0.07, 1); noiseHit(x, sr, at, 'lowpass', 700, 0.7, 0.03, 0.5); } normalize(x, 0.7); }),
 };
 export function playBR(kind, pos = null, occ = 0, gain = 1) {
-  const key = `br:${kind}#${Math.floor(Math.random() * 2)}`;
+  const key = `br:${kind}#${Math.floor(Math.random() * (kind === 'clicks' ? 4 : 2))}`;
   if (!cache.has(key)) cache.set(key, BRS[kind]());
   play(cache.get(key), { pos, gain, ref: pos ? 2.5 : 1, roll: 1.0, air: 40, occ, wet: kind === 'whisper' ? 0.15 : 0.45, important: kind === 'ceiling' || kind === 'corner' || kind === 'tear' });
 }
