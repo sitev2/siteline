@@ -131,6 +131,69 @@ export class Ragdolls {
 
   has(id) { return this.list.some(r => r.id === id); }
 
+  // ---------- a ragdoll held by one end (the Backrooms creature has it by an ankle or a wrist) ----------
+  // hold(): pins the far end of a part ('shinR' = right ankle, 'farmR' = right wrist) to a point you then move
+  // every frame with moveHold(); release() lets go. A held body never settles.
+  hold(id, partName) {
+    const r = this.list.find(x => x.id === id);
+    const part = r && r.parts[partName];
+    if (!part) return null;
+    this.release(id);
+    const end = new CANNON.Vec3(0, -part.half[1], 0);
+    const pin = new CANNON.Body({ mass: 0, type: CANNON.Body.KINEMATIC, collisionFilterGroup: 0, collisionFilterMask: 0 });
+    pin.position.copy(part.body.pointToWorldFrame(end));
+    this.world.addBody(pin);
+    const c = new CANNON.PointToPointConstraint(part.body, end, pin, new CANNON.Vec3(0, 0, 0));
+    this.world.addConstraint(c);
+    r.hold = { pin, c };
+    r.age = 0;
+    for (const p of Object.values(r.parts)) { p.body.allowSleep = false; p.body.wakeUp(); }
+    return { x: pin.position.x, y: pin.position.y, z: pin.position.z };
+  }
+
+  moveHold(id, x, y, z, dt) {
+    const r = this.list.find(q => q.id === id);
+    if (!r || !r.hold) return;
+    const pin = r.hold.pin, k = dt > 0 ? 1 / dt : 0;
+    // (a hand can move 20 m/s in a slam; the speed handed to the physics is capped so the body whips instead of exploding)
+    const cap = v => Math.max(-14, Math.min(14, v));
+    pin.velocity.set(cap((x - pin.position.x) * k), cap((y - pin.position.y) * k), cap((z - pin.position.z) * k));
+    pin.position.set(x, y, z);
+    r.age = 0;
+    this.addMapAround(x, z, 2.6);
+  }
+
+  release(id) {
+    const r = this.list.find(x => x.id === id);
+    if (!r || !r.hold) return;
+    this.world.removeConstraint(r.hold.c);
+    this.world.removeBody(r.hold.pin);
+    r.hold = null; r.age = 0;
+    for (const p of Object.values(r.parts)) p.body.allowSleep = true;
+  }
+
+  held(id) { const r = this.list.find(x => x.id === id); return !!(r && r.hold); }
+
+  // world position of one part's middle ('head', 'chest'…), or null
+  partPos(id, name) {
+    const r = this.list.find(x => x.id === id);
+    return r && r.parts[name] ? r.parts[name].body.position : null;
+  }
+
+  showPart(id, name, on) {
+    const r = this.list.find(x => x.id === id);
+    if (r && r.parts[name]) r.parts[name].mesh.visible = on;
+  }
+
+  // a flat ceiling the bodies can't be swung through (the Backrooms: 2.9 m)
+  setCeiling(y) {
+    const top = new CANNON.Body({ mass: 0, type: CANNON.Body.STATIC, collisionFilterGroup: GROUP_WORLD, collisionFilterMask: GROUP_BODY });
+    top.addShape(new CANNON.Plane());
+    top.quaternion.setFromEuler(Math.PI / 2, 0, 0);
+    top.position.set(0, y, 0);
+    this.world.addBody(top);
+  }
+
   // world position of a ragdoll's chest (for the death camera)
   chestOf(id) {
     const r = this.list.find(x => x.id === id);
@@ -162,6 +225,7 @@ export class Ragdolls {
   }
 
   dispose(r) {
+    if (r.hold) { this.world.removeConstraint(r.hold.c); this.world.removeBody(r.hold.pin); r.hold = null; }
     for (const c of r.constraints) this.world.removeConstraint(c);
     for (const p of Object.values(r.parts)) this.world.removeBody(p.body);
     this.scene.remove(r.group);

@@ -138,14 +138,12 @@ export class BackroomsFX {
     this.notes = new Map();           // id → { note, mesh }
     this.events = [];                 // snatch animations in progress
     this.heads = [];                  // heads the ceiling spat back out: { wait, x, z, name, obj, v, spin }
-    this.shells = [];                 // a skin it wore, splitting open as it changes back: { model, t, x, z }
-    this.bodies = new Map();          // bodies it took: id → { model, mode: 'dragged' | 'lying' | 'hung' }
+    this.bodies = new Map();          // bodies it has caught: id → { mode: 'held' (a ragdoll pinned to its hand) | 'loose' | 'hung' (+ model) }
     this.darkK = 0;                   // the lights dying round it (0 … 1)
     this.heartAt = 0; this.breathAt = 0;
     this.follow = null;               // footsteps behind you that copy yours
-    this.caught = null;               // caught by it: lifted up to its face
+    this.caught = null;               // caught by it: you see the slam through your own eyes
     this.staticK = 0;                 // how close it is, 0 … 1 (screen shake and the rumble)
-    this.shreds = [];                 // bits of torn suit: { mesh, v, spin, still }
     this.hallu = null;                // a hallucination being shown
     this.halluAt = 60 + Math.random() * 40;
     this.editing = false;
@@ -168,7 +166,6 @@ export class BackroomsFX {
   onMessage(m) {
     if (m.t === 'snatch') { this.onSnatch(m); return true; }
     if (m.t === 'note') { this.addNote(m.note); return true; }
-    if (m.t === 'skinReveal') { this.onSkinReveal(m); return true; }
     if (m.t === 'lure') { this.onLure(m); return true; }
     if (m.t === 'dropBody' || m.t === 'hangBody') { this.placeBody(m); return true; }
     return false;
@@ -325,85 +322,6 @@ export class BackroomsFX {
     black.classList.remove('hidden'); black.style.opacity = '1';
     clearTimeout(this.blackTimer);
     this.blackTimer = setTimeout(() => { black.style.opacity = '0'; setTimeout(() => { if (black.style.opacity === '0') black.classList.add('hidden'); }, 400); }, secs * 1000);
-  }
-
-  // ---------- it changes back out of someone's skin ----------
-  // The suit it was wearing shudders, splits open in a spray of torn yellow rubber, and it unfolds out
-  // of it to its full height (game.js grows the monster; the host gives it 0.9 s before it moves).
-  onSkinReveal(m) {
-    const g = this.g;
-    const model = makePlayerModel('atk', m.name || '', false, 'hazmat');
-    setModelWeapon(model, 'none');
-    model.root.position.set(m.x, 0, m.z);
-    model.root.rotation.y = m.yaw || 0;
-    this.scene.add(model.root);
-    this.shells.push({ model, t: 0, x: m.x, z: m.z, burst: false });
-    const pos = { x: m.x, y: 1.4, z: m.z };
-    sfx.playBR('tear', pos, g.occlusion(pos.x, pos.y, pos.z), 1.2);
-  }
-
-  updateShells(dt) {
-    const g = this.g;
-    for (const s of this.shells) {
-      s.t += dt;
-      const M = s.model;
-      if (!s.burst) {
-        // shuddering, swelling, the head jerking about
-        animateModel(M, dt, { speed: 0, pitch: Math.sin(s.t * 47) * 0.5 });
-        const k = Math.min(1, s.t / 0.3);
-        M.root.scale.set(1 + k * 0.18 + Math.sin(s.t * 61) * 0.04, 1 + k * 0.12, 1 + k * 0.18 + Math.cos(s.t * 53) * 0.04);
-        M.root.rotation.z = Math.sin(s.t * 38) * 0.08;
-        if (s.t >= 0.3) {
-          s.burst = true;
-          this.scene.remove(M.root);
-          this.tearSuit(s.x, s.z);
-          const pos = { x: s.x, y: 2.2, z: s.z };
-          sfx.playScreech(pos, g.occlusion(pos.x, pos.y, pos.z));
-        }
-      }
-    }
-    this.shells = this.shells.filter(s => !s.burst);
-    // the torn bits fly, fall and lie where they land
-    const w = g.world;
-    for (const b of this.shreds) {
-      if (b.still) continue;
-      const o = b.mesh.position;
-      b.v.y -= 9.8 * dt;
-      const nx = o.x + b.v.x * dt, nz = o.z + b.v.z * dt;
-      if (w.blocked(nx, o.z, 0.05, Math.max(0, o.y - 0.1))) b.v.x *= -0.3; else o.x = nx;
-      if (w.blocked(o.x, nz, 0.05, Math.max(0, o.y - 0.1))) b.v.z *= -0.3; else o.z = nz;
-      o.y += b.v.y * dt;
-      b.mesh.rotation.x += b.spin.x * dt; b.mesh.rotation.y += b.spin.y * dt; b.mesh.rotation.z += b.spin.z * dt;
-      if (o.y <= 0.012 && !w.isPit(o.x, o.z)) {
-        // flat on the carpet
-        o.y = 0.012; b.still = true;
-        b.mesh.rotation.set(-Math.PI / 2, 0, Math.random() * Math.PI * 2);
-      } else if (o.y < -4) { this.scene.remove(b.mesh); b.still = true; }
-    }
-  }
-
-  // a spray of torn suit: ragged yellow pieces (and a few black bits of glove and boot)
-  tearSuit(x, z) {
-    if (!this.shredMats) {
-      this.shredMats = ['#d8b41c', '#c9a514', '#e2c02a', '#151515'].map(c => new THREE.MeshLambertMaterial({ color: c, side: THREE.DoubleSide }));
-      this.shredGeos = [0, 1, 2, 3].map(i => {
-        // an irregular little polygon, like a torn scrap
-        const sh = new THREE.Shape(), n = 6 + i;
-        for (let k = 0; k < n; k++) { const a = k / n * Math.PI * 2, r = 0.06 + ((k * 7 + i * 3) % 5) * 0.018; k ? sh.lineTo(Math.cos(a) * r, Math.sin(a) * r) : sh.moveTo(Math.cos(a) * r, Math.sin(a) * r); }
-        return new THREE.ShapeGeometry(sh);
-      });
-    }
-    for (let k = 0; k < 16; k++) {
-      const mesh = new THREE.Mesh(this.shredGeos[k % 4], this.shredMats[k < 13 ? k % 3 : 3]);
-      const s = 0.7 + Math.random() * 0.9;
-      mesh.scale.set(s, s * (0.6 + Math.random() * 0.8), 1);
-      mesh.position.set(x + (Math.random() - 0.5) * 0.4, 0.6 + Math.random() * 1.1, z + (Math.random() - 0.5) * 0.4);
-      const a = Math.random() * Math.PI * 2, sp = 1.5 + Math.random() * 2.5;
-      this.scene.add(mesh);
-      this.shreds.push({ mesh, v: { x: Math.cos(a) * sp, y: 1 + Math.random() * 3, z: Math.sin(a) * sp }, spin: new THREE.Vector3(Math.random() * 14 - 7, Math.random() * 14 - 7, Math.random() * 14 - 7), still: false });
-    }
-    // keep the floor from filling up over a long game
-    while (this.shreds.length > 64) { const b = this.shreds.shift(); this.scene.remove(b.mesh); }
   }
 
   // ---------- the map you draw by walking (M / the map button): only what you have been close to ----------
@@ -770,58 +688,58 @@ export class BackroomsFX {
     }, k * 360);
   }
 
-  // ---------- caught: lifted up face to face with it, then nothing ----------
+  // ---------- caught: you are the ragdoll. You see it through your own eyes, then nothing ----------
   caughtMe() {
-    const g = this.g;
-    this.caught = { t: 0, from: { x: g.me.pos.x, y: g.me.pos.y + EYE, z: g.me.pos.z } };
+    this.caught = { t: 0, t0: performance.now(), endAt: 0 };
   }
   caughtCamera() {
-    const c = this.caught, mon = this.monster(), black = $('br-black');
-    if (c.t > 2.7 || !mon || !mon.model) {
-      this.caught = null; black.style.opacity = '0'; setTimeout(() => black.classList.add('hidden'), 400);
+    const c = this.caught, g = this.g, mon = this.monster(), black = $('br-black');
+    c.t = (performance.now() - c.t0) / 1000;                // (real time: it must not drag on when frames are slow)
+    const hp = g.ragdolls.partPos(g.myId, 'head');
+    const slamming = mon && (mon.mode === 'seize' || mon.mode === 'hoist' || mon.mode === 'slam' || mon.mode === 'slamWall');
+    // once it has finished with you (or 7 s at most) the screen goes black, and the usual death view takes over
+    if (!c.endAt && (c.t > 7 || (c.t > 0.8 && !slamming))) { c.endAt = c.t + 1.1; black.classList.remove('hidden'); black.style.opacity = '1'; }
+    if (!hp || !mon || !mon.model || (c.endAt && c.t > c.endAt)) {
+      this.caught = null; g.ragdolls.showPart(g.myId, 'head', true);
+      black.style.opacity = '0'; setTimeout(() => black.classList.add('hidden'), 400);
       return null;
     }
+    g.ragdolls.showPart(g.myId, 'head', false);            // (your own hood would be in the way)
     const head = new THREE.Vector3();
     mon.model.head.getWorldPosition(head);
-    const hx = c.from.x - head.x, hz = c.from.z - head.z, hd = Math.hypot(hx, hz) || 1;
-    const k = smooth(Math.min(1, c.t / 0.4));
-    const tx = head.x + hx / hd * 0.42, ty = head.y + 0.03, tz = head.z + hz / hd * 0.42;
-    const x = c.from.x + (tx - c.from.x) * k, y = c.from.y + (ty - c.from.y) * k, z = c.from.z + (tz - c.from.z) * k;
-    const yaw = Math.atan2(-(head.x - x), -(head.z - z)), pitch = Math.atan2(head.y + 0.08 - y, Math.hypot(head.x - x, head.z - z));
-    if (c.t > 1.25) { black.classList.remove('hidden'); black.style.opacity = '1'; }
-    return { x, y, z, yaw, pitch, roll: Math.sin(c.t * 37) * 0.05 * (1 - k * 0.5) };
+    const yaw = Math.atan2(-(head.x - hp.x), -(head.z - hp.z)), pitch = Math.atan2(head.y + 0.1 - hp.y, Math.hypot(head.x - hp.x, head.z - hp.z));
+    return { x: hp.x, y: Math.max(0.2, hp.y), z: hp.z, yaw, pitch, roll: Math.sin(c.t * 31) * 0.06 + (this.slamK || 0) * 0.5 * Math.sin(c.t * 60) };
   }
 
-  // ---------- bodies it takes away ----------
+  // ---------- bodies it catches (the host: MonsterBrain.startCatch) ----------
+  // The kill message says how: { fate: 'slam' | 'drag' | 'hang', by: 'leg' | 'arm', on: 'floor' | 'wall', n, wall }.
+  // The body becomes a ragdoll (ragdoll.js) pinned by that ankle or wrist to its right hand for as long as the host
+  // names it as the body being held (the last part of the creature's mode, game.js `dragId`): through the lift, the
+  // slams and the dragging. Then it is let go, or pinned up on a wall (hangBody).
   takeBody(m) {
-    const g = this.g, me = m.victim === g.myId, r = me ? null : g.remotes.get(m.victim);
-    const ro = (g.roster || []).find(p => p.id === m.victim);
-    const name = me ? g.settings.name : ro ? ro.name : '';
-    const model = makePlayerModel('atk', name, false, 'hazmat');
-    setModelWeapon(model, 'none');
-    animateModel(model, 0.016, { speed: 0, pitch: 0 });
-    model.root.rotation.order = 'YXZ';
-    const at = me ? g.me.pos : r ? r.rp : { x: m.from ? m.from[0] : 0, z: m.from ? m.from[2] : 0 };
-    model.root.position.set(at.x, 0.13, at.z);
-    model.root.rotation.set(Math.PI / 2, 0, 0);
-    this.scene.add(model.root);
-    const old = this.bodies.get(m.victim);
-    if (old) this.scene.remove(old.model.root);
-    this.bodies.set(m.victim, { model, mode: 'dragged', wob: Math.random() * 6 });
+    const g = this.g, id = m.victim;
+    if (id !== g.myId && !g.remotes.get(id)) return;
+    g.spawnRagdoll(id, { ...m, from: null });                 // as they stood, with no push
+    const from = g.ragdolls.hold(id, m.by === 'leg' ? 'shinR' : 'farmR');
+    if (!from) return;
+    const old = this.bodies.get(id);
+    if (old && old.model) this.scene.remove(old.model.root);
+    this.bodies.set(id, { mode: 'held', t: 0, from, wall: m.wall || null, key: -1 });
   }
 
   // let go of (dropBody) or pinned to a wall (hangBody)
   placeBody(m) {
-    const b = this.bodies.get(m.id);
+    const b = this.bodies.get(m.id), g = this.g;
     if (!b) return;
-    const M = b.model;
-    if (m.t === 'dropBody') {
-      b.mode = 'lying';
-      M.thighs.forEach(t => { t.rotation.x = 0; });
-      return;
-    }
+    if (m.t === 'dropBody') { g.ragdolls.release(m.id); b.mode = 'loose'; return; }
     // hung on the wall: upright, facing out of it, feet off the floor, head hanging, held up by two black spikes
-    b.mode = 'hung';
+    g.ragdolls.remove(m.id);
+    const ro = (g.roster || []).find(p => p.id === m.id);
+    const M = makePlayerModel('atk', m.id === g.myId ? g.settings.name : ro ? ro.name : '', false, 'hazmat');
+    setModelWeapon(M, 'none');
+    animateModel(M, 0.016, { speed: 0, pitch: 0 });
+    this.scene.add(M.root);
+    b.mode = 'hung'; b.model = M;
     M.thighs.forEach(t => { t.rotation.x = 0; });
     M.root.rotation.set(0, Math.atan2(-m.nx, -m.nz), (Math.random() - 0.5) * 0.15, 'YXZ');
     M.root.position.set(m.x + m.nx * 0.2, 0.8, m.z + m.nz * 0.2);
@@ -833,38 +751,52 @@ export class BackroomsFX {
       pin.position.set(s * 0.17, 1.38, 0.1);
       M.root.add(pin);
     }
+    const pos = { x: m.x, y: 1.4, z: m.z };
+    sfx.playBR('slam', pos, g.occlusion(pos.x, pos.y, pos.z), 0.7);
   }
 
   updateBodies(dt) {
-    const mon = this.monster();
+    const g = this.g, mon = this.monster();
+    this.slamK = (this.slamK || 0) * Math.exp(-dt * 7);
     for (const [id, b] of this.bodies) {
-      if (b.mode !== 'dragged') continue;
-      if (!mon || !mon.model || mon.dragId !== id) continue;
-      // lying on its back, dragged by the leg along the floor behind it
-      const hand = new THREE.Vector3();
-      mon.model.arms[1].hand.getWorldPosition(hand);
-      const mp = mon.model.root.position;
-      let bx = hand.x - mp.x, bz = hand.z - mp.z;
-      const bl = Math.hypot(bx, bz);
-      if (bl < 0.05) { bx = Math.sin(mon.rp.yaw); bz = Math.cos(mon.rp.yaw); } else { bx /= bl; bz /= bl; }
-      const R = b.model.root;
-      const k = Math.min(1, dt * 9);
-      R.position.x += (hand.x - R.position.x) * k;
-      R.position.z += (hand.z - R.position.z) * k;
-      R.position.y = 0.13;
-      b.wob += dt * 5;
-      R.rotation.set(Math.PI / 2 - 0.12, Math.atan2(bx, bz), Math.sin(b.wob) * 0.12, 'YXZ');
-      b.model.thighs[1].rotation.x = 0.9;       // the leg it is holding, up to its hand
+      if (b.mode !== 'held') continue;
+      b.t += dt;
+      const has = mon && mon.model && mon.alive && mon.dragId === id;
+      if (!has) {
+        // (the first moments, before the host's next update names the body, it is still on its way to the hand)
+        if (b.t > 0.6 || !mon || !mon.model) { g.ragdolls.release(id); b.mode = 'loose'; }
+        if (!mon || !mon.model) continue;
+      }
+      mon.model.root.updateMatrixWorld(true);
+      const hand = mon.model.arms[1].hand.localToWorld(new THREE.Vector3(0, -0.2, 0));
+      // snatched off their feet: the held ankle / wrist goes to its hand in about a tenth of a second
+      const k = smooth(Math.min(1, b.t / 0.13));
+      let x = b.from.x + (hand.x - b.from.x) * k, y = Math.max(0.1, b.from.y + (hand.y - b.from.y) * k), z = b.from.z + (hand.z - b.from.z) * k;
+      if (b.wall) {
+        // its hand may end a little way inside the wall it swings them into: the body stops at the wall
+        const d = (x - b.wall[0]) * b.wall[2] + (z - b.wall[1]) * b.wall[3];
+        if (d < 0.14) { x += b.wall[2] * (0.14 - d); z += b.wall[3] * (0.14 - d); }
+      }
+      if (b.mode === 'held') g.ragdolls.moveHold(id, x, y, z, dt);
+      // the hit: the third position of each slam
+      const key = (mon.mode === 'slam' || mon.mode === 'slamWall') ? mon.modeN : -1;
+      if (key === 2 && b.key !== 2) {
+        const pos = { x, y: Math.max(0.3, y), z };
+        setTimeout(() => {
+          sfx.playBR('slam', pos, g.occlusion(pos.x, pos.y, pos.z), 1.5);
+          const d = Math.hypot(pos.x - g.camera.position.x, pos.z - g.camera.position.z);
+          if (id === g.myId) { g.shake = 3; this.slamK = 1; } else if (d < 12) g.shake = Math.max(g.shake || 0, 1.6 * (1 - d / 12));
+        }, 70);
+      }
+      b.key = key;
     }
   }
 
   // ---------- every frame ----------
   update(dt) {
     const g = this.g;
-    if (this.caught) this.caught.t += dt;
     this.updateSnatches(dt);
     this.updateHeads(dt);
-    this.updateShells(dt);
     this.updateBodies(dt);
     this.updateDread(dt);
     if (!g.paused) this.hallucinate(dt);
