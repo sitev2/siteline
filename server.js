@@ -73,7 +73,7 @@ export class Server {
   later(sec, fn) { this.pending.push([performance.now() + sec * 1000, fn]); }
 
   roster() {
-    return [...this.players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, dummy: p.dummy, bot: !!p.bot, ping: p.ping, owner: p.id === this.ownerId }));
+    return [...this.players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, dummy: p.dummy, bot: !!p.bot, ping: p.ping, owner: p.id === this.ownerId, xh: p.xh || null }));
   }
 
   broadcastRoster() {
@@ -232,6 +232,12 @@ export class Server {
       case 'drop': return this.onDrop(p, msg);
       case 'chat': return this.onChat(p, msg);
       case 'light': p.light = !!msg.on; return;
+      case 'xh': {
+        // their crosshair style (a share code from crosshair.js), so spectators can see it
+        const c = typeof msg.c === 'string' && /^SL-[A-Za-z0-9+/]{4,60}$/.test(msg.c) ? msg.c : null;
+        if (c && c !== p.xh) { p.xh = c; this.broadcastRoster(); }
+        return;
+      }
       case 'pick': return this.onPick(p, msg);
       case 'note': return this.onNote(p, msg);
       case 'door':
@@ -432,6 +438,8 @@ export class Server {
     p.moved += Math.hypot(m.x - p.x, m.z - p.z);
     p.x = m.x; p.y = m.y; p.z = m.z; p.yaw = m.yaw; p.pitch = m.pitch;
     p.use = !!m.u;
+    p.zm = Math.max(0, Math.min(2, m.zm | 0));     // scope level and reloading: shown to whoever spectates them
+    p.rl = !!m.rl;
     if (this.canHold(p, m.w)) p.w = m.w;
     // remember ammo so a dropped gun keeps what was left in it
     if (Array.isArray(m.am) && m.am.length === 4) {
@@ -1708,7 +1716,7 @@ export class Server {
     for (const p of this.players.values()) {
       ps.push([p.id, r2(p.x), r2(p.y), r2(p.z), r2(p.yaw), r2(p.pitch), p.alive ? 1 : 0, p.hp, p.w, p.kills, p.deaths,
         p.team === 'atk' ? 0 : p.team === 'def' ? 1 : p.team === 'monster' ? 3 : 2, p.use ? 1 : 0, p.ping, p.armor | 0,
-        (p.helmet ? 1 : 0) | (p.kit ? 2 : 0) | (p.light ? 4 : 0) | (p.escaped ? 8 : 0), p.money | 0]);
+        (p.helmet ? 1 : 0) | (p.kit ? 2 : 0) | (p.light ? 4 : 0) | (p.escaped ? 8 : 0) | (p.alive ? ((p.zm | 0) << 4) | (p.rl ? 64 : 0) : 0), p.money | 0]);
     }
     const b = this.bomb;
     const timeLeft = this.phase === 'planted' || (this.practice && b.state === 'planted') ? b.timer : this.timer;

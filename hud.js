@@ -85,7 +85,8 @@ export class Hud {
   // mag = null for the bomb (no ammo)
   setAmmo(weapon, mag, res, reloading, mode = '') {
     const noAmmo = mag == null;
-    this.set('ammo-mag', noAmmo ? icon(weapon === 'spoon' ? 'spoon' : 'bomb') : reloading ? '··' : String(mag), 'innerHTML');
+    // (no ammo numbers: the spoon or the bomb, or a gun of the player you're spectating, whose ammo isn't known here)
+    this.set('ammo-mag', noAmmo ? (weapon === 'spoon' ? icon('spoon') : weapon === 'c4' ? icon('bomb') : '') : reloading ? '··' : String(mag), 'innerHTML');
     this.set('ammo-res', noAmmo ? '' : `/ ${res}`);
     this.set('weapon-name', itemName(weapon));
     this.set('fire-mode', mode);
