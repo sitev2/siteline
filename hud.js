@@ -161,12 +161,12 @@ export class Hud {
   }
 
   // Backrooms top bar: how many are still inside, and how many have got out
-  setBackrooms(inside, out) {
+  setBackrooms(inside, out, step = 'Find the exit') {
     this.set('tname-atk', 'INSIDE');
     this.set('tname-def', 'OUT');
     this.set('score-atk', String(inside));
     this.set('score-def', String(out));
-    this.set('round-no', 'Find the exit');
+    this.set('round-no', step);
     this.set('alive-atk', '');
     this.set('alive-def', '');
     this.set('team-label', 'The Backrooms');

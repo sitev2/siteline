@@ -241,7 +241,7 @@ export class Game {
     if (this.dm) this.hud.center('Deathmatch', `Everyone for themselves — first to ${RULES.dm.killLimit} kills`, TEAM_COLORS.ffa.css, 4);
     document.body.classList.toggle('br-mode', this.br);
     if (this.br) {
-      this.hud.center('The Backrooms', 'Find the exit. Walking is quiet: it hears you sprint.', '#e8dc8a', 6);
+      this.hud.center('The Backrooms', 'Heavy door, key, locked door, pits, levers, exit. Walking is quiet: it hears you sprint.', '#e8dc8a', 7);
       // the jump button becomes a hold-to-sprint button (no jumping in here)
       const jb = document.getElementById('btn-jump');
       jb.innerHTML = icon('run'); jb.setAttribute('aria-label', 'Sprint');
@@ -474,14 +474,14 @@ export class Game {
         this.keyTaken = true;
         if (this.builtMap && this.builtMap.group.userData.setKey) this.builtMap.group.userData.setKey(false);
         if (m.id === this.myId) this.me.key = true;
-        this.hud.center('', m.id === this.myId ? 'You have the red key: find the red door' : `${m.name} got the red key`, '#ff8a7a', 3);
+        this.hud.center('', m.id === this.myId ? 'You have the key: find the locked door' : `${m.name} got the key`, '#e8c873', 3);
         sfx.playClick();
         return;
       }
       case 'keyBack': {
         this.keyTaken = false; this.me.key = false;
         if (this.builtMap && this.builtMap.group.userData.setKey) this.builtMap.group.userData.setKey(true);
-        this.hud.center('', 'The red key is back up on its shelf', '#ff8a7a', 3);
+        this.hud.center('', 'The key is back up on its shelf', '#e8c873', 3);
         return;
       }
       case 'doorRattle': {
@@ -2270,7 +2270,12 @@ export class Game {
       // how many are still inside, how many got out
       let inside = me.alive ? 1 : 0, out = me.escaped ? 1 : 0;
       for (const r of this.remotes.values()) if (r.team !== 'monster') { if (r.alive) inside++; if (r.escaped) out++; }
-      hud.setBackrooms(inside, out);
+      // what to do next (owner's design: everything in one order)
+      const gate = (l) => (this.world.doors || []).find(d => d.lock === l);
+      const hv = gate('heavy'), kd = gate('red'), ex = gate('twin');
+      const step = hv && !hv.open ? '1/5  Open the heavy door' : kd && !kd.open ? (this.keyTaken ? '3/5  Find the locked door' : '2/5  Find the key')
+        : ex && !ex.open ? '4/5  Cross the pits, pull both levers' : '5/5  Find the exit';
+      hud.setBackrooms(inside, out, step);
     } else if (this.dm) {
       let best = null;
       for (const r of this.remotes.values()) if (!r.dummy && (!best || r.kills > best.kills)) best = r;
@@ -2341,13 +2346,15 @@ export class Game {
     if (this.br) {
       hint = '';
       const u = this.useTarget(), door = u && u.kind === 'door' ? this.world.doors[u.i] : null, press = touch ? 'Tap [[hand]]' : `Press ${this.key('use')}`;
+      // (alone in there, the two-player parts work for one: the host's brSolo)
+      const alone = (me.alive && !me.escaped ? 1 : 0) + [...this.remotes.values()].filter(r => r.team !== 'monster' && r.alive && !r.escaped).length < 2;
       if (this.boostMe) hint = this.boostMe.climber ? 'Up on their shoulders… reaching for the key' : 'Holding them up…';
-      else if (u && u.kind === 'key') hint = `The red key is up on that shelf. ${press} to climb on a teammate's shoulders (they stand here too)`;
-      else if (u && u.kind === 'switch') hint = `${press} to pull the switch (both switches at the same moment)`;
-      else if (door && door.lock && !door.open) hint = door.lock === 'red' ? (me.key ? `${press} to unlock the red door` : 'The red door is locked. Its key is somewhere up high')
-        : door.lock === 'heavy' ? `Too heavy for one: two of you ${touch ? 'tap [[hand]]' : `press ${this.key('use')}`} at the same moment` : 'This door opens with two switches nearby, pulled together';
+      else if (u && u.kind === 'key') hint = alone ? `The key is up on that shelf. ${press} to jump for it` : `The key is up on that shelf. ${press} to climb on a teammate's shoulders (they stand here too)`;
+      else if (u && u.kind === 'switch') hint = alone ? `${press} to pull the lever (then the other one)` : `${press} to pull the lever (both levers at the same moment)`;
+      else if (door && door.lock && !door.open) hint = door.lock === 'red' ? (me.key ? `${press} to unlock the door` : 'Locked. Its key is on a high shelf somewhere on this side')
+        : door.lock === 'heavy' ? (alone ? `${press} to force the heavy door` : `Too heavy for one: two of you ${touch ? 'tap [[hand]]' : `press ${this.key('use')}`} at the same moment`) : 'The exit room is shut. Both levers in the lever room open it';
       else if (door && !door.lock) hint = `${press} to ${door.open ? 'shut' : 'open'} the door`;
-      else if (me.alive && me.key) hint = 'You have the red key: find the red door';
+      else if (me.alive && me.key && (this.world.doors || []).some(d => d.lock === 'red' && !d.open)) hint = 'You have the key: find the locked door';
       else if (me.alive && this.clock < (this.brHintUntil || 0)) hint = touch ? 'Hold [[run]] to sprint, but it hears you' : `Hold ${this.key('walk')} to sprint, but it hears you`;
       else if (me.alive && this.clock < (this.brHintUntil || 0) + 9) hint = touch ? 'Tap [[note]] to leave a note for the others' : `Press ${this.key('note')} to leave a note for the others`;
       else if (me.alive && this.clock < (this.brHintUntil || 0) + 16 && this.fx && this.fx.dim < 0.3) hint = touch ? 'Dark in here: tap [[light]] for your flashlight' : `Dark in here: press ${this.key('inspect')} for your flashlight`;
