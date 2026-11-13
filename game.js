@@ -7,6 +7,7 @@ import {
 import { resolveMap } from './maps.js';
 import { buildMapScene, THEMES } from './mapview.js';
 import { WEAPONS, SPOON, U, TOP_SPEED, ACCURATE_SPEED, STARTER_PISTOL, runSpeed, penMetres, patternAt, itemDef, itemName } from './weapons.js';
+import { DEFAULT_CROSSHAIR, crosshairCode, parseCrosshairCode } from './crosshair.js';
 import { RULES } from './config.js';
 import { makePlayerModel, setModelWeapon, animateModel, modelRecoil, modelSwing, makeViewModel, makeBombModel, makeDropModel, setModelDetail, TEAM_COLORS, makeMonsterModel, animateMonster } from './models.js';
 import { Ragdolls } from './ragdoll.js';
@@ -294,9 +295,10 @@ export class Game {
     return !!id && (id === me.inv.primary || id === me.inv.secondary || id === me.melee);
   }
 
-  setViewModel() {
+  setViewModel(weapon = this.me.weapon, team = this.me.team) {
     if (this.viewModel) this.vmScene.remove(this.viewModel);
-    this.viewModel = makeViewModel(this.me.weapon, this.me.team);
+    this.vmKey = weapon + '|' + team;
+    this.viewModel = makeViewModel(weapon, team);
     this.viewModel.scale.setScalar(0.85);
     // the muzzle flash rides on the gun's muzzle point (so it follows reload / recoil motion)
     this.viewModel.userData.muzzle.add(this.vmFlash);
@@ -327,6 +329,7 @@ export class Game {
       }
       rem.name = r.name;
       rem.bot = !!r.bot;
+      if (rem.xhCode !== r.xh) { rem.xhCode = r.xh; rem.xh = r.xh ? parseCrosshairCode(r.xh) : null; }
       if (!rem.model && r.team === 'monster') {
         rem.model = makeMonsterModel({ blind: r.id === 'listener' });     // (the Listener: pale, no eyes)
         rem.model.root.visible = false;
@@ -596,6 +599,7 @@ export class Game {
       r.alive = !!alive; r.hp = hp; r.w = w; r.kills = kills; r.deaths = deaths; r.use = use; r.ping = ping;
       r.armor = armor || 0; r.money = money;
       r.light = !!(flags & 4);
+      r.zm = (flags >> 4) & 3; r.rl = !!(flags & 64);     // zoomed in (scope level) / reloading, for spectators
       r.team = teamIdx === 0 ? 'atk' : teamIdx === 1 ? 'def' : teamIdx === 3 ? 'monster' : 'ffa';
       r.escaped = !!(flags & 8);
     }
@@ -758,6 +762,18 @@ export class Game {
   onRemoteShot(m) {
     const r = this.remotes.get(m.id);
     if (r && r.model && WEAPONS[m.w]) modelRecoil(r.model, Math.min(1.2, 0.35 + WEAPONS[m.w].damage / 90));
+    if (r && WEAPONS[m.w]) {
+      r.lastShotAt = this.clock;
+      if (r === this.specTarget) {
+        const w = WEAPONS[m.w], R = this.vmRec || (this.vmRec = { z: 0, zv: 0, p: 0, pv: 0, r: 0, rv: 0 });
+        const k = Math.min(1.7, 0.45 + (w.damage * w.pellets) / 70);
+        R.zv += 0.65 * k; R.pv += 0.3 * k; R.rv += (Math.random() - 0.5) * 1.6 * k;
+        this.vmKick = 1;
+        this.vmFlash.visible = !r.zm && !m.s;
+        this.vmFlash.material.rotation = Math.random() * Math.PI;
+        this.muzzleTimer = Math.max(this.muzzleTimer || 0, 0.05);
+      }
+    }
     const [ox, oy, oz] = m.o;
     const d = Math.hypot(ox - this.me.pos.x, oz - this.me.pos.z);
     const silenced = !!m.s;
@@ -790,6 +806,7 @@ export class Game {
     const r = this.remotes.get(m.id);
     if (!r || !r.buf.length) return;
     if (r.model) modelSwing(r.model, !!m.stab);
+    r.swingAt = this.clock; r.swingStab = !!m.stab; r.swingDir = -(r.swingDir || -1);
     const eye = r.rp.y + EYE - 0.2;
     const pos = { x: r.rp.x - Math.sin(r.rp.yaw) * 0.6, y: eye, z: r.rp.z - Math.cos(r.rp.yaw) * 0.6 };
     const o = { pos, occ: this.occlusion(pos.x, pos.y, pos.z) };
@@ -2060,6 +2077,7 @@ export class Game {
     let x = me.pos.x, y = me.pos.y + me.eyeOff, z = me.pos.z;
     // you see about half of the recoil; bullets go where the full recoil puts them
     let yaw = me.yaw - me.recY * 0.5 + me.hurtY, pitch = me.pitch + me.recP * 0.5 + me.hurtP;
+    let spec = null;     // the player we're watching from their eyes (their gun, scope and crosshair are shown)
     const esc = this.escapeScene, escT = esc ? this.clock - esc.t0 : 0;      // (game time: it runs with the frames)
     if (esc) {
       // the ending scene: up to the door, the white swallows everything, your time, then it fades back to watching the others
@@ -2084,6 +2102,7 @@ export class Game {
       const body = this.ragdolls.chestOf(this.myId);
       if (target && target.alive && since > 2) {
         x = target.rp.x; y = target.rp.y + EYE; z = target.rp.z; yaw = target.rp.yaw; pitch = target.rp.pitch;
+        spec = target;
       } else if (body) {
         if (target && !target.alive) me.spectate = null;
         // watch your own body fall from a little way behind where you were looking
@@ -2139,15 +2158,33 @@ export class Game {
       }
     }
     const sn = this.fx && this.fx.camera(cam);
-    if (sn) { x = sn.x; y = sn.y; z = sn.z; yaw = sn.yaw; pitch = sn.pitch; roll = sn.roll; }
+    if (sn) { x = sn.x; y = sn.y; z = sn.z; yaw = sn.yaw; pitch = sn.pitch; roll = sn.roll; spec = null; }
+    if (spec && !itemDef(spec.w)) spec = null;
+    this.specTarget = spec;
     cam.position.set(x, y, z);
     cam.rotation.set(pitch, yaw, roll);
     this.camYaw = yaw;
     sfx.setListener(x, y, z, yaw, pitch);
     this.indoorT = (this.indoorT || 0) - dt;
     if (this.indoorT <= 0) { this.indoorT = 0.3; sfx.setIndoor(this.roofOver(x, y, z) ? 1 : 0); }
-    const w = itemDef(me.weapon);
-    const targetFov = me.alive && me.zoom && w.zoom ? w.zoom[me.zoom - 1] : (this.settings.fov || 75);
+    // whose gun is in front of the camera: ours, or the spectated player's (built from what the server tells us)
+    let V = me;
+    if (spec) {
+      const sw = itemDef(spec.w);
+      if (spec.vmW !== spec.w) { spec.vmW = spec.w; spec.drawUntil = this.clock + (sw.deploy || 0.5); spec.rlAt = null; }
+      if (spec.rl && WEAPONS[spec.w]) { if (spec.rlAt == null) spec.rlAt = this.clock; } else spec.rlAt = null;
+      const rlLeft = spec.rlAt == null ? 0 : Math.max(0.001, sw.reload - (this.clock - spec.rlAt));
+      const vel = spec.vel || { x: 0, y: 0, z: 0 };
+      V = {
+        alive: true, zoom: spec.zm || 0, weapon: spec.w, team: spec.team, yaw: spec.rp.yaw, pitch: spec.rp.pitch, vel,
+        onGround: Math.abs(vel.y || 0) < 1.2, reloading: rlLeft, reloadEmpty: false, deployUntil: spec.drawUntil || 0, inspectAt: -1,
+        swingAt: spec.swingAt == null ? -10 : spec.swingAt, swingStab: !!spec.swingStab, swingDir: spec.swingDir || 1,
+        recP: 0, recY: 0, lastFire: spec.lastShotAt == null ? -10 : spec.lastShotAt,
+      };
+    }
+    this.view = V;
+    const w = itemDef(V.weapon);
+    const targetFov = V.alive && V.zoom && w.zoom ? w.zoom[V.zoom - 1] : (this.settings.fov || 75);
     if (Math.abs(cam.fov - targetFov) > 0.1) {
       cam.fov += (targetFov - cam.fov) * Math.min(1, dt * 18);
       cam.updateProjectionMatrix();
@@ -2156,9 +2193,11 @@ export class Game {
     if (this.mapGroup && this.mapGroup.userData.tick) this.mapGroup.userData.tick(this.clock);   // moving water
 
     // view-model: draw, reload, recoil, bob, landing dip
+    const vTeam = V === me ? me.team : V.team;
+    if (V !== me ? V.weapon + '|' + vTeam !== this.vmKey : this.vmKey !== me.weapon + '|' + me.team) this.setViewModel(V.weapon, vTeam);
     const vm = this.viewModel;
     if (vm) {
-      vm.visible = me.alive && !me.zoom;
+      vm.visible = V.alive && !V.zoom;
       this.vmKick = Math.max(0, this.vmKick - dt * 9);
       // recoil springs back
       const R = this.vmRec || (this.vmRec = { z: 0, zv: 0, p: 0, pv: 0, r: 0, rv: 0 });
@@ -2167,37 +2206,37 @@ export class Game {
         R[x] += R[v] * dt;
       }
       // sway: the gun lags behind when you turn or look up and down
-      let dYaw = me.yaw - (this.vmPrevYaw == null ? me.yaw : this.vmPrevYaw);
+      let dYaw = V.yaw - (this.vmPrevYaw == null ? V.yaw : this.vmPrevYaw);
       while (dYaw > Math.PI) dYaw -= Math.PI * 2;
       while (dYaw < -Math.PI) dYaw += Math.PI * 2;
-      const dPitch = me.pitch - (this.vmPrevPitch == null ? me.pitch : this.vmPrevPitch);
-      this.vmPrevYaw = me.yaw; this.vmPrevPitch = me.pitch;
+      const dPitch = V.pitch - (this.vmPrevPitch == null ? V.pitch : this.vmPrevPitch);
+      this.vmPrevYaw = V.yaw; this.vmPrevPitch = V.pitch;
       const SW = this.vmSway || (this.vmSway = { x: 0, y: 0 });
       const sk = Math.min(1, dt * 9), rate = dt > 0 ? 1 / dt : 0;
       SW.x += (Math.max(-0.07, Math.min(0.07, dYaw * rate * 0.012)) - SW.x) * sk;
       SW.y += (Math.max(-0.05, Math.min(0.05, dPitch * rate * 0.01)) - SW.y) * sk;
       this.vmLand = Math.max(0, this.vmLand - dt * 4);
-      const hs = Math.hypot(me.vel.x, me.vel.z);
+      const hs = Math.hypot(V.vel.x, V.vel.z);
       const bobAmt = Math.min(1, hs / 5);
       let rel = 0;
-      if (me.reloading > 0 && WEAPONS[me.weapon]) rel = w.reloadType === 'shell' ? 0.35 : Math.sin(Math.PI * (1 - me.reloading / w.reload));
-      const draw = Math.max(0, Math.min(1, (me.deployUntil - this.clock) / w.deploy));
+      if (V.reloading > 0 && WEAPONS[V.weapon]) rel = w.reloadType === 'shell' ? 0.35 : Math.sin(Math.PI * (1 - V.reloading / w.reload));
+      const draw = Math.max(0, Math.min(1, (V.deployUntil - this.clock) / w.deploy));
       const drawK = draw;
       // pull-out (draw) and inspect poses for this weapon
       const dp = drawPose(w.type, drawK);
       let ip = null, trick = null;
-      if (me.inspectAt >= 0) {
-        ip = inspectPose(me.weapon, w.type, this.clock - me.inspectAt);
-        if (!ip || !me.alive) { ip = null; me.inspectAt = -1; }
+      if (V.inspectAt >= 0) {
+        ip = inspectPose(V.weapon, w.type, this.clock - V.inspectAt);
+        if (!ip || !V.alive) { ip = null; V.inspectAt = -1; }
         else {
-          trick = inspectTrick(me.weapon, w.type, this.clock - me.inspectAt);
+          trick = inspectTrick(V.weapon, w.type, this.clock - V.inspectAt);
           this.vmInspect = { vm, ip, trick, at: this.clock };
         }
       }
       // an inspect cut short (shooting, reloading…) blends back in a moment instead of snapping
       if (!ip && this.vmInspect) {
         const L = this.vmInspect, f = 1 - (this.clock - L.at) / 0.13;
-        if (L.vm !== vm || f <= 0 || !me.alive) this.vmInspect = null;
+        if (L.vm !== vm || f <= 0 || !V.alive) this.vmInspect = null;
         else {
           const e = f * f * (3 - 2 * f), wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
           ip = L.ip.map((v, i) => (i < 3 ? v : wrap(v)) * e);
@@ -2206,7 +2245,7 @@ export class Game {
       }
       let P = ip ? dp.map((v, i) => v + ip[i]) : dp;
       // swinging the spoon
-      const sp = w.type === 'melee' ? swingPose(me.swingStab, this.clock - me.swingAt, me.swingDir) : null;
+      const sp = w.type === 'melee' ? swingPose(V.swingStab, this.clock - V.swingAt, V.swingDir) : null;
       if (sp) P = P.map((v, i) => v + sp[i]);
       // breathing while standing still
       this.vmBreathe = (this.vmBreathe ?? 1) + ((ip ? 0 : 1) - (this.vmBreathe ?? 1)) * Math.min(1, dt * 4);
@@ -2219,9 +2258,9 @@ export class Game {
       const H = HOLD[(vm.userData.parts && vm.userData.parts.kind) || 'rifle'] || HOLD.rifle;
       // walking: a figure-8 bob; strafing tilts the gun; jumping lets it float
       const b = this.vmBob;
-      const rx = Math.cos(me.yaw), rz = -Math.sin(me.yaw);
-      const strafe = (me.vel.x * rx + me.vel.z * rz);
-      const airY = me.onGround ? 0 : Math.max(-0.025, Math.min(0.025, -me.vel.y * 0.004));
+      const rx = Math.cos(V.yaw), rz = -Math.sin(V.yaw);
+      const strafe = (V.vel.x * rx + V.vel.z * rz);
+      const airY = V.onGround ? 0 : Math.max(-0.025, Math.min(0.025, -V.vel.y * 0.004));
       vm.position.set(
         H[0] + Math.sin(b) * 0.011 * bobAmt + P[0] + Math.sin(t * 1.1) * 0.003 * breathe + SW.x * 0.25,
         H[1] - Math.abs(Math.cos(b)) * 0.009 * bobAmt - rel * 0.015 + P[1] - this.vmLand * 0.035 + Math.sin(t * 2.2) * 0.002 * breathe - SW.y * 0.2 + airY,
@@ -2230,17 +2269,18 @@ export class Game {
       // the camera shows half the recoil; the gun takes the other half so it keeps pointing where the
       // next bullet goes (converted between the two cameras' fields of view)
       const fovK = Math.tan(this.vmCamera.fov * Math.PI / 360) / Math.tan(this.camera.fov * Math.PI / 360);
-      const aimP = Math.atan(Math.tan(me.recP * 0.5) * fovK), aimY = Math.atan(Math.tan(-me.recY * 0.5) * fovK);
+      const aimP = Math.atan(Math.tan(V.recP * 0.5) * fovK), aimY = Math.atan(Math.tan(-V.recY * 0.5) * fovK);
       vm.rotation.set(R.p + aimP + P[3] + Math.sin(t * 1.1) * 0.003 * breathe - SW.y * 0.8,
         aimY + P[4] + Math.sin(t * 0.7) * 0.004 * breathe - SW.x * 1.1,
         R.r + P[5] + Math.sin(b) * 0.022 * bobAmt - strafe * 0.006);
       // hands and moving parts: holding, reloading, slides, bolts and pumps
-      const am = WEAPONS[me.weapon] ? this.ammoOf(me.weapon) : null;
-      const sinceShot = this.clock - me.lastFire;
+      const am = V === me && WEAPONS[me.weapon] ? this.ammoOf(me.weapon) : null;
+      const canRel = V !== me || !!am;
+      const sinceShot = this.clock - V.lastFire;
       poseViewModel(vm, {
-        reload: me.reloading > 0 && am && w.reloadType !== 'shell' ? 1 - me.reloading / w.reload : -1,
-        shell: me.reloading > 0 && am && w.reloadType === 'shell' ? 1 - me.reloading / w.reload : -1,
-        reloadEmpty: !!me.reloadEmpty,
+        reload: V.reloading > 0 && canRel && w.reloadType !== 'shell' ? 1 - V.reloading / w.reload : -1,
+        shell: V.reloading > 0 && canRel && w.reloadType === 'shell' ? 1 - V.reloading / w.reload : -1,
+        reloadEmpty: !!V.reloadEmpty,
         empty: !!am && am.mag === 0,
         fireT: sinceShot,
         hold: H,
@@ -2248,7 +2288,7 @@ export class Game {
         // the Deagle spin: one-handed, the gun turns forwards round the trigger finger
         trick,
         bolt: w.bolt && sinceShot < w.interval ? sinceShot / w.interval : -1,
-        pump: me.weapon === 'mag7' && sinceShot > 0.12 && sinceShot < 0.12 + w.interval * 0.7 ? (sinceShot - 0.12) / (w.interval * 0.7) : -1,
+        pump: V.weapon === 'mag7' && sinceShot > 0.12 && sinceShot < 0.12 + w.interval * 0.7 ? (sinceShot - 0.12) / (w.interval * 0.7) : -1,
       });
     }
   }
@@ -2281,18 +2321,21 @@ export class Game {
       for (const r of this.remotes.values()) if (!r.dummy && (!best || r.kills > best.kills)) best = r;
       hud.setDeathmatch(me.kills || 0, best ? best.kills : 0, best ? best.name : '', RULES.dm.killLimit);
     } else hud.setScore(this.score, this.round, alive, me.team, this.practice);
-    hud.setHealth(me.alive ? me.hp : 0);
-    hud.setArmor(me.alive ? me.armor : 0, me.helmet);
+    const sp0 = this.specTarget;     // spectating: their health, armour and gun
+    hud.setHealth(sp0 ? sp0.hp : me.alive ? me.hp : 0);
+    hud.setArmor(sp0 ? sp0.armor : me.alive ? me.armor : 0, sp0 ? false : me.helmet);
     hud.setMoney(me.money, this.practice, this.dm);
     hud.kitIcon(me.alive && me.kit);
     const a = this.ammoOf(me.weapon);
     let mode = '';
     if (w.alt === 'burst') mode = me.burst ? 'burst' : 'semi';
     else if (w.silenced) mode = 'silenced';
-    if (WEAPONS[me.weapon]) hud.setAmmo(me.weapon, a.mag, a.res, me.reloading > 0, mode);
+    if (sp0) hud.setAmmo(sp0.w, null, null, false, '');
+    else if (WEAPONS[me.weapon]) hud.setAmmo(me.weapon, a.mag, a.res, me.reloading > 0, mode);
     else hud.setAmmo(me.weapon, null, null, false, '');
     hud.bombIcon(me.alive && this.owns('c4'));
-    hud.scope(me.alive && me.zoom > 0);
+    const spec = this.specTarget;      // watching someone: their scope and their crosshair
+    hud.scope(spec ? spec.zm > 0 : me.alive && me.zoom > 0);
 
     // crosshair gap from spread
     const fovR = this.camera.fov * Math.PI / 180;
@@ -2312,7 +2355,18 @@ export class Game {
         roy = -Math.max(-0.45, Math.min(0.45, p.y)) * window.innerHeight / 2;
       }
     }
-    hud.crosshair(Math.max(0, Math.min(60, (gap - 4) * 0.7)), me.alive && !me.zoom, xc, rox, roy);
+    if (spec) {
+      // their crosshair style; it opens up when they move or jump like theirs would (their exact spray isn't known here)
+      const sw = WEAPONS[spec.w], sxc = spec.xh || DEFAULT_CROSSHAIR;
+      let sprd = 0.01;
+      if (sw) {
+        const max = runSpeed(sw, false), thr = max * ACCURATE_SPEED, hs = spec.speed || 0;
+        sprd = (sw.type === 'sniper' && spec.zm ? sw.scoped : sw.stand) + sw.move * Math.max(0, Math.min(1, (hs - thr) / (max - thr)))
+          + (Math.abs((spec.vel && spec.vel.y) || 0) > 1.2 ? sw.air : 0);
+      }
+      const sgap = Math.tan(sprd) / Math.tan(fovR / 2) * (window.innerHeight / 2);
+      hud.crosshair(Math.max(0, Math.min(60, (sgap - 4) * 0.7)), !spec.zm, { ...sxc, recoil: false }, 0, 0);
+    } else hud.crosshair(Math.max(0, Math.min(60, (gap - 4) * 0.7)), me.alive && !me.zoom, xc, rox, roy);
 
     // plant / defuse
     const use = this.eligibleUse();
@@ -2462,11 +2516,18 @@ export class Game {
     if (this.sendTimer > 0) return;
     this.sendTimer = 0.05;
     const me = this.me;
+    // our crosshair style, so people spectating us see it (sent again whenever it's changed in Settings)
+    this.xhTimer = (this.xhTimer || 0) - 0.05;
+    if (this.xhTimer <= 0) {
+      this.xhTimer = 1;
+      const code = crosshairCode(this.settings.crosshair);
+      if (code !== this.sentXh) { this.sentXh = code; this.transport.send({ t: 'xh', c: code }); }
+    }
     if (!me.alive) return;
     const r = v => Math.round(v * 100) / 100;
     this.transport.send({
       t: 'st', rd: this.round, x: r(me.pos.x), y: r(me.pos.y), z: r(me.pos.z),
-      yaw: r(me.yaw), pitch: r(me.pitch), w: me.weapon, u: me.using ? 1 : 0,
+      yaw: r(me.yaw), pitch: r(me.pitch), w: me.weapon, u: me.using ? 1 : 0, zm: me.zoom | 0, rl: me.reloading > 0 ? 1 : 0,
       am: [me.inv.primary, me.inv.secondary].flatMap(id => { const a = this.ammoOf(id); return id ? [a.mag, a.res] : [0, 0]; }),
     });
   }
