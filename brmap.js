@@ -10,7 +10,7 @@ import { World } from './world.js';
 // some walls point roughly the right way.
 
 export const BR = {
-  cells: 20,          // rooms across (4 m each)
+  cells: 28,          // rooms across (4 m each); was 20, the owner asked for a bigger map (about twice the area)
   cell: 4,            // metres per room
   border: 1,          // solid edge around the maze
   ceiling: 2.9,       // ceiling height
@@ -27,15 +27,15 @@ export const BR = {
 // how far it hears running / walking, how many places it searches and when it wakes up (s).
 export const BR_LEVELS = {
   easy: {
-    bridge: 1.5, holes: 8, dark: 2, arrows: 0.45,
+    bridge: 1.5, holes: 4, dark: 4, arrows: 0.45,
     monster: { speed: 1.05, sight: 16, chaseSight: 13, fov: 1.0, lose: 0.25, lead: 0.7, hear: 11, hearWalk: 2.5, search: 3, wake: 30 },
   },
   normal: {
-    bridge: 1, holes: 11, dark: 3, arrows: 0.3,
+    bridge: 1, holes: 6, dark: 6, arrows: 0.3,
     monster: { speed: 1.10, sight: 22, chaseSight: 19, fov: 1.2, lose: 0.55, lead: 1.2, hear: 14, hearWalk: 3, search: 4, wake: 20 },
   },
   hard: {
-    bridge: 0.5, holes: 14, dark: 4, arrows: 0.18,
+    bridge: 0.5, holes: 7, dark: 8, arrows: 0.18,
     monster: { speed: 1.15, sight: 28, chaseSight: 28, fov: 1.3, lose: 0.9, lead: 1.6, hear: 16, hearWalk: 3.5, search: 5, wake: 15 },
   },
 };
@@ -108,7 +108,7 @@ export function planMaze(seed, level = 'normal') {
     halls.push(h);
     clearBlock(h.x, h.z, h.w, h.d);
   }
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < Math.round(5 * N * N / 400); i++) {       // (as many per area as on the old 20 × 20 maze)
     const w = pick(2, 3), d = pick(2, 3);
     clearBlock(pick(0, N - w), pick(0, N - d), w, d);
   }
@@ -234,7 +234,7 @@ export function planMaze(seed, level = 'normal') {
   // 7. dark areas: blocks of rooms whose lights are all dead (bring a flashlight); never the start or the
   // exit, and (except on hard) never over a pit room
   const darkZones = [];
-  for (let tries = 0; darkZones.length < L.dark && tries < 120; tries++) {
+  for (let tries = 0; darkZones.length < L.dark && tries < 400; tries++) {
     const r = { w: pick(2, 4), d: pick(2, 4) };
     r.x = pick(0, N - r.w); r.z = pick(0, N - r.d);
     if (darkZones.some(o => overlaps(o, r))) continue;
