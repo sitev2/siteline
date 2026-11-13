@@ -1187,7 +1187,8 @@ export class Server {
     if (!hs.length || hs.some(p => p.alive && !p.escaped)) return;
     this.brDone = true;
     const out = hs.filter(p => p.escaped).length;
-    this.later(2, () => { if (this.phase === 'br') this.matchOver(out ? 'escaped' : 'lost', out === hs.length ? 'all' : out ? 'some' : 'none'); });
+    // (when the last one out has just escaped, give their ending scene time to play: ~7 s)
+    this.later(out ? 7 : 2, () => { if (this.phase === 'br') this.matchOver(out ? 'escaped' : 'lost', out === hs.length ? 'all' : out ? 'some' : 'none'); });
   }
 
   brEnd() {

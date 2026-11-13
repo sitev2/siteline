@@ -96,6 +96,8 @@
       <p id="note-msg" class="note-msg"></p>
     </div>
   </div>
+  <div id="br-escape" class="hidden"><b>You got out.</b><span id="br-escape-time"></span><small>It is quiet here. The humming has stopped.</small></div>
+  <div id="br-map" class="hidden"><canvas id="br-map-canvas" width="512" height="512"></canvas><small id="br-map-tip">Your map: only where you have been</small></div>
   <div id="note-read" class="hidden"><canvas id="note-read-canvas" width="256" height="256"></canvas><small id="note-read-who"></small></div>
   <div id="br-black" class="hidden"></div>
   <canvas id="br-static" class="hidden"></canvas>
@@ -115,6 +117,7 @@
     <button data-act="chatAll" id="btn-chat" aria-label="Chat"><i data-icon="chat"></i></button>
     <button data-act="flashlight" id="btn-light" class="hidden" aria-label="Flashlight"><i data-icon="light"></i></button>
     <button data-act="note" id="btn-note" class="hidden" aria-label="Leave a note"><i data-icon="note"></i></button>
+    <button data-act="map" id="btn-map" class="hidden" aria-label="Your map"><i data-icon="map"></i></button>
     <button data-act="use" id="btn-use" class="hidden" aria-label="Plant or defuse"><i data-icon="hand"></i></button>
     <button data-act="buy" id="btn-buy" class="hidden" aria-label="Buy menu"><i data-icon="cart"></i></button>
     <button data-act="score" id="btn-score" aria-label="Scoreboard"><i data-icon="list"></i></button>

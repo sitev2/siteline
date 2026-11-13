@@ -21,14 +21,18 @@ export function paintNote(canvas, note, drawing) {
   g.strokeStyle = 'rgba(120,140,170,0.25)'; g.lineWidth = 1;
   for (let y = 40; y < S; y += 24) { g.beginPath(); g.moveTo(10, y); g.lineTo(S - 10, y); g.stroke(); }
   if (drawing) g.drawImage(drawing, 0, 0, S, S);
+  // an explorer log: the clue's own little drawing under the writing (smaller writing, so both fit)
+  const log = note.log != null ? LOGS[note.log] : null;
+  if (log) { g.save(); g.scale(S / 256, S / 256); log.draw(g); g.restore(); }
   if (note.text) {
     g.fillStyle = '#1f2a44';
-    g.font = `${Math.round(S / 10)}px "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive`;
+    g.font = `${Math.round(S / (log ? 13 : 10))}px "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive`;
     const words = note.text.split(' '), lines = [];
     let line = '';
     for (const w of words) { const t = line ? `${line} ${w}` : w; if (g.measureText(t).width > S - 24 && line) { lines.push(line); line = w; } else line = t; }
     if (line) lines.push(line);
-    lines.slice(0, 7).forEach((l, i) => g.fillText(l, 12, S / 10 + 8 + i * (S / 9)));
+    if (log) lines.slice(0, 4).forEach((l, i) => g.fillText(l, 12, S / 13 + 10 + i * (S / 11)));
+    else lines.slice(0, 7).forEach((l, i) => g.fillText(l, 12, S / 10 + 8 + i * (S / 9)));
   }
   if (note.wall) {
     g.fillStyle = 'rgba(230,225,190,0.75)';
@@ -36,6 +40,75 @@ export function paintNote(canvas, note, drawing) {
     g.save(); g.translate(S * 0.82, 6); g.rotate(0.2); g.fillRect(-22, -6, 44, 14); g.restore();
   }
 }
+
+// explorer logs: notes from people who were here before. Each is a clue about what to do, with a little
+// pencil drawing (our own words and pictures). brmap.js picks which ones go where (plan.logs, k = index).
+const WHO = ['M.', 'unit 7', 'R.', 'someone', '?', 'J. (day 3)'];
+const pen = (g, w = 2.4, a = 0.85) => { g.strokeStyle = `rgba(35,35,48,${a})`; g.fillStyle = `rgba(35,35,48,${a})`; g.lineWidth = w; g.lineCap = 'round'; g.lineJoin = 'round'; };
+const line = (g, ...p) => { g.beginPath(); g.moveTo(p[0], p[1]); for (let i = 2; i < p.length; i += 2) g.lineTo(p[i], p[i + 1]); g.stroke(); };
+const stick = (g, x, y, s = 1) => {      // a little person standing at (x, y) = feet
+  g.beginPath(); g.arc(x, y - 44 * s, 7 * s, 0, Math.PI * 2); g.stroke();
+  line(g, x, y - 37 * s, x, y - 16 * s); line(g, x - 11 * s, y - 30 * s, x, y - 26 * s, x + 11 * s, y - 30 * s); line(g, x - 9 * s, y, x, y - 16 * s, x + 9 * s, y);
+};
+const shadow = (g, x, y, s = 1) => {     // it: a scribbled black figure with two dots for eyes
+  g.save(); g.fillStyle = 'rgba(20,20,26,0.9)';
+  g.beginPath(); g.ellipse(x, y - 50 * s, 9 * s, 11 * s, 0, 0, Math.PI * 2); g.fill();
+  g.beginPath(); g.moveTo(x - 12 * s, y - 40 * s); g.lineTo(x + 12 * s, y - 40 * s); g.lineTo(x + 9 * s, y); g.lineTo(x - 9 * s, y); g.fill();
+  line(g, x - 12 * s, y - 38 * s, x - 22 * s, y - 8 * s); line(g, x + 12 * s, y - 38 * s, x + 22 * s, y - 8 * s);
+  g.fillStyle = '#f3efe2'; g.fillRect(x - 5 * s, y - 53 * s, 3, 3); g.fillRect(x + 2 * s, y - 53 * s, 3, 3);
+  g.restore();
+};
+const cross = (g, x, y, r) => { g.save(); g.strokeStyle = 'rgba(170,30,30,0.85)'; g.lineWidth = 4; line(g, x - r, y - r, x + r, y + r); line(g, x + r, y - r, x - r, y + r); g.restore(); };
+export const LOGS = [
+  { text: 'Walk. Never run, it hears running. The way out is a door that stands on its own.', draw(g) {
+    stick(g, 70, 236); pen(g, 1.6, 0.6); for (const r of [14, 22]) { g.beginPath(); g.arc(70, 226, r, -0.9, 0.9); g.stroke(); }
+    cross(g, 92, 222, 16);
+    pen(g); g.strokeRect(150, 168, 64, 64); line(g, 182, 232, 182, 196, 200, 196, 200, 232); g.fillRect(193, 214, 3, 3);
+    pen(g, 1.4, 0.5); g.setLineDash([4, 5]); g.strokeRect(138, 156, 88, 88); g.setLineDash([]);
+  } },
+  { text: "It can't open doors. Shut them behind you. It has to break them.", draw(g) {
+    pen(g); g.strokeRect(96, 150, 56, 90); g.fillRect(140, 196, 4, 4); shadow(g, 196, 240, 1.1); stick(g, 52, 240);
+    pen(g, 2, 0.7); line(g, 170, 200, 158, 196); line(g, 170, 210, 158, 214);
+  } },
+  { text: 'Never walk under a missing ceiling tile. Something lives up there.', draw(g) {
+    pen(g, 1.6, 0.6); for (let x = 40; x <= 220; x += 36) line(g, x, 140, x, 176); for (const y of [140, 158, 176]) line(g, 40, y, 220, y);
+    g.fillStyle = 'rgba(15,15,20,0.95)'; g.fillRect(112, 158, 36, 18);
+    pen(g, 2.6); line(g, 124, 176, 120, 200, 116, 214); line(g, 136, 176, 140, 202, 146, 214); line(g, 116, 214, 110, 222); line(g, 116, 214, 118, 224); line(g, 146, 214, 152, 222);
+    stick(g, 128, 248, 0.7);
+  } },
+  { text: 'The dark rooms are black. Keep your light for them.', draw(g) {
+    g.fillStyle = 'rgba(25,25,32,0.85)'; g.fillRect(28, 140, 200, 104);
+    g.fillStyle = 'rgba(243,239,226,0.9)'; g.beginPath(); g.moveTo(60, 196); g.lineTo(220, 156); g.lineTo(220, 236); g.fill();
+    pen(g, 2.4, 0.95); g.save(); g.translate(48, 196); g.strokeStyle = '#f3efe2'; g.strokeRect(-18, -8, 28, 16); g.restore();
+  } },
+  { text: 'Following one wall only walks you in circles. I tried. Twice.', draw(g) {
+    pen(g); g.strokeRect(46, 140, 164, 100); g.strokeRect(96, 172, 64, 36);
+    pen(g, 1.8, 0.6); g.setLineDash([5, 5]); g.strokeRect(62, 154, 132, 72); g.setLineDash([]);
+    pen(g, 2.2); line(g, 194, 190, 194, 206); line(g, 188, 200, 194, 208, 200, 200);
+    g.font = '18px "Segoe Print", "Comic Sans MS", cursive'; g.fillStyle = 'rgba(35,35,48,0.85)'; g.fillText('door', 104, 196);
+  } },
+  { text: "If someone stands too still and just stares, it isn't them any more. Keep away.", draw(g) {
+    pen(g); stick(g, 70, 240); stick(g, 180, 240);
+    g.fillStyle = 'rgba(35,35,48,0.9)'; g.fillRect(176, 194, 3, 3); g.fillRect(183, 194, 3, 3);
+    pen(g, 1.6, 0.7); line(g, 194, 186, 200, 180, 196, 176, 202, 170); line(g, 162, 186, 156, 180, 160, 176, 154, 170);
+    g.font = '30px "Segoe Print", "Comic Sans MS", cursive'; g.fillStyle = 'rgba(170,30,30,0.85)'; g.fillText('?', 120, 200);
+  } },
+  { text: "Arrows on the walls only show roughly which way. Not how to get there.", draw(g) {
+    pen(g, 2.4); line(g, 40, 200, 200, 200); line(g, 178, 182, 202, 200, 178, 218);
+    pen(g, 1.6, 0.6); g.beginPath(); g.arc(128, 200, 46, 0, Math.PI * 2); g.stroke();
+    g.font = '20px "Segoe Print", "Comic Sans MS", cursive'; g.fillStyle = 'rgba(35,35,48,0.85)'; g.fillText('N', 122, 148); g.fillText('~', 214, 206);
+  } },
+  { text: 'In the rooms with holes, keep to the strips between them. Slowly.', draw(g) {
+    g.fillStyle = 'rgba(20,20,26,0.9)';
+    for (let r = 0; r < 2; r++) for (let c = 0; c < 4; c++) g.fillRect(40 + c * 46, 146 + r * 50, 34, 38);
+    pen(g, 2, 0.7); g.setLineDash([4, 6]); line(g, 30, 190, 80, 190, 80, 240, 222, 240); g.setLineDash([]);
+  } },
+  { text: 'If it freezes when you look at it, keep looking and back away. Slowly.', draw(g) {
+    pen(g); g.beginPath(); g.ellipse(70, 196, 34, 18, 0, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.arc(70, 196, 9, 0, Math.PI * 2); g.fill();
+    shadow(g, 190, 244, 1);
+    pen(g, 1.6, 0.6); g.setLineDash([3, 5]); line(g, 106, 196, 166, 196); g.setLineDash([]);
+  } },
+];
 
 export class BackroomsFX {
   constructor(game, built) {
@@ -72,6 +145,8 @@ export class BackroomsFX {
     $('note-editor').classList.add('hidden');
     $('note-read').classList.add('hidden');
     $('br-black').classList.add('hidden');
+    $('br-map').classList.add('hidden');
+    $('br-escape').classList.add('hidden');
   }
 
   onMessage(m) {
@@ -315,8 +390,108 @@ export class BackroomsFX {
     while (this.shreds.length > 64) { const b = this.shreds.shift(); this.scene.remove(b.mesh); }
   }
 
+  // ---------- the map you draw by walking (M / the map button): only what you have been close to ----------
+  initMap() {
+    const w = this.g.world, W = w.w, H = w.h;
+    this.mapKnown = new Uint8Array(W * H);            // 0 not seen, 1 floor, 2 wall, 3 hole
+    this.mapKind = new Uint8Array(W * H);             // what each cell really is (1 floor, 2 wall, 3 hole)
+    for (let iz = 0; iz < H; iz++) for (let ix = 0; ix < W; ix++) {
+      const solid = w.cellSpans(ix, iz).some(s => s.m[0] !== '_' && s.y0 < 1 && s.y1 > 1.5);
+      this.mapKind[iz * W + ix] = solid ? 2 : w.pitCell(ix, iz) ? 3 : 1;
+    }
+    this.mapImg = document.createElement('canvas');
+    this.mapImg.width = W; this.mapImg.height = H;
+    this.mapCtx = this.mapImg.getContext('2d');
+    this.mapData = this.mapCtx.createImageData(W, H);
+    this.mapBox = null; this.mapDirty = false; this.mapT = 0; this.trail = []; this.mapOpen = false;
+  }
+  toggleMap() {
+    if (!this.mapKnown) this.initMap();
+    this.mapOpen = !this.mapOpen && this.g.me.alive;
+    $('br-map').classList.toggle('hidden', !this.mapOpen);
+    if (this.mapOpen) this.drawMap();
+  }
+  mapStep(dt) {
+    if (!this.mapKnown) this.initMap();
+    const g = this.g, me = g.me;
+    if (!me.alive) { if (this.mapOpen) this.toggleMap(); return; }
+    this.mapT -= dt;
+    if (this.mapT > 0) return;
+    this.mapT = 0.12;
+    const W = this.mapImg.width, H = this.mapImg.height, C = 0.5, R = 2.4, px = me.pos.x, pz = me.pos.z;
+    const kind = this.mapKind, known = this.mapKnown, d = this.mapData.data;
+    const COL = { 1: [214, 205, 178, 255], 2: [44, 44, 56, 255], 3: [95, 92, 98, 255] };
+    const i0 = Math.max(0, Math.floor((px - R) / C)), i1 = Math.min(W - 1, Math.floor((px + R) / C));
+    const k0 = Math.max(0, Math.floor((pz - R) / C)), k1 = Math.min(H - 1, Math.floor((pz + R) / C));
+    for (let iz = k0; iz <= k1; iz++) for (let ix = i0; ix <= i1; ix++) {
+      const j = iz * W + ix;
+      if (known[j]) continue;
+      const cx = (ix + 0.5) * C, cz = (iz + 0.5) * C, dist = Math.hypot(cx - px, cz - pz);
+      if (dist > R) continue;
+      // only what you can actually see from here (walls hide what's behind them)
+      let seen = true;
+      for (let t = 0.25; t < dist - 0.3; t += 0.25) {
+        const qx = Math.floor((px + (cx - px) * t / dist) / C), qz = Math.floor((pz + (cz - pz) * t / dist) / C);
+        if (kind[qz * W + qx] === 2) { seen = false; break; }
+      }
+      if (!seen) continue;
+      known[j] = kind[j];
+      d.set(COL[kind[j]], j * 4);
+      this.mapDirty = true;
+      const b = this.mapBox || (this.mapBox = { x0: ix, x1: ix, z0: iz, z1: iz });
+      b.x0 = Math.min(b.x0, ix); b.x1 = Math.max(b.x1, ix); b.z0 = Math.min(b.z0, iz); b.z1 = Math.max(b.z1, iz);
+    }
+    const last = this.trail[this.trail.length - 1];
+    if (!last || Math.hypot(last.x - px, last.z - pz) > 0.6) { this.trail.push({ x: px, z: pz }); if (this.trail.length > 4000) this.trail.splice(0, 1000); }
+    if (this.mapOpen) this.drawMap();
+  }
+  drawMap() {
+    const c = $('br-map-canvas'), ctx = c.getContext('2d'), S = c.width, b = this.mapBox, me = this.g.me;
+    ctx.fillStyle = '#efe9d8'; ctx.fillRect(0, 0, S, S);
+    if (!b) return;
+    if (this.mapDirty) { this.mapCtx.putImageData(this.mapData, 0, 0); this.mapDirty = false; }
+    // the part you have explored, square, with a margin (at least 30 m across)
+    const span = Math.max(60, b.x1 - b.x0 + 16, b.z1 - b.z0 + 16);
+    const vx = (b.x0 + b.x1) / 2 - span / 2, vz = (b.z0 + b.z1) / 2 - span / 2, k = S / span;
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this.mapImg, vx, vz, span, span, 0, 0, S, S);
+    const to = (x, z) => [(x / 0.5 - vx) * k, (z / 0.5 - vz) * k];
+    // the way you came, in pencil
+    ctx.strokeStyle = 'rgba(40,70,150,0.75)'; ctx.lineWidth = 2; ctx.lineJoin = ctx.lineCap = 'round';
+    ctx.beginPath();
+    this.trail.forEach((p, i) => { const [x, y] = to(p.x, p.z); if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y); });
+    ctx.stroke();
+    // the exit, once you've seen its door
+    const e = this.g.world.exit;
+    if (e) {
+      const j = Math.floor((e.z + e.nz * 0.3) / 0.5) * this.mapImg.width + Math.floor((e.x + e.nx * 0.3) / 0.5);
+      if (this.mapKnown[j]) { const [x, y] = to(e.x, e.z); ctx.fillStyle = '#1d7a3a'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.fillText('EXIT', x + e.nx * 22, y + e.nz * 22 + 5); }
+    }
+    // you: a red arrowhead pointing the way you face
+    const [mx, my] = to(me.pos.x, me.pos.z), fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw);
+    ctx.fillStyle = '#c0392b'; ctx.beginPath();
+    ctx.moveTo(mx + fx * 11, my + fz * 11); ctx.lineTo(mx - fx * 6 - fz * 6, my - fz * 6 + fx * 6); ctx.lineTo(mx - fx * 6 + fz * 6, my - fz * 6 - fx * 6);
+    ctx.fill();
+  }
+
   // ---------- notes ----------
-  startNotes(list) { for (const n of list || []) this.addNote(n); }
+  startNotes(list) {
+    for (const n of list || []) this.addNote(n);
+    // the explorer logs this maze came with (the same on every screen: from the maze plan)
+    const plan = this.g.world.def.br, at = i => BR.border + i * BR.cell;
+    (plan && plan.logs || []).forEach((l, i) => {
+      const nx = -l.wx, nz = -l.wz;
+      let fx = at(l.x) + 2.25, fz = at(l.z) + 2.25;
+      if (l.wx < 0) fx = l.x === 0 ? at(0) : at(l.x) + 0.5;
+      if (l.wx > 0) fx = at(l.x + 1);
+      if (l.wz < 0) fz = l.z === 0 ? at(0) : at(l.z) + 0.5;
+      if (l.wz > 0) fz = at(l.z + 1);
+      const ux = nz, uz = -nx;           // along the wall
+      const L = LOGS[l.k];
+      if (!L) return;
+      this.addNote({ id: -1 - i, wall: true, log: l.k, x: fx + nx * 0.012 + ux * l.off, y: 1.45, z: fz + nz * 0.012 + uz * l.off, nx, nz, text: L.text, name: WHO[l.who % WHO.length], size: 0.42 });
+    });
+  }
 
   addNote(note) {
     if (!note || this.notes.has(note.id)) return;
@@ -329,7 +504,7 @@ export class BackroomsFX {
     if (note.img) { const im = new Image(); im.onload = () => draw(im); im.src = note.img; }
     const light = this.built.lightAt ? Math.max(0.12, Math.min(1.1, this.built.lightAt(note.x, note.z))) : 1;
     const mat = addFlash(new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(light, light, light * 0.96) }));
-    const size = note.wall ? 0.3 : 0.32;
+    const size = note.size || (note.wall ? 0.3 : 0.32);
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat);
     const tilt = (((note.id * 37) % 11) - 5) * 0.03;      // the same slight angle on every screen
     mesh.rotation.order = 'YXZ';
@@ -690,6 +865,7 @@ export class BackroomsFX {
     this.updateDread(dt);
     if (!g.paused) this.hallucinate(dt);
     this.readNote();
+    this.mapStep(dt);
     // people (and it) are only as bright as the place you are in
     if (this.built.lightAt && this.built.dimPeople) {
       let l = this.built.lightAt(g.camera.position.x, g.camera.position.z);

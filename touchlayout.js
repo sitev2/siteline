@@ -3,7 +3,7 @@
 // share of the screen width / height, s = size (1 = normal), o = opacity. Missing = default spot.
 
 const EDITABLE = ['btn-fire', 'btn-fire-left', 'btn-jump', 'btn-reload', 'btn-alt', 'btn-swap', 'btn-use',
-  'btn-buy', 'btn-drop', 'btn-inspect', 'btn-chat', 'btn-light', 'btn-note', 'btn-score', 'btn-menu'];
+  'btn-buy', 'btn-drop', 'btn-inspect', 'btn-chat', 'btn-light', 'btn-note', 'btn-map', 'btn-score', 'btn-menu'];
 
 export function applyTouchLayout(layout) {
   for (const id of EDITABLE) {

@@ -639,6 +639,23 @@ i[data-icon] .ico { vertical-align: 0; }
 #br-static { position: fixed; inset: 0; width: 100%; height: 100%; z-index: 21; pointer-events: none; image-rendering: pixelated; mix-blend-mode: screen; opacity: 0; }
 #br-static.hidden { display: none; }
 #btn-note { width: 44px; height: 44px; right: calc(230px + var(--sar)); top: calc(62px + var(--sat)); font-size: 1rem; border-radius: 10px; }
+#btn-map { width: 44px; height: 44px; right: calc(282px + var(--sar)); top: calc(62px + var(--sat)); font-size: 1rem; border-radius: 10px; }
+#btn-map.on { background: rgba(255,230,140,.4); border-color: #ffe08a; }
+/* the map you draw by walking (brfx.js): a sheet of paper in the middle of the screen */
+#br-map { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%) rotate(-1deg); z-index: 24; pointer-events: none;
+  background: #efe9d8; padding: 10px 10px 6px; border-radius: 3px; box-shadow: 0 10px 40px rgba(0,0,0,.6); display: flex; flex-direction: column; gap: 4px; }
+#br-map.hidden { display: none; }
+/* the ending: everything goes white, then your time (game.js updateCamera) */
+#br-escape { position: fixed; inset: 0; z-index: 23; background: #fbfbf4; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 10px; pointer-events: none; opacity: 0; color: #3b3a33; text-align: center; padding: 20px; }
+#br-escape.hidden { display: none; }
+#br-escape > * { opacity: 0; transition: opacity 1s; }
+#br-escape.words > * { opacity: 1; }
+#br-escape b { font-size: clamp(1.6rem, 5vw, 2.6rem); font-weight: 600; letter-spacing: .02em; }
+#br-escape span { font-size: 1.05rem; }
+#br-escape small { font-size: .85rem; color: #77746a; }
+#br-map-canvas { width: min(70vh, 86vw); aspect-ratio: 1; }
+#br-map-tip { color: #5a5444; font-size: .72rem; text-align: center; }
 
 /* phones held sideways: drawing on the left, writing and buttons on the right */
 .note-panel { grid-template-areas: "head" "canvas" "text" "b1" "b2" "msg"; }
