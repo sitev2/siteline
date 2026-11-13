@@ -198,7 +198,10 @@ export class MonsterBrain {
     p.yaw += angTo(p.yaw, Math.atan2(-(d.cx - p.x), -(d.cz - p.z))) * Math.min(1, dt * 8);
     this.move(null, 0, dt);
     const side = Math.sign((p.x - d.cx) * d.nx + (p.z - d.cz) * d.nz) || 1;
-    if (now >= k.next) { k.next = now + 0.75; this.s.broadcast({ t: 'doorKick', i: k.i, swing: -side }); }
+    if (now >= k.next) {
+      k.next = now + 0.75; this.s.broadcast({ t: 'doorKick', i: k.i, swing: -side });
+      const L = this.s.bots.get('listener'); if (L) L.hearNoise(d.cx, d.cz, LISTENER.hearDoor);      // (the Listener hears every kick)
+    }
     if (now >= k.until) { this.kicking = null; this.path = null; this.s.breakDoor(k.i, p); }
   }
 
@@ -618,6 +621,103 @@ export class MonsterBrain {
       if (w.cellSpans(Math.floor(x / 0.5), Math.floor(z / 0.5)).some(sp => sp.m === '_door')) return false;     // a shut door
     }
     return true;
+  }
+}
+
+// The second creature, the Listener (an option when the game is made, owner's pick). It is blind: it finds
+// you only by what it hears. Sprinting it hears from far off (through walls), walking only close by, and
+// doors and the other monster's kicks too. Stand still and it can walk right past you. It kills on
+// contact, can't open or kick doors (it goes round), and clicks as it moves, so you can hear it coming.
+export const LISTENER = {
+  wander: 1.4,       // m/s drifting about
+  rush: 4.2,         // m/s going for a sound: just slower than your sprint (4.5), so running away works… but it hears that
+  reach: 1.0,        // m: takes you this close
+  hearRun: 22,       // m: hears sprinting this far, through walls
+  hearWalk: 4,       // m: hears walking this close
+  hearDoor: 18,      // m: doors opening, shutting or being kicked in
+  wake: 35,          // s before it starts moving
+};
+export class ListenerBrain extends MonsterBrain {
+  constructor(server, p) {
+    super(server, p);
+    // it can't open doors, and it doesn't kick them either: a shut door is a wall to it
+    this.doorCost = (i) => (this.doorOf[i] >= 0 && !this.world.doors[this.doorOf[i]].open ? Infinity : 0);
+    this.prev = new Map();          // player id → { x, z, sp } (how fast each is moving, smoothed)
+    this.heard = null;
+  }
+
+  update(dt, now) {
+    this.lastNow = now;
+    this.lstep(dt, now);
+    const sp = Math.hypot(this.vel.x, this.vel.z);
+    const mode = now < (this.grabUntil || 0) ? 'grab' : now < this.pauseUntil ? 'listen' : sp < 0.3 ? 'idle' : this.state === 'rush' ? 'run' : 'walk';
+    this.p.w = `m:${mode}:1`;
+    this.p.use = this.state === 'rush';
+  }
+
+  // a door (or a kick) somewhere: if it's near enough, go there
+  hearNoise(x, z, range) {
+    if (this.state === 'wait' || Math.hypot(x - this.p.x, z - this.p.z) > Math.max(range, LISTENER.hearDoor)) return;
+    this.goTo(x, z);
+  }
+  goTo(x, z) {
+    const h = this.heard;
+    if (h && Math.hypot(h.x - x, h.z - z) < 1.5 && this.state === 'rush') { h.x = x; h.z = z; return; }
+    this.heard = { x, z };
+    this.state = 'rush'; this.path = null; this.pauseUntil = 0;
+  }
+
+  lstep(dt, now) {
+    const p = this.p;
+    if (this.started == null) this.started = now;
+    if (now - this.started < LISTENER.wake) { this.move(null, 0, dt); return; }
+    if (this.state === 'wait') this.state = 'wander';
+    // listening: who is making a sound, and how loud (sprinting far, walking close)
+    let best = null, bestD = Infinity;
+    for (const q of this.humans()) {
+      const o = this.prev.get(q.id);
+      const raw = o ? Math.hypot(q.x - o.x, q.z - o.z) / Math.max(dt, 1e-3) : 0;
+      const sp = o ? o.sp + (Math.min(raw, 9) - o.sp) * Math.min(1, dt * 6) : 0;
+      this.prev.set(q.id, { x: q.x, z: q.z, sp });
+      const d = Math.hypot(q.x - p.x, q.z - p.z);
+      const loud = sp > RUN_SPEED ? LISTENER.hearRun : sp > 0.6 ? LISTENER.hearWalk : 0;
+      if (d < loud && d < bestD) { best = q; bestD = d; }
+    }
+    if (best) this.goTo(best.x, best.z);
+    if (now < this.pauseUntil) { this.move(null, 0, dt); this.tryTake(now); return; }
+    if (this.state === 'rush' && this.heard) {
+      const dir = this.navigate({ x: this.heard.x, y: 0, z: this.heard.z }, now);
+      if (!dir) {
+        // there: it stops, head cocked, and listens
+        this.state = 'wander'; this.heard = null; this.goal = null;
+        this.pauseUntil = now + 2 + Math.random() * 2;
+        this.move(null, 0, dt);
+      } else this.move(dir, LISTENER.rush, dt);
+    } else {
+      if (!this.goal || Math.hypot(this.goal.x - p.x, this.goal.z - p.z) < 0.8) {
+        if (this.goal && Math.random() < 0.5) this.pauseUntil = now + 1.5 + Math.random() * 2.5;
+        const i = this.nav.randomNode((x, y, z) => y < 0.1 && Math.hypot(x - p.x, z - p.z) > 6 && Math.hypot(x - p.x, z - p.z) < 22);
+        this.goal = i >= 0 ? { x: this.nav.x[i], y: 0, z: this.nav.z[i] } : null;
+        this.path = null;
+      }
+      const dir = this.goal && this.navigate(this.goal, now);
+      if (this.goal && !dir) this.goal = null;
+      this.move(dir, LISTENER.wander, dt);
+    }
+    this.tryTake(now);
+  }
+
+  tryTake(now) {
+    const p = this.p;
+    for (const q of this.humans()) {
+      if (Math.hypot(q.x - p.x, q.z - p.z) < LISTENER.reach && Math.abs(q.y - p.y) < 1.6) {
+        p.yaw = Math.atan2(-(q.x - p.x), -(q.z - p.z));
+        this.s.listenerKill(p, q);
+        this.grabUntil = now + 0.7; this.pauseUntil = now + 3;
+        this.state = 'wander'; this.heard = null; this.goal = null; this.path = null;
+        return;
+      }
+    }
   }
 }
 

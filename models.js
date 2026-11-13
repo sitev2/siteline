@@ -1314,12 +1314,14 @@ function glowTexture() {
   return glowTex;
 }
 
-export function makeMonsterModel() {
+export function makeMonsterModel(opts = {}) {
   // a shadow more than a body: matte black that takes almost no light, and two small eyes that glow in the
-  // dark (game.js turns them up when it stands somewhere dark or in a flashlight: setGlow)
-  const black = new THREE.MeshStandardMaterial({ color: '#030304', roughness: 0.96, metalness: 0.0 });
-  const joint = new THREE.MeshStandardMaterial({ color: '#08080a', roughness: 0.9, metalness: 0.05 });
-  const cable = new THREE.MeshStandardMaterial({ color: '#020203', roughness: 0.95, metalness: 0.0 });
+  // dark (game.js turns them up when it stands somewhere dark or in a flashlight: setGlow).
+  // opts.blind: the second creature (the Listener): the same long frame, but pale as old bone and with no eyes
+  const blind = !!opts.blind;
+  const black = new THREE.MeshStandardMaterial({ color: blind ? '#a9a395' : '#030304', roughness: blind ? 0.85 : 0.96, metalness: 0.0 });
+  const joint = new THREE.MeshStandardMaterial({ color: blind ? '#8d877a' : '#08080a', roughness: 0.9, metalness: 0.05 });
+  const cable = new THREE.MeshStandardMaterial({ color: blind ? '#6f6a60' : '#020203', roughness: 0.95, metalness: 0.0 });
   const eye = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.5, 0.52, 0.58) });
   const rod = (len, r0, r1 = r0) => { const g = new THREE.CylinderGeometry(r1, r0, len, 8); g.translate(0, -len / 2, 0); return g; };   // hangs down from its top
   const ball = r => new THREE.SphereGeometry(r, 10, 8);
@@ -1381,7 +1383,7 @@ export function makeMonsterModel() {
   // two small eyes, set a little unevenly, each with a soft glow round it
   const halos = [];
   const haloMat = new THREE.SpriteMaterial({ map: glowTexture(), color: new THREE.Color(0.75, 0.82, 1), transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
-  for (const [x, y, r] of [[0.026, 0.125, 0.0115], [-0.024, 0.118, 0.01]]) {
+  for (const [x, y, r] of blind ? [] : [[0.026, 0.125, 0.0115], [-0.024, 0.118, 0.01]]) {
     add(head, ball(r), eye, x, y, -0.064);
     const h = new THREE.Sprite(haloMat); h.position.set(x, y, -0.075); h.scale.setScalar(0.13); head.add(h); halos.push(h);
   }

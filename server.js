@@ -5,7 +5,7 @@ import { World, CELL, EYE, blastField, blastDamage } from './world.js';
 import { MAPS, resolveMap, mapsFor, isDmMap, dmVariant } from './maps.js';
 import { RULES } from './config.js';
 import { NavGrid, BotBrain, BOT_NAMES } from './bots.js';
-import { MonsterBrain, outerCorners, SKIN_CHANCE } from './monster.js';
+import { MonsterBrain, ListenerBrain, outerCorners, SKIN_CHANCE } from './monster.js';
 import { BR_LEVELS, brLevel, brVariant } from './brmap.js';
 import { cleanChat, CHAT_LIMIT } from './filter.js';
 import {
@@ -258,6 +258,7 @@ export class Server {
         if (msg.mode === 'wingman' || msg.mode === 'dm' || msg.mode === 'br') this.settings.mode = msg.mode;
         if (typeof msg.night === 'boolean') this.settings.night = msg.night;
         if (BR_LEVELS[msg.level]) this.settings.level = msg.level;
+        if (typeof msg.listener === 'boolean') this.settings.listener = msg.listener;     // the Backrooms' second creature (option)
         if (MAPS[msg.map]) this.settings.map = msg.map;
         this.broadcastRoster();
         return;
@@ -826,6 +827,7 @@ export class Server {
     if (cfg.kind === 'br') {
       this.settings.mode = 'br';
       this.settings.level = brLevel(cfg.level);
+      this.settings.listener = !!cfg.listener;
       this.startBackrooms();
       return;
     }
@@ -974,6 +976,18 @@ export class Server {
     };
     this.players.set(mp.id, mp);
     this.bots.set(mp.id, new MonsterBrain(this, mp));     // (its walking grid is made with every door open)
+    // the second creature (an option when the game is made): blind, it hunts by sound. It starts far from
+    // the players and from the other one.
+    if (this.settings.listener) {
+      const nav = this.navGrid(), s0 = this.world.spawns.atk[0];
+      let i = nav.randomNode((x, y, z) => y < 0.1 && Math.hypot(x - s0.x, z - s0.z) > 45 && Math.hypot(x - m.x, z - m.z) > 20);
+      if (i < 0) i = nav.randomNode((x, y, z) => y < 0.1 && Math.hypot(x - s0.x, z - s0.z) > 25);
+      if (i >= 0) {
+        const lp = { ...mp, id: 'listener', name: 'The Listener', x: nav.x[i], z: nav.z[i], inv: { primary: null, secondary: null }, ammo: {} };
+        this.players.set(lp.id, lp);
+        this.bots.set(lp.id, new ListenerBrain(this, lp));
+      }
+    }
     // then the doors that start shut are shut
     this.world.doors.forEach((d, i) => this.world.setDoor(i, d.open));
     this.doorAt = this.world.doors.map(() => 0);
@@ -1060,6 +1074,8 @@ export class Server {
     // it hears doors
     const m = this.bots.get('monster');
     if (m && by && !by.bot) m.hearNoise(d.cx, d.cz, 14);
+    const L = this.bots.get('listener');
+    if (L && by && !by.bot) L.hearNoise(d.cx, d.cz, 18);
     return true;
   }
 
@@ -1165,6 +1181,14 @@ export class Server {
     if (fate) brain.carry(q, fate);
   }
 
+  // the Listener found someone by sound: an ordinary death (no skin, no carrying off)
+  listenerKill(m, q) {
+    if (!q.alive || this.phase !== 'br') return;
+    q.brDeath = 'listener';
+    q.hp = 0;
+    this.kill(q, m, 'listener', false, [m.x, m.y + 1.4, m.z], 'chest');
+  }
+
   // it changes back out of the skin it was wearing: everyone sees it happen, and learns who it was
   revealSkin(m, id) {
     if (!this.brSkin) return;
@@ -1193,8 +1217,7 @@ export class Server {
 
   brEnd() {
     this.brSkin = null;
-    this.bots.delete('monster');
-    this.players.delete('monster');
+    for (const id of ['monster', 'listener']) { this.bots.delete(id); this.players.delete(id); }
     for (const p of this.humans()) { p.team = p.lobbyTeam === 'def' ? 'def' : 'atk'; p.escaped = false; p.w = STARTER_PISTOL[p.team]; }
     this.br = false;
   }

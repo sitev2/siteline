@@ -209,6 +209,14 @@ The only folder is `server/` (the optional home game server).
     until it sees its next target or 120 s: `{t:'dropBody'}`), 1/6 'hang' (`wallSpot`: nearest wall within 7 m; state 'hangGo',
     1.6 s lifting, `{t:'hangBody', x, z, nx, nz}`: pinned 0.8 m up by two black spikes, head hanging), else left where it fell.
     Bodies are only on screens that saw the kill (not for people who join later).
+  The Listener (owner's pick; an OPTION when the game is made: lobby `#lobby-listener` → `settings.listener`, Practice `#p-listener`):
+  a second creature, `ListenerBrain` in `monster.js` (extends MonsterBrain for walking/routes), player id `'listener'`, team 'monster',
+  name "The Listener", spawned ≥ 45 m from the players and 20 m from It. Blind: it only hears (`LISTENER`: sprinting within 22 m through
+  walls, walking within 4 m, doors / It's kicks within 18 m); rushes to the sound at 4.2 m/s (just under your sprint), stops and listens
+  2–4 s, else drifts at 1.4 m/s; stand still and it walks past you. Can't open or kick doors (doorCost Infinity). Kills on contact
+  (`Server.listenerKill`, weapon 'listener', an ordinary death: "The Listener heard you"). Looks: `makeMonsterModel({ blind: true })`
+  (pale bone colour, no eyes). Sound: dry clicks (`BRS.clicks`) every 1.2–2.6 s, faster when rushing (`monsterSounds`). The main
+  monster's effects (dread, heartbeat, darkness, screech) stay tied to id 'monster' only (`brfx.monster()`).
   Monster peeking: now and then it picks one player (the most alone), finds a spot by an outside corner 7–16 m away where its body is
   hidden but its head leaning out is clearly visible (`findPeek`), leans out (mode `peek:±1`), and leaves 0.5 s after that player
   looks at its head (also if they come within 6 m, see its body, or after 15 s); after a few peeks it may charge them next time.
@@ -241,6 +249,8 @@ The only folder is `server/` (the optional home game server).
 - Menus: no "How to play" screen and no tagline under the logo (owner removed both). Loading screen while a game is built
   (`#game-loading`, `beginGame()` in `main.js`: map name, mode, steps on a bar, fades out after the first frames are drawn); messages
   that arrive meanwhile wait in `app.starting` and are handled in order once the game exists (so your spawn is never lost).
+- `Game.loop` clamps dt to ≥ 0: a first frame stamped before loading finished used to wind the game clock back by seconds (monsters' jerky
+  steps froze until it caught up).
 - Phones: the canvas always fills the page by CSS; `renderer.setSize(w, h, false)` only (never let three.js write a pixel size
   on the canvas, that caused half-black screens after turning the phone). `Game.loop` re-checks the window size 3×/s.
   `stopPageZoom()` in `main.js` blocks pinch / double-tap zoom.
