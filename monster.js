@@ -71,8 +71,8 @@ export class MonsterBrain {
     // what the players' screens should animate: idle, walk, stalk, run, search, listen, grab, peek:±1,
     // skin (wearing someone: the host hides it and shows them instead), reveal (changing back)
     const p = this.p, sp = Math.hypot(this.vel.x, this.vel.z);
-    // a new chase: 1 time in 5 it drops onto all fours for it (owner's choice)
-    if (this.state === 'chase' && this.prevState !== 'chase' && this.prevState !== 'pursue') this.crawl = Math.random() < 0.2;
+    // a new chase: 3 times in 10 it drops onto all fours for it (owner's choice; was 1 in 5)
+    if (this.state === 'chase' && this.prevState !== 'chase' && this.prevState !== 'pursue') this.crawl = Math.random() < 0.3;
     if (this.state !== 'chase' && this.state !== 'pursue') this.crawl = false;
     this.prevState = this.state;
     const mode = this.state === 'skin' ? 'skin' : this.state === 'reveal' ? 'reveal' : this.kicking ? 'kick'

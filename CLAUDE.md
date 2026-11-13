@@ -203,17 +203,18 @@ The only folder is `server/` (the optional home game server).
   Scarier monster (owner picked ALL of these):
   - Looks: a matte black shadow (`makeMonsterModel`), two small eyes with glow sprites; `setGlow(k)` from `brfx.eyeGlow` (dark where it
     stands, or in your flashlight beam = burning; barely there in light; low while it has you face to face).
-  - Lights die round it: `FLASH.uDark` (x, z, radius 7.5, strength) darkens the baked light (`addFlash`) and the ceiling panels
-    (`addDark`) near it, stuttering as it arrives; people/haze dim too. Not while it is hidden in someone's skin.
+  - No darkness round it any more (owner removed it): `FLASH.uDark` strength stays 0 (the shader hook is still there, unused), and the
+    lights no longer dip/flicker when it is near (`dread` no longer dims anything in `brview`'s update).
   - Moves wrong: game.js updates its model like a film with frames missing (`jerkAcc` / `jerkStep` 0.05–0.14 s, sometimes a stall);
     the head sometimes snaps round 1.5–2.2 rad. Ducks through doorways (`duck` from the door it is in, `animateMonster(..., duck)`).
-    A new chase is on all fours 1 time in 5 (`crawl`, mode 'crawl'). Stalking you and you turn round: it freezes mid-step (mode
+    A new chase is on all fours 3 times in 10 (`crawl`, mode 'crawl'; owner's numbers, was 1 in 5). Stalking you and you turn round: it freezes mid-step (mode
     'freeze', game.js holds the pose) until you look away, or 5 s of staring, or you're within 6 m — then it charges.
   - Sound: your heartbeat (`playHeart`) faster/louder within 22 m, even through walls; breathing right behind you when it is
     within 4.5 m behind you (BRS 'breath'); hallucinated breathing and footsteps that copy yours and stop a moment after you stop
     (`follow`); it lures you (`{t:'lure', kind: 'steps'|'door'}` every 30–65 s from somewhere a player 7–24 m away can't see).
-  - Death: caught by it you're lifted face to face (`caughtMe` / `caughtCamera`, it turns to face you), static fills the screen,
-    then black. Screen grain/static (`#br-static`, drawn by brfx) grows within 10 m of it (kept light: the owner asked for less).
+  - Death: caught by it you're lifted face to face (`caughtMe` / `caughtCamera`, it turns to face you), the screen shakes hard and the
+    rumble peaks, then black. No screen grain any more (owner): within 10 m of it the screen shakes (`g.shake`, up to 0.9) and a low
+    distorted rumble swells (`sfx.setDread`, one looping buffer in audio.js), both from `brfx.staticK`.
   - What it does with a body (`Server.monsterKill`, owner's numbers, one roll): 1/3 take the skin (if nobody saw and someone is left;
     otherwise a normal kill), 1/6 'drag' (`brain.carry`: it drags it by the leg — kill message `fate`, its mode string carries the
     body id `m:<mode>:1:<id>`, no ragdoll; `brfx.takeBody/updateBodies` lays the hazmat body on its back behind its right hand —
@@ -225,8 +226,10 @@ The only folder is `server/` (the optional home game server).
   name "The Listener", spawned ≥ 45 m from the players and 20 m from It. Blind: it only hears (`LISTENER`: sprinting within 22 m through
   walls, walking within 4 m, doors / It's kicks within 18 m); rushes to the sound at 4.2 m/s (just under your sprint), stops and listens
   2–4 s, else drifts at 1.4 m/s; stand still and it walks past you. Can't open or kick doors (doorCost Infinity). Kills on contact
-  (`Server.listenerKill`, weapon 'listener', an ordinary death: "The Listener heard you"). Looks: `makeMonsterModel({ blind: true })`
-  (pale bone colour, no eyes). Sound: dry clicks (`BRS.clicks`) every 1.2–2.6 s, faster when rushing (`monsterSounds`). The main
+  (`Server.listenerKill`, weapon 'listener', an ordinary death: "The Listener heard you"). Looks (owner: must look different from It):
+  `makeMonsterModel({ blind: true })` builds its own body on the same joints (so `animateMonster` moves it): squat (root 1.08 × 0.88),
+  fleshy waxy-pale limbs, a lumpy hunched back, a barrel rib cage, a swollen eyeless head with a slit mouth, pores and two big pink ear
+  flaps, padded feet, thick fingers. Sound: dry clicks (`BRS.clicks`) every 1.2–2.6 s, faster when rushing (`monsterSounds`). The main
   monster's effects (dread, heartbeat, darkness, screech) stay tied to id 'monster' only (`brfx.monster()`).
   Monster peeking: now and then it picks one player (the most alone), finds a spot by an outside corner 7–16 m away where its body is
   hidden but its head leaning out is clearly visible (`findPeek`), leans out (mode `peek:±1`), and leaves 0.5 s after that player
@@ -240,8 +243,7 @@ The only folder is `server/` (the optional home game server).
   `brview.js` draws it with baked lighting (per-vertex light from every ceiling panel with 2D wall shadows, soft edges, bounce, AO;
   MeshBasic + vertex colours, so it's cheap), canvas textures (chevron wallpaper, carpet, ceiling tiles, panels, doors, outlets, own EXIT
   sign), pits, skirting boards (the board on the x-facing face runs past outside corners and gets an end cap, so corners close), the wall
-  above doorways, door frames, doors, wall outlets, flicker + "dread" dimming when the monster
-  is near (`group.userData.update`). Hand-held camera sway in `Game.updateCamera` (Backrooms only, more when running or near the
+  above doorways, door frames, doors, wall outlets, flicker (`group.userData.update`; it no longer dims when the monster is near). Hand-held camera sway in `Game.updateCamera` (Backrooms only, more when running or near the
   monster), strength = `settings.camShake` (Settings → General "Camera shake in the Backrooms", default 0.5, 0 = off). Head bobbing while you walk
   (Backrooms only, owner's request): `settings.headBob` (Settings → General "Head bobbing in the Backrooms", default 0.5, 0 = off; synced
   to the account), step-paced rise/fall + sway + a little roll in `Game.updateCamera`. `monster.js` = the monster's brain on the host (player

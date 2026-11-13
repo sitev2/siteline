@@ -144,11 +144,7 @@ export class BackroomsFX {
     this.heartAt = 0; this.breathAt = 0;
     this.follow = null;               // footsteps behind you that copy yours
     this.caught = null;               // caught by it: lifted up to its face
-    this.staticK = 0;
-    this.staticCv = $('br-static');
-    this.staticCv.width = 160; this.staticCv.height = 90;
-    this.staticCtx = this.staticCv.getContext('2d');
-    this.staticImg = this.staticCtx.createImageData(160, 90);
+    this.staticK = 0;                 // how close it is, 0 … 1 (screen shake and the rumble)
     this.shreds = [];                 // bits of torn suit: { mesh, v, spin, still }
     this.hallu = null;                // a hallucination being shown
     this.halluAt = 60 + Math.random() * 40;
@@ -159,7 +155,7 @@ export class BackroomsFX {
 
   destroy() {
     clearTimeout(this.blackTimer);
-    this.staticCv.classList.add('hidden');
+    sfx.setDread(0);
     FLASH.uDark.value.w = 0;
     for (const [el, ev, fn] of this.bound || []) el.removeEventListener(ev, fn);
     $('note-editor').classList.add('hidden');
@@ -716,11 +712,9 @@ export class BackroomsFX {
     const here = !!(mon && mon.alive && mon.model && mon.model.root.visible);
     const mp = here ? mon.model.root.position : null;
     const d = here ? Math.hypot(mp.x - cam.x, mp.z - cam.z) : Infinity;
-    // the lights die round it as it walks (and come back once it has passed), stuttering as it arrives
-    this.darkK += ((here ? 1 : 0) - this.darkK) * Math.min(1, dt * 1.6);
-    if (mp) this.darkPos = { x: mp.x, z: mp.z };
-    const stutter = here && this.darkK < 0.9 && Math.random() < 0.35 ? 0.4 : 1;
-    if (this.darkPos) FLASH.uDark.value.set(this.darkPos.x, this.darkPos.z, 7.5, this.darkK * 0.94 * stutter);
+    // (the lights used to die round it; the owner asked for that darkness to go: it darkens nothing now)
+    this.darkK = 0;
+    FLASH.uDark.value.w = 0;
     if (!me.alive || g.paused) { this.follow = null; }
     // your heart: faster and louder the closer it is (even through walls)
     if (me.alive && d < 22 && g.clock >= this.heartAt) {
@@ -749,22 +743,12 @@ export class BackroomsFX {
       }
       if (g.clock > f.until) this.follow = null;
     }
-    // grain and static on your screen when it is close (and when it has you)
-    // (the owner asked for less of it: weaker, and only within 10 m)
-    const want = this.caught ? (this.caught.t < 1.25 ? 0.42 : 0) : here && me.alive ? Math.max(0, Math.min(1, (10 - d) / 8)) * 0.22 : 0;
+    // when it is close (within 10 m), and when it has you: the screen shakes and a low distorted rumble swells
+    // (the owner swapped the old screen grain/static for these)
+    const want = this.caught ? (this.caught.t < 1.25 ? 1 : 0) : here && me.alive ? Math.max(0, Math.min(1, (10 - d) / 8)) : 0;
     this.staticK += (want - this.staticK) * Math.min(1, dt * 4);
-    const cv = this.staticCv;
-    if (this.staticK > 0.01) {
-      cv.classList.remove('hidden');
-      cv.style.opacity = this.staticK.toFixed(3);
-      const px = this.staticImg.data, roll = Math.random() * 90;
-      for (let i = 0; i < 160 * 90; i++) {
-        const row = Math.floor(i / 160), band = Math.abs(row - roll) < 3 ? 60 : 0;
-        const v = Math.min(255, Math.random() * 190 + band);
-        px[i * 4] = v; px[i * 4 + 1] = v; px[i * 4 + 2] = v * 1.05; px[i * 4 + 3] = 255;
-      }
-      this.staticCtx.putImageData(this.staticImg, 0, 0);
-    } else if (!cv.classList.contains('hidden')) cv.classList.add('hidden');
+    if (this.staticK > 0.01) g.shake = Math.max(g.shake || 0, this.staticK * (this.caught ? 1.8 : 0.9));
+    sfx.setDread(this.caught ? this.staticK : this.staticK * 0.75);
     return { here, d };
   }
 
