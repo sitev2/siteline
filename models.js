@@ -1298,11 +1298,11 @@ export function makeDropModel(kind, weapon) {
   return g;
 }
 
-// ---------- the Backrooms monster (our own design) ----------
-// About 2.75 m tall and very thin: black jointed limbs like tubing and machine parts, cables running
-// down its spine and arms, arms long enough to drag near the floor ending in three long claws, and
-// instead of a face a narrow head with a cluster of small pale lights. It faces -z like the players.
-// a soft round glow (the monster's eyes in the dark)
+// ---------- the Backrooms creatures (our own designs) ----------
+// makeMonsterModel() = It, the main one: the tall stiff machine further down (makeTallModel).
+// makeMonsterModel({ blind: true }) = the Listener: the fleshy body just below. Both face -z like the players
+// and share the same joints (hips, legs, spine, verts, chest, neck, head, arms).
+// a soft round glow (eyes in the dark)
 let glowTex = null;
 function glowTexture() {
   if (glowTex) return glowTex;
@@ -1314,13 +1314,14 @@ function glowTexture() {
   return glowTex;
 }
 
-export function makeMonsterModel(opts = {}) {
-  // a shadow more than a body: matte black that takes almost no light, and two small eyes that glow in the
-  // dark (game.js turns them up when it stands somewhere dark or in a flashlight: setGlow).
-  // opts.blind: the second creature, the Listener: a different animal on the same joints (so it moves with the same
-  // animation): squat and fleshy, waxy pale skin, a lumpy hunched back, a swollen eyeless, earless head with a
+export function makeMonsterModel(opts = {}) { return opts.blind ? makeListenerModel() : makeTallModel(); }
+
+function makeListenerModel() {
+  // The Listener: squat and fleshy, waxy pale skin, a lumpy hunched back, a swollen eyeless, earless head with a
   // slit of a mouth, padded feet (it walks quietly) and long thick fingers. Our own design.
-  const blind = !!opts.blind;
+  // (This function also still holds the parts of the old main monster, a thin black shadow, behind `blind`;
+  // the tall machine replaced that one, so only the blind = true parts are ever built.)
+  const blind = true;
   const black = new THREE.MeshStandardMaterial({ color: blind ? '#c4b7a8' : '#030304', roughness: blind ? 0.6 : 0.96, metalness: 0.0 });
   const joint = new THREE.MeshStandardMaterial({ color: blind ? '#a6958a' : '#08080a', roughness: blind ? 0.65 : 0.9, metalness: 0.05 });
   const cable = new THREE.MeshStandardMaterial({ color: blind ? '#8f7d74' : '#020203', roughness: 0.95, metalness: 0.0 });
@@ -1469,7 +1470,7 @@ export function makeMonsterModel(opts = {}) {
   return { root, hips, legs, spine, verts, chest, neck, head, arms, setGlow, monster: true, phase: 0, t: Math.random() * 10, twitch: 0, twitchT: 0, chase: 0, label: null };
 }
 
-// How it moves. mode (from the host): idle, listen, walk, stalk, search, run, grab, peek (side ±1).
+// How the Listener moves (the tall one has its own: animateTall). mode (from the host): idle, listen, walk, run, grab.
 // Every pose is a set of targets the body eases towards, so it never snaps from one mode to another;
 // on top of that it twitches: the head (and sometimes an arm) jerks to a new angle and holds it.
 const MON_POSE = {
@@ -1488,7 +1489,9 @@ const MON_POSE = {
   drag:   [1.47, 0.16, 0.08, 0.12, -0.2,  0.15, 0.1,  0.2,  0.3,  0.9],   // dragging a body by the leg (the right arm reaches back)
   freeze: [1.5,  0.1,  0.08, 0.12, -0.2,  0.0,  0.05, 0.12, 0.34, 1.0],   // stopped dead (game.js holds the pose it was in)
 };
-export function animateMonster(m, dt, { speed = 0, mode = 'walk', side = 1, duck = 0 } = {}) {
+export function animateMonster(m, dt, o = {}) { return m.tall ? animateTall(m, dt, o) : animateListener(m, dt, o); }
+
+function animateListener(m, dt, { speed = 0, mode = 'walk', side = 1, duck = 0 } = {}) {
   m.t += dt;
   const P = MON_POSE[mode] || MON_POSE.walk;
   if (!m.pose) m.pose = P.slice();
@@ -1598,24 +1601,412 @@ export function animateMonster(m, dt, { speed = 0, mode = 'walk', side = 1, duck
   m.chase = mode === 'run' || mode === 'crawl' ? 1 : 0;
 }
 
-// The arm that comes down out of a hole in the ceiling (or round a corner): very long, black, jointed,
-// three claws. Its root is the shoulder; it hangs along -y. reach(k) 0 = tucked away … 1 = fully out.
+
+// ---------- It: the tall stiff machine (the main Backrooms entity; owner's design brief, our own look) ----------
+// About 2.8 m of old black metal, nearly scraping the 2.9 m ceiling: flat bars, rams, rivets, an open rib cage round
+// a motor drum, loose cables, arms that hang to its knees with four long flat fingers. A face of two plates that no
+// longer line up, a deep socket in each with a pin-point of light far inside (pale; red once it has spotted you),
+// and a hinged jaw of flat slats. Like an animatronic left running for decades.
+let wearTex = null;
+function wearTexture() {
+  if (wearTex) return wearTex;
+  const c = document.createElement('canvas'); c.width = c.height = 256;
+  const g = c.getContext('2d');
+  g.fillStyle = '#8a8a8a'; g.fillRect(0, 0, 256, 256);
+  let s = 7; const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 900; i++) {            // pitting and flaking
+    const v = 90 + Math.floor(rnd() * 110);
+    g.fillStyle = `rgba(${v},${v},${v},${0.12 + rnd() * 0.25})`;
+    const r = 1 + rnd() * 7;
+    g.beginPath(); g.ellipse(rnd() * 256, rnd() * 256, r, r * (0.4 + rnd()), rnd() * 3, 0, 7); g.fill();
+  }
+  for (let i = 0; i < 70; i++) {             // scratches down to brighter metal
+    g.strokeStyle = `rgba(235,235,235,${0.15 + rnd() * 0.35})`; g.lineWidth = 0.5 + rnd();
+    const x = rnd() * 256, y = rnd() * 256, a = rnd() * 6.3, l = 6 + rnd() * 40;
+    g.beginPath(); g.moveTo(x, y); g.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); g.stroke();
+  }
+  for (let i = 0; i < 26; i++) {             // runs of old oil
+    g.fillStyle = `rgba(20,20,20,${0.2 + rnd() * 0.3})`;
+    g.fillRect(rnd() * 256, rnd() * 256, 1 + rnd() * 3, 20 + rnd() * 70);
+  }
+  wearTex = new THREE.CanvasTexture(c); wearTex.wrapS = wearTex.wrapT = THREE.RepeatWrapping; wearTex.repeat.set(2, 2);
+  return wearTex;
+}
+
+function makeTallModel() {
+  const wear = wearTexture();
+  const iron = new THREE.MeshStandardMaterial({ color: '#0b0b0d', map: wear, bumpMap: wear, bumpScale: 0.004, roughness: 0.6, metalness: 0.5 });
+  const plate = new THREE.MeshStandardMaterial({ color: '#070709', map: wear, bumpMap: wear, bumpScale: 0.006, roughness: 0.78, metalness: 0.4 });
+  const worn = new THREE.MeshStandardMaterial({ color: '#131316', roughness: 0.32, metalness: 0.85 });     // rods rubbed bare, still dark
+  const rubber = new THREE.MeshStandardMaterial({ color: '#050506', roughness: 0.95, metalness: 0 });
+  const voidM = new THREE.MeshBasicMaterial({ color: '#000000' });
+  const eyeM = new THREE.MeshBasicMaterial({ color: '#ffffff' });
+
+  const add = (p, geo, m, x = 0, y = 0, z = 0) => { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); p.add(o); return o; };
+  const box = (p, w, h, d, m, x, y, z) => add(p, new THREE.BoxGeometry(w, h, d), m, x, y, z);
+  const hang = (p, w, len, d, m, x = 0, y = 0, z = 0) => { const g = new THREE.BoxGeometry(w, len, d); g.translate(0, -len / 2, 0); return add(p, g, m, x, y, z); };
+  const cyl = (p, r, len, m, x, y, z, axis = 'y', seg = 12, r2 = r) => {
+    const o = add(p, new THREE.CylinderGeometry(r2, r, len, seg), m, x, y, z);
+    if (axis === 'x') o.rotation.z = Math.PI / 2; else if (axis === 'z') o.rotation.x = Math.PI / 2;
+    return o;
+  };
+  const rivet = (p, x, y, z) => add(p, new THREE.SphereGeometry(0.007, 6, 4), worn, x, y, z);
+  const tube = (p, pts, r = 0.011) => add(p, new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts.map(q => new THREE.Vector3(...q))), 14, r, 5), rubber);
+  const grp = (p, x = 0, y = 0, z = 0) => { const g = new THREE.Group(); g.position.set(x, y, z); p.add(g); return g; };
+
+  const root = new THREE.Group();
+  const hips = grp(root, 0, 1.64, 0);
+  box(hips, 0.36, 0.11, 0.15, plate, 0, 0.02, 0);
+  cyl(hips, 0.034, 0.5, worn, 0, 0, 0, 'x');                    // the axle the legs hang on
+  box(hips, 0.1, 0.16, 0.06, iron, 0, -0.04, 0.07);
+  for (const x of [-0.15, -0.05, 0.05, 0.15]) rivet(hips, x, 0.05, -0.076);
+
+  // legs: two flat bars and a ram for a thigh, a box tube and a guard for a shin, a slab for a foot
+  const TH = 0.82, SH = 0.78;
+  const legs = [];
+  for (const sx of [-0.17, 0.17]) {
+    const thigh = grp(hips, sx, 0, 0);
+    cyl(thigh, 0.07, 0.085, iron, 0, 0, 0, 'x', 14);
+    cyl(thigh, 0.018, 0.1, worn, 0, 0, 0, 'x', 6);
+    for (const dx of [-0.036, 0.036]) hang(thigh, 0.012, TH, 0.055, iron, dx, 0, 0);
+    cyl(thigh, 0.026, 0.42, plate, 0, -0.27, 0.0);               // ram body
+    cyl(thigh, 0.012, 0.36, worn, 0, -0.62, 0.0);                // ram rod
+    box(thigh, 0.084, 0.03, 0.06, plate, 0, -0.48, 0);
+    const shin = grp(thigh, 0, -TH, 0);
+    cyl(shin, 0.06, 0.1, iron, 0, 0, 0, 'x', 14);
+    box(shin, 0.085, 0.11, 0.015, plate, 0, 0.0, -0.062);        // knee plate
+    hang(shin, 0.05, SH, 0.05, iron);
+    box(shin, 0.078, 0.44, 0.012, plate, 0, -0.36, -0.036);      // shin guard
+    for (const y of [-0.17, -0.55]) for (const x of [-0.028, 0.028]) rivet(shin, x, y, -0.043);
+    cyl(shin, 0.009, 0.6, worn, 0.0, -0.4, 0.045);               // strut behind
+    const foot = grp(shin, 0, -SH, 0);
+    cyl(foot, 0.04, 0.09, iron, 0, 0, 0, 'x', 10);
+    box(foot, 0.115, 0.04, 0.31, plate, 0, -0.02, -0.07);
+    box(foot, 0.09, 0.035, 0.1, iron, 0, 0.012, -0.16);
+    legs.push({ thigh, shin, foot });
+  }
+
+  // spine: a stack of square blocks on one rod, dead straight
+  const spine = grp(hips, 0, 0.06, 0);
+  const verts = [];
+  let parent = spine;
+  for (let i = 0; i < 6; i++) {
+    const v = grp(parent, 0, i ? 0.14 : 0, 0);
+    if (i % 2) cyl(v, 0.05, 0.06, iron, 0, 0.04, 0, 'y', 8); else box(v, 0.085, 0.07, 0.085, plate, 0, 0.04, 0);
+    cyl(v, 0.017, 0.15, worn, 0, 0.09, 0, 'y', 6);
+    verts.push(v); parent = v;
+  }
+  tube(spine, [[0.05, 0, 0.06], [0.085, 0.3, 0.1], [0.05, 0.62, 0.09], [0.09, 0.84, 0.1]], 0.012);
+  tube(spine, [[-0.04, 0, 0.06], [-0.1, 0.36, 0.09], [-0.05, 0.7, 0.11], [-0.1, 0.84, 0.1]], 0.009);
+
+  // chest: an open cage of flat ribs round a motor drum, a heavy beam for shoulders
+  const chest = grp(parent, 0, 0.16, 0);
+  box(chest, 0.34, 0.44, 0.02, plate, 0, -0.12, 0.11);          // back plate
+  for (const [x, y] of [[-0.14, 0.06], [0.14, 0.06], [-0.14, -0.3], [0.14, -0.3], [0, -0.12]]) rivet(chest, x, y, 0.123);
+  for (let k = 0; k < 5; k++) {
+    const r = add(chest, new THREE.TorusGeometry(0.17 - k * 0.012, 0.011, 4, 16, Math.PI), k === 3 ? plate : iron, 0, 0.04 - k * 0.085, 0.09);
+    r.rotation.set(Math.PI / 2, 0, Math.PI); r.scale.set(1.15, 1.15, 1.6);
+    if (k === 3) { r.rotation.y = 0.14; r.position.x = 0.012; }   // one rib knocked out of line
+  }
+  box(chest, 0.035, 0.42, 0.016, iron, 0, -0.12, -0.118);        // breastbone bar
+  cyl(chest, 0.075, 0.17, plate, 0, -0.1, 0.0, 'x', 14);         // motor drum
+  cyl(chest, 0.05, 0.03, worn, 0.1, -0.1, 0.0, 'x', 10);
+  for (let k = 0; k < 8; k++) { const t = box(chest, 0.02, 0.034, 0.022, iron, -0.1, -0.1 + Math.cos(k * 0.785) * 0.07, Math.sin(k * 0.785) * 0.07); t.rotation.x = -k * 0.785; }
+  cyl(chest, 0.062, 0.02, iron, -0.1, -0.1, 0, 'x', 12);
+  box(chest, 0.78, 0.07, 0.09, plate, 0, 0.08, 0);               // shoulder beam
+  for (const x of [-0.3, -0.18, 0.18, 0.3]) rivet(chest, x, 0.08, -0.047);
+  tube(chest, [[-0.12, 0.04, -0.06], [-0.07, -0.2, -0.16], [0.03, -0.27, -0.15], [0.11, -0.05, -0.06]], 0.008);
+
+  // neck: a ram with two guide rods
+  const neck = grp(chest, 0, 0.1, 0);
+  cyl(neck, 0.034, 0.11, plate, 0, 0.055, 0);
+  cyl(neck, 0.018, 0.22, worn, 0, 0.11, 0);
+  for (const x of [-0.05, 0.05]) cyl(neck, 0.007, 0.2, worn, x, 0.1, 0.01, 'y', 5);
+  tube(neck, [[0.03, -0.02, 0.07], [0.07, 0.1, 0.1], [0.03, 0.2, 0.08]], 0.01);
+
+  // head: a tall narrow case; two face plates out of line, a socket in each, a hinged jaw full of flat slats
+  const head = grp(neck, 0, 0.2, 0);
+  head.rotation.order = 'YXZ';
+  const skull = cyl(head, 0.094, 0.3, plate, 0, 0.17, 0, 'y', 8, 0.078);
+  skull.scale.set(0.88, 1, 1.1); skull.rotation.y = Math.PI / 8;
+  box(head, 0.13, 0.014, 0.15, iron, 0, 0.326, 0);
+  cyl(head, 0.012, 0.02, worn, 0, 0.34, 0, 'y', 6);
+  cyl(head, 0.02, 0.2, worn, 0, 0.2, 0.02, 'x', 8);              // bolt through the temples
+  box(head, 0.085, 0.11, 0.05, iron, 0, 0.14, 0.105);            // gearbox on the back of the skull
+  tube(head, [[0.03, 0.1, 0.12], [0.05, 0.02, 0.13], [0.03, -0.03, 0.09]], 0.009);
+  tube(head, [[-0.03, 0.12, 0.12], [-0.06, 0.03, 0.12], [-0.03, -0.03, 0.09]], 0.007);
+  for (const [sx, dy, rz] of [[-1, 0, 0], [1, -0.016, -0.045]]) {
+    const f = grp(head, sx * 0.041, 0.185 + dy, -0.103);
+    f.rotation.set(0, -sx * 0.2, rz);
+    box(f, 0.078, 0.23, 0.012, iron, 0, 0, 0);
+    for (const [x, y] of [[-0.028, 0.1], [0.028, 0.1], [-0.028, -0.1], [0.028, -0.1]]) rivet(f, x, y, -0.008);
+    const r = sx < 0 ? 0.027 : 0.019, ey = sx < 0 ? 0.045 : 0.052;
+    cyl(f, r, 0.03, voidM, 0, ey, -0.002, 'z', 14);              // the socket
+    const rim = add(f, new THREE.TorusGeometry(r + 0.004, 0.005, 5, 16), worn, 0, ey, -0.008);
+    if (sx > 0) rim.scale.set(1, 1, 1.6);
+    box(f, 0.05, 0.004, 0.004, voidM, 0, -0.03, -0.007);         // vent slots under the eye
+    box(f, 0.05, 0.004, 0.004, voidM, 0, -0.045, -0.007);
+  }
+  const brow = box(head, 0.18, 0.024, 0.03, plate, 0, 0.305, -0.1); brow.rotation.z = 0.035;
+  for (let k = 0; k < 8; k++) box(head, 0.011, 0.034, 0.006, worn, -0.056 + k * 0.016, 0.062, -0.106);   // upper slats
+  const halos = [];
+  const haloMat = new THREE.SpriteMaterial({ map: glowTexture(), color: 0xffffff, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
+  for (const [x, y, r] of [[-0.039, 0.23, 0.0065], [0.043, 0.221, 0.0055]]) {
+    add(head, new THREE.SphereGeometry(r, 8, 6), eyeM, x, y, -0.122);
+    const h = new THREE.Sprite(haloMat); h.position.set(x, y, -0.132); head.add(h); halos.push(h);
+  }
+  const jaw = grp(head, 0, 0.042, 0.0);
+  for (const x of [-0.088, 0.088]) { box(jaw, 0.012, 0.03, 0.13, iron, x, -0.03, -0.05); cyl(jaw, 0.022, 0.014, worn, x, 0, 0, 'x', 10); }
+  box(jaw, 0.188, 0.055, 0.014, iron, 0, -0.045, -0.112);
+  box(jaw, 0.16, 0.012, 0.1, plate, 0, -0.066, -0.06);
+  for (let k = 0; k < 8; k++) box(jaw, 0.011, 0.03, 0.006, worn, -0.056 + k * 0.016, -0.012, -0.106);    // lower slats
+  box(jaw, 0.17, 0.05, 0.004, voidM, 0, -0.03, -0.098);          // the dark behind the slats
+
+  // arms: hang to the knees. Two bars, a ram along the forearm, four long flat fingers.
+  const UA = 0.8, FA = 0.84;
+  const arms = [];
+  for (const sx of [-0.41, 0.41]) {
+    const side = Math.sign(sx);
+    const sh = grp(chest, sx, 0.08, 0);
+    cyl(sh, 0.078, 0.1, iron, 0, 0, 0, 'x', 14);
+    cyl(sh, 0.02, 0.13, worn, 0, 0, 0, 'x', 6);
+    for (const dx of [-0.03, 0.03]) hang(sh, 0.011, UA, 0.048, iron, dx, 0, 0);
+    box(sh, 0.07, 0.028, 0.05, plate, 0, -0.3, 0); box(sh, 0.07, 0.028, 0.05, plate, 0, -0.58, 0);
+    tube(sh, [[0.02 * side, -0.02, 0.04], [0.05 * side, -0.4, 0.06], [0.015 * side, -0.78, 0.04]], 0.009);
+    const el = grp(sh, 0, -UA, 0);
+    cyl(el, 0.052, 0.085, iron, 0, 0, 0, 'x', 12);
+    hang(el, 0.042, FA, 0.042, iron);
+    cyl(el, 0.02, 0.36, plate, 0.0, -0.24, 0.042);
+    cyl(el, 0.009, 0.34, worn, 0.0, -0.56, 0.042);
+    box(el, 0.066, 0.34, 0.011, plate, 0, -0.42, -0.03);
+    for (const y of [-0.28, -0.56]) for (const x of [-0.022, 0.022]) rivet(el, x, y, -0.037);
+    const hand = grp(el, 0, -FA, 0);
+    cyl(hand, 0.03, 0.07, worn, 0, 0, 0, 'x', 8);
+    box(hand, 0.082, 0.085, 0.022, plate, 0, -0.055, 0);
+    const claws = [];
+    for (let k = 0; k < 4; k++) {
+      const f = grp(hand, -0.031 + k * 0.0207, -0.098, 0); f.rotation.z = (k - 1.5) * 0.05;
+      const k1 = grp(f); cyl(k1, 0.009, 0.019, worn, 0, 0, 0, 'x', 6); hang(k1, 0.015, 0.16, 0.008, iron);
+      const k2 = grp(k1, 0, -0.16, 0); cyl(k2, 0.008, 0.018, worn, 0, 0, 0, 'x', 6); hang(k2, 0.013, 0.15 - (k === 3 ? 0.03 : 0), 0.007, iron);
+      claws.push({ k1, k2 });
+    }
+    arms.push({ sh, el, hand, claws, side });
+  }
+  // every joint's fixed parts become one mesh per material (a few hundred parts would be too many for a phone)
+  const groups = []; root.traverse(o => { if (o.isGroup) groups.push(o); });
+  for (const g of groups) mergeStatic(g);
+  root.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  root.scale.setScalar(0.88);            // about 2.8 m: its head nearly scrapes the 2.9 m ceiling
+  const m = { root, hips, legs, spine, verts, chest, neck, head, jaw, arms, TH, SH, tall: true, monster: true, label: null,
+    s: {}, tg: null, t: 0, clock: 0, key: 0, jolt: 0, idleT: 1.5, nt: 0, mode: '', scan: 0, scanDir: 1, glowExt: 0.15, chase: 0, stepHit: false };
+  // game.js: how much its eyes show where it stands (dark / in a flashlight = more). animateTall adds its own
+  // (burning once it has seen you) and the colour.
+  m.setGlow = (k) => { m.glowExt = k; };
+  m.eyes = (k, red) => {
+    const v = 0.3 + 0.7 * k;
+    eyeM.color.setRGB(v, v * 0.93 * (1 - red * 0.95), v * 0.86 * (1 - red * 0.97));
+    haloMat.color.setRGB(1, 1 - red * 0.9, 1 - red * 0.93);
+    haloMat.opacity = Math.min(1, k * 0.8);
+    for (const h of halos) h.scale.setScalar(0.02 + (0.045 + 0.03 * red) * k);
+  };
+  m.eyes(0.15, 0);
+  return m;
+}
+
+// How the tall one moves. Nothing eases: every joint is a motor that turns at one fixed speed to its next position
+// and stops dead, and positions only change on a tick of its step clock, so it moves in sudden jumps with
+// stillness between.
+// o.mode (from the host, in its weapon field 'm:<mode>:<n>[:<body id>]'): idle, listen, walk, stalk, search, run,
+//   notice (it has just seen you: body frozen, head snapped onto you, a 1 s stare), peek (o.side ±1), kick, freeze
+//   (game.js passes dt 0), and catching someone with its right arm: seize (o.side 1 = by the leg, bent right down) ->
+//   hoist -> slam / slamWall (o.side 0…3 = the key frame: swung up, halfway, the hit, the settle) -> drag / hang.
+// o.lookYaw: where its target is, as an angle from straight ahead (the host sends it in the pitch field).
+const TALL_WALK_KEYS = 3;          // positions a walking step (owner asked for 3; 2 = the first version)
+function animateTall(m, dt, o = {}) {
+  const mode = o.mode === 'grab' ? 'seize' : o.mode || 'walk', speed = o.speed || 0, n = Number(o.side) || 0;
+  m.t += dt;
+  if (mode !== m.mode) { m.mode = mode; m.nt = 0; m.idleT = 0.6; }
+  m.nt += dt;
+  const sv = (key, target, rate) => {
+    let c = m.s[key]; if (c === undefined) c = target;
+    const d = target - c, st = rate * dt;
+    c += Math.abs(d) <= st ? d : Math.sign(d) * st;
+    m.s[key] = c; return c;
+  };
+  if (!m.tg) m.tg = { th: [0, 0], shn: [0, 0], arm: [0, 0], el: [0, 0], k1: 0.1, k2: 0.25, lean: 0, tilt: 0, yaw: 0, pitch: 0, roll: 0, jaw: 0.05, glow: 0.15, twist: 0, armZ: 0, grip: 0 };
+  const g = m.tg;
+  const run = mode === 'run', frozen = mode === 'notice' || mode === 'freeze';
+  const catching = mode === 'seize' || mode === 'hoist' || mode === 'slam' || mode === 'slamWall' || mode === 'drag' || mode === 'hang';
+  const gait = mode === 'walk' || mode === 'search' || mode === 'stalk' || mode === 'drag' || run;
+  const moving = gait && speed > 0.35;
+  const per = run ? 2 : TALL_WALK_KEYS;
+  const A = run ? 0.57 : mode === 'search' ? 0.44 : mode === 'stalk' ? 0.36 : 0.4;
+
+  if (moving) {
+    // the step clock keeps time with how fast it is really going, so its feet don't slide
+    m.clock += dt * per * Math.min(speed, 6.5) / (2.46 * Math.sin(A));
+    const k = Math.floor(m.clock);
+    if (k !== m.key) { m.key = k; m.jolt = 1; if (((k % per) + per) % per === 0) m.stepHit = true; }
+  }
+  m.jolt *= Math.exp(-dt * 15);
+
+  if (!frozen) {
+    if (moving) {
+      const nn = per * 2, k = ((m.key % nn) + nn) % nn, lead = k < per ? 0 : 1, back = 1 - lead, ph = k % per;
+      if (ph === 0) {                 // a foot comes down in front
+        g.th[lead] = A; g.shn[lead] = -0.03;
+        g.th[back] = -A * 0.85; g.shn[back] = run ? -0.5 : -0.16;
+        g.tilt = (lead ? -1 : 1) * (run ? 0.045 : 0.03);
+      } else if (per === 3 && ph === 1) {      // the back foot peels up off the floor behind it
+        g.th[lead] = A * 0.5; g.shn[lead] = 0; g.th[back] = -0.1; g.shn[back] = -0.8;
+      } else {                        // the back leg is pulled up and through
+        g.th[lead] = 0.02; g.shn[lead] = 0;
+        g.th[back] = run ? 0.98 : A; g.shn[back] = run ? -1.5 : -0.95;
+      }
+      // chasing: both arms out in front, elbows a bit bent and not quite the same
+      g.arm[0] = g.arm[1] = run ? 1.58 : mode === 'stalk' ? 0.55 : 0; g.el[0] = run ? 0.52 : mode === 'stalk' ? 0.3 : 0; g.el[1] = run ? 0.38 : mode === 'stalk' ? 0.2 : 0;
+      if (!run && mode !== 'stalk') { g.arm[lead] = -0.05; g.arm[back] = 0.05; }
+    } else {
+      g.th[0] = g.th[1] = 0; g.shn[0] = g.shn[1] = 0; g.tilt = 0;
+      g.arm[0] = g.arm[1] = 0; g.el[0] = g.el[1] = 0;
+    }
+    g.lean = run ? -0.3 : mode === 'stalk' ? -0.14 : 0;
+    g.k1 = run ? -0.3 : mode === 'stalk' ? -0.2 : 0.1;
+    g.k2 = run ? 0.6 : mode === 'stalk' ? 0.5 : 0.25;
+    g.twist = 0; g.armZ = 0; g.grip = 0;
+    if (mode === 'kick') {
+      // kicking a door in: one leg drawn up, driven straight out, set down; every 0.75 s (the host's rhythm)
+      const c = (m.t % 0.75) / 0.75;
+      g.th[1] = c < 0.4 ? 0.95 : c < 0.62 ? 1.2 : 0.1; g.shn[1] = c < 0.4 ? -1.55 : c < 0.62 ? -0.05 : -0.1;
+      g.lean = c >= 0.4 && c < 0.62 ? 0.14 : 0.04;
+    }
+    // catching someone: its right arm does the work
+    if (catching) {
+      g.grip = mode === 'seize' ? 0 : 1;
+      if (mode === 'seize') {
+        const low = n === 1;                 // by the leg: it has to fold right down to reach
+        g.lean = low ? -0.95 : -0.3; g.arm[1] = low ? 0.35 : 1.2; g.el[1] = 0.15; g.arm[0] = -0.2;
+        if (low) { g.th[0] = g.th[1] = 0.5; g.shn[0] = g.shn[1] = -1.0; }
+      } else if (mode === 'hoist') { g.lean = 0.06; g.arm[1] = 1.5; g.el[1] = 0.32; g.arm[0] = 0; }      // held up at arm's length, looked at
+      else if (mode === 'slam') {
+        // four positions a slam: swung up high, halfway down, the hit, the settle.   lean  arm   elbow thigh shin
+        const K = [[0.12, 1.55, 0.2, 0, 0], [-0.35, 1.0, 0.1, 0.15, -0.3], [-0.8, 0.25, 0.1, 0.45, -0.9], [-0.68, 0.42, 0.22, 0.32, -0.65]][n] || [0, 1.5, 0.3, 0, 0];
+        g.lean = K[0]; g.arm[1] = K[1]; g.el[1] = K[2]; g.th[0] = g.th[1] = K[3]; g.shn[0] = g.shn[1] = K[4]; g.arm[0] = n ? -0.25 : 0.1;
+      } else if (mode === 'slamWall') {
+        // turned away from the wall, halfway round, the hit, the settle.            twist arm   elbow out  lean
+        const K = [[0.75, 1.45, 0.3, 0, 0], [-0.15, 1.5, 0.15, 0.1, -0.05], [-1.05, 1.5, 0.05, 0.2, -0.1], [-0.9, 1.4, 0.22, 0.15, -0.05]][n] || [0, 1.5, 0.3, 0, 0];
+        g.twist = K[0]; g.arm[1] = K[1]; g.el[1] = K[2]; g.armZ = K[3]; g.lean = K[4];
+      } else if (mode === 'hang') { g.lean = 0.05; g.arm[1] = 1.95; g.el[1] = 0.25; g.arm[0] = 0.9; g.el[0] = 0.5; }   // lifting the body up against the wall
+      else { g.lean = -0.08; g.arm[1] = -0.55; g.el[1] = 0; }                                              // drag: the arm hangs back, its hand shut on you
+    }
+  }
+
+  // head, jaw, eyes
+  const lookYaw = Math.max(-2.9, Math.min(2.9, o.lookYaw || 0));
+  let headRate = 9, red = 0;
+  if (mode === 'notice' || run) {
+    // the snap: straight onto you, as fast as the motor goes; then it holds perfectly still
+    g.yaw = lookYaw; g.pitch = -0.26; headRate = 42; red = 1; g.glow = 1;
+    if (mode === 'notice') { g.roll = m.nt > 0.5 ? 0.3 : 0; g.jaw = m.nt > 0.8 ? 0.5 : 0.05; }   // one click of the head to the side, then the jaw drops
+    else { g.roll = 0.3; g.jaw = 0.5; }
+  } else if (catching) {
+    headRate = 30; g.glow = mode === 'drag' ? 0.15 : 1; red = mode === 'drag' ? 0 : 1;
+    g.jaw = mode === 'seize' || mode === 'slam' || mode === 'slamWall' ? 0.85 : mode === 'drag' ? 0.05 : 0.35;
+    if (mode === 'drag') { g.yaw = 0; g.pitch = 0; g.roll = 0; }
+    else if (mode === 'hoist' || mode === 'hang' || ((mode === 'slam' || mode === 'slamWall') && !n)) { g.yaw = -0.4; g.pitch = 0.05; g.roll = m.nt > 0.3 ? 0.3 : 0; }   // it turns its head to look at what it's holding
+    else { g.yaw = mode === 'slamWall' ? -0.5 : -0.2; g.pitch = mode === 'slamWall' ? -0.1 : -0.55; g.roll = 0; }
+  } else if (mode === 'search') {
+    m.idleT -= dt;
+    if (m.idleT <= 0) { m.idleT = 0.55; m.scan += m.scanDir; if (Math.abs(m.scan) >= 2) m.scanDir = -m.scanDir; }
+    g.yaw = m.scan * 0.5; g.pitch = -0.12; g.roll = 0; g.jaw = 0.05; g.glow = 0.3;
+  } else if (mode === 'freeze') {
+    g.glow = 0.6;
+  } else {
+    g.glow = mode === 'stalk' || mode === 'peek' ? 0.5 : 0.15; g.jaw = mode === 'kick' ? 0.4 : 0.05; g.pitch = mode === 'stalk' ? -0.2 : 0;
+    if (mode === 'walk' || mode === 'stalk' || mode === 'kick') { g.yaw = 0; g.roll = 0; }
+    else if (mode === 'peek') { g.yaw = 0; g.roll = 0; }
+    else {
+      // standing: nothing moves at all (it doesn't breathe), then one part clicks to a new position.
+      // listening: its head is cocked hard over, and clicks round to another angle more often
+      m.idleT -= dt;
+      if (mode === 'listen' && !g.roll) g.roll = Math.random() < 0.5 ? -0.42 : 0.42;
+      if (m.idleT <= 0) {
+        m.idleT = mode === 'listen' ? 0.7 + Math.random() * 0.9 : 1.6 + Math.random() * 2.8;
+        const r = Math.random();
+        if (r < 0.55) g.yaw = (Math.floor(Math.random() * 5) - 2) * 0.38;
+        else if (r < 0.8) g.roll = mode === 'listen' ? -g.roll : (Math.floor(Math.random() * 3) - 1) * 0.26;
+        else { m.flickT = 0.16; m.flickI = Math.floor(Math.random() * 8); }
+      }
+    }
+  }
+  m.flickT = Math.max(0, (m.flickT || 0) - dt);
+
+  // drive the motors
+  const legRate = run ? 17 : mode === 'kick' ? 16 : catching && mode !== 'drag' ? 12 : 7.5 + speed;
+  // taller than the doors (2.2 m): it folds at the knees and tips forward to get through
+  const dk = sv('duck', (o.duck || 0) > 0.3 ? 1 : 0, 5);
+  const pk = sv('peek', mode === 'peek' ? (n < 0 ? -1 : 1) : 0, 3.2);        // leaning out round a corner
+  const th = [sv('th0', g.th[0], legRate) + 0.75 * dk, sv('th1', g.th[1], legRate) + 0.75 * dk];
+  const sn = [sv('sn0', g.shn[0], legRate * 1.8) - 1.35 * dk, sv('sn1', g.shn[1], legRate * 1.8) - 1.35 * dk];
+  let reach = 0;
+  m.legs.forEach((L, i) => {
+    L.thigh.rotation.x = th[i]; L.shin.rotation.x = sn[i]; L.foot.rotation.x = -(th[i] + sn[i]);
+    L.thigh.rotation.z = -pk * 0.18;
+    reach = Math.max(reach, m.TH * Math.cos(th[i]) + m.SH * Math.cos(th[i] + sn[i]));
+  });
+  m.hips.position.y = reach + 0.04;                                  // the lower foot is always on the floor
+  m.hips.rotation.z = sv('tilt', g.tilt, 1.2) + pk * 0.42;
+  const lean = sv('lean', g.lean, mode === 'slam' || mode === 'seize' ? 11 : 3.5) - 0.32 * dk;
+  m.spine.rotation.x = lean;
+  m.spine.rotation.y = sv('twist', g.twist, mode === 'slamWall' ? (n ? 18 : 6) : 4);
+  const grip = sv('grip', g.grip, 25), armZ = sv('armZ', g.armZ, 10);
+  m.chest.rotation.x = m.jolt * 0.035 * (moving ? 1 : 0);            // every step shudders up through it
+  m.arms.forEach((a, i) => {
+    a.sh.rotation.x = sv('arm' + i, g.arm[i], mode === 'slam' || mode === 'slamWall' ? 18 : mode === 'seize' || mode === 'hoist' || run ? 14 : 5) - lean * (run ? 0 : 0.6);
+    a.sh.rotation.z = a.side * (0.045 + (i === 1 ? armZ : 0)) + pk * 0.2;
+    a.el.rotation.x = sv('el' + i, g.el[i], 8) + m.jolt * 0.03 * (moving ? 1 : 0);
+    const gr = i === 1 ? grip : 0;
+    const k1 = sv('k1', g.k1, 9) * (1 - gr) + 0.35 * gr, k2 = sv('k2', g.k2, 9) * (1 - gr) + 1.3 * gr;
+    a.claws.forEach((f, k) => {
+      const fl = m.flickT > 0 && m.flickI === i * 4 + k ? 0.85 : 0;
+      f.k1.rotation.x = k1 + fl + (k - 1.5) * 0.03; f.k2.rotation.x = k2 + fl * 0.6;
+    });
+  });
+  m.head.rotation.y = sv('yaw', g.yaw, headRate);
+  m.head.rotation.x = sv('pitch', g.pitch, headRate) - lean - m.jolt * 0.05 * (moving ? 1 : 0);
+  m.head.rotation.z = sv('roll', g.roll, 7) - pk * 0.6;
+  m.jaw.rotation.x = -sv('jaw', g.jaw, 6) - (run ? Math.max(0, m.jolt - 0.5) * 0.25 : 0);     // the jaw rattles when it runs
+  const rd = sv('red', red, 14);
+  m.eyes(Math.max(sv('glow', g.glow, 8) * (rd > 0.5 || g.glow > 0.2 ? 1 : 0), m.glowExt), rd);
+  m.chase = run ? 1 : 0;
+}
+
+// The arm that comes down out of a hole in the ceiling (or round a corner): the tall one's kind of arm, only
+// longer: black worn metal, two flat bars for an upper arm, a box tube and a ram for a forearm, three long flat
+// fingers. Its root is the shoulder; it hangs along -y. (brfx.js bends upper / lower and opens the claws.)
 export function makeSnatchArm() {
-  const black = new THREE.MeshStandardMaterial({ color: '#0a0a0c', roughness: 0.35, metalness: 0.45 });
-  const joint = new THREE.MeshStandardMaterial({ color: '#1b1b20', roughness: 0.45, metalness: 0.6 });
-  const rod = (len, r0, r1) => { const g = new THREE.CylinderGeometry(r1, r0, len, 8); g.translate(0, -len / 2, 0); return g; };
+  const wear = wearTexture();
+  const black = new THREE.MeshStandardMaterial({ color: '#0b0b0d', map: wear, bumpMap: wear, bumpScale: 0.004, roughness: 0.6, metalness: 0.5 });
+  const joint = new THREE.MeshStandardMaterial({ color: '#131316', roughness: 0.32, metalness: 0.85 });
+  const bar = (w, len, d) => { const g = new THREE.BoxGeometry(w, len, d); g.translate(0, -len / 2, 0); return g; };
+  const hinge = (r, w) => { const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, w, 12), joint); o.rotation.z = Math.PI / 2; return o; };
+  const at = (o, x, y, z) => { o.position.set(x, y, z); return o; };
   const root = new THREE.Group();
   const upper = new THREE.Group(); root.add(upper);
-  upper.add(new THREE.Mesh(new THREE.SphereGeometry(0.05, 10, 8), joint));
-  upper.add(new THREE.Mesh(rod(1.0, 0.026, 0.04), black));
+  upper.add(hinge(0.06, 0.1));
+  for (const dx of [-0.03, 0.03]) upper.add(at(new THREE.Mesh(bar(0.011, 1.0, 0.048), black), dx, 0, 0));
+  for (const y of [-0.35, -0.7]) upper.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.028, 0.05), black), 0, y, 0));
   const lower = new THREE.Group(); lower.position.y = -1.0; upper.add(lower);
-  lower.add(new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), joint));
-  lower.add(new THREE.Mesh(rod(0.95, 0.018, 0.03), black));
+  lower.add(hinge(0.048, 0.085));
+  lower.add(new THREE.Mesh(bar(0.04, 0.95, 0.04), black));
+  lower.add(at(new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.019, 0.4, 8), black), 0, -0.26, 0.04));
+  lower.add(at(new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.38, 6), joint), 0, -0.62, 0.04));
   const hand = new THREE.Group(); hand.position.y = -0.95; lower.add(hand);
+  hand.add(hinge(0.028, 0.07));
   const claws = [];
   for (const a of [-0.6, 0, 0.6]) {
     const f = new THREE.Group(); f.rotation.y = a; hand.add(f);
-    const c = new THREE.Mesh(rod(0.26, 0.004, 0.014), black); f.add(c);
+    f.add(new THREE.Mesh(bar(0.015, 0.27, 0.008), black));
     claws.push(f);
   }
   root.traverse(o => { o.frustumCulled = false; });

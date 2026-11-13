@@ -666,13 +666,32 @@ const BRS = {
     for (let k = 0; k < n; k++) { click(x, sr, at, 2200 + Math.random() * 1600, 6, 0.6 + Math.random() * 0.4); noiseHit(x, sr, at, 'bandpass', 3200, 3, 0.006, 0.5); at += 0.06 + Math.random() * 0.07; }
     normalize(x, 0.8);
   }),
+  // the tall one: a metal foot coming down on carpet over concrete
+  clank: () => buf(0.45, (x, sr) => {
+    thump(x, sr, 0, 120, 55, 0.08, 1); noiseHit(x, sr, 0, 'bandpass', 1700 + Math.random() * 500, 2.5, 0.035, 0.5);
+    click(x, sr, 0.003, 820 + Math.random() * 260, 3, 0.7); click(x, sr, 0.012, 2300 + Math.random() * 900, 5, 0.35); click(x, sr, 0.05 + Math.random() * 0.03, 1500, 4, 0.2);
+    normalize(x, 0.8);
+  }),
+  // the motor in its neck: a short rising whine that stops dead
+  servo: () => buf(0.3, (x, sr) => {
+    const n = Math.floor(0.16 * sr);
+    for (let i = 0; i < n; i++) { const t = i / sr, f = 420 + 5200 * t; x[i] += (Math.sign(Math.sin(6.283 * f * t)) * 0.25 + Math.sin(6.283 * f * 2.01 * t) * 0.2) * Math.min(1, i / 200) * (i > n - 80 ? (n - i) / 80 : 1); }
+    click(x, sr, 0.16, 1900, 4, 0.9); thump(x, sr, 0.16, 140, 80, 0.04, 0.5);
+    normalize(x, 0.6);
+  }),
+  // a body slammed down by it: a deep heavy hit, its arm ringing
+  slam: () => buf(0.9, (x, sr) => {
+    thump(x, sr, 0, 78, 34, 0.3, 1); noiseHit(x, sr, 0, 'lowpass', 520, 0.7, 0.1, 0.9);
+    click(x, sr, 0.004, 640, 3, 0.5); click(x, sr, 0.02, 1750 + Math.random() * 400, 5, 0.3);
+    normalize(x, 0.95);
+  }),
   // three knocks on the other side of a wall
   knock: () => buf(1.3, (x, sr) => { for (const at of [0, 0.32, 0.64]) { thump(x, sr, at, 170, 110, 0.07, 1); noiseHit(x, sr, at, 'lowpass', 700, 0.7, 0.03, 0.5); } normalize(x, 0.7); }),
 };
 export function playBR(kind, pos = null, occ = 0, gain = 1) {
   const key = `br:${kind}#${Math.floor(Math.random() * (kind === 'clicks' ? 4 : 2))}`;
   if (!cache.has(key)) cache.set(key, BRS[kind]());
-  play(cache.get(key), { pos, gain, ref: pos ? 2.5 : 1, roll: 1.0, air: 40, occ, wet: kind === 'whisper' ? 0.15 : 0.45, important: kind === 'ceiling' || kind === 'corner' || kind === 'tear' });
+  play(cache.get(key), { pos, gain, ref: pos ? 2.5 : 1, roll: 1.0, air: 40, occ, wet: kind === 'whisper' ? 0.15 : 0.45, important: kind === 'ceiling' || kind === 'corner' || kind === 'slam' || kind === 'servo' });
 }
 
 // close to it: a low, distorted rumble that swells in your head (not in the world), with a sick wavering whine on

@@ -12,16 +12,18 @@ export const MONSTER = {
   search: 3.4,       // m/s going to a noise, or searching where you were last seen
   lunge: 1.12,       // × its chasing speed for the last few metres
   reach: 1.15,       // m: grabs you this close
-  height: 2.75,      // m: how tall it is (for its eyes)
+  height: 2.8,       // m: how tall it is (for its eyes)
 };
 const RUN_SPEED = 3.5;   // m/s: faster than this is sprinting (loud); walking is BR.walk
-export const SKIN_CHANCE = 1 / 3;   // a kill nobody else saw: how often it takes their skin and wears it (owner's choice)
+export const STARE = 1.0;           // s: it has just seen you: its head snaps onto you and it stares this long before it chases (owner's design)
+const STARE_AGAIN = 8;               // s without a chase before it stares again (so losing it for a moment doesn't buy another second)
 export const KICK_TIME = 2;         // s: kicking a shut door in (owner's choice), one kick every 0.75 s
 
 const angTo = (from, to) => { let d = to - from; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
 
 // What it does, in order of what matters most:
-//   chase   — it can see you: straight for you, aiming a little ahead of where you are running
+//   chase   — it can see you: first it stops dead, its head snaps onto you and it stares for a second (STARE);
+//             then straight for you, aiming a little ahead of where you are running
 //   stalk   — it sees you far away and you are looking the other way: it creeps closer quietly,
 //             then charges when you turn round or it is close enough
 //   pursue  — it just lost sight of you: it runs to where you were heading
@@ -43,9 +45,9 @@ export class MonsterBrain {
       const cells = new Set(d.cells);
       for (let i = 0; i < nav.n; i++) if (cells.has(Math.floor(nav.z[i] / 0.5) * w.w + Math.floor(nav.x[i] / 0.5))) this.doorOf[i] = k;
     });
-    // a shut door on a route costs what kicking it in takes (KICK_TIME of running); wearing someone, it won't kick
+    // a shut door on a route costs what kicking it in takes (KICK_TIME of running)
     // (a locked team door, red / heavy / switches, it can't kick in at all: a wall to it until the players open it)
-    this.doorCost = (i) => { const d = this.doorOf[i] >= 0 && w.doors[this.doorOf[i]]; return d && !d.open ? (this.state === 'skin' || d.lock ? Infinity : KICK_TIME * this.chaseSpeed) : 0; };
+    this.doorCost = (i) => { const d = this.doorOf[i] >= 0 && w.doors[this.doorOf[i]]; return d && !d.open ? (d.lock ? Infinity : KICK_TIME * this.chaseSpeed) : 0; };
     this.vel = { x: 0, y: 0, z: 0 };
     this.onGround = true;
     this.state = 'wait';
@@ -68,25 +70,29 @@ export class MonsterBrain {
   update(dt, now) {
     this.lastNow = now;
     this.step(dt, now);
-    // what the players' screens should animate: idle, walk, stalk, run, search, listen, grab, peek:±1,
-    // skin (wearing someone: the host hides it and shows them instead), reveal (changing back)
-    const p = this.p, sp = Math.hypot(this.vel.x, this.vel.z);
-    // a new chase: 3 times in 10 it drops onto all fours for it (owner's choice; was 1 in 5)
-    if (this.state === 'chase' && this.prevState !== 'chase' && this.prevState !== 'pursue') this.crawl = Math.random() < 0.3;
-    if (this.state !== 'chase' && this.state !== 'pursue') this.crawl = false;
-    this.prevState = this.state;
-    const mode = this.state === 'skin' ? 'skin' : this.state === 'reveal' ? 'reveal' : this.kicking ? 'kick'
-      : this.hanging || now < (this.grabUntil || 0) ? 'grab'
-        : this.state === 'peek' ? `peek:${this.peekSide || 1}`
-          : this.state === 'stalk' && this.frozen ? 'freeze'
-            : now < this.pauseUntil ? 'listen'
-              : sp < 0.3 ? 'idle'
-                : this.dragging ? 'drag'
-                  : this.state === 'chase' || this.state === 'pursue' ? (this.crawl ? 'crawl' : 'run')
-                    : this.state === 'stalk' || this.state === 'peekGo' ? 'stalk'
-                      : this.state === 'search' || this.state === 'retreat' ? 'search' : 'walk';
-    // 'm:<mode>[:<side>][:<id of the body it is dragging>]'
-    p.w = `m:${mode}${mode.startsWith('peek') ? '' : ':1'}${this.dragging ? `:${this.dragging.id}` : ''}`;
+    // what the players' screens should animate (models.js animateTall): idle, listen, walk, stalk, search, run,
+    // notice (the stare), peek:±1, kick, freeze, and catching someone: seize / hoist / slam / slamWall / hang / drag
+    const p = this.p, sp = Math.hypot(this.vel.x, this.vel.z), c = this.catching;
+    const staring = now < (this.noticeUntil || 0);
+    if (this.state === 'chase' || this.state === 'pursue') this.chasedAt = now;
+    const mode = c ? c.mode : this.kicking ? 'kick'
+      : this.hanging ? 'hang'
+        : staring ? 'notice'
+          : this.state === 'peek' ? `peek:${this.peekSide || 1}`
+            : this.state === 'stalk' && this.frozen ? 'freeze'
+              : now < this.pauseUntil ? 'listen'
+                : sp < 0.3 ? 'idle'
+                  : this.dragging ? 'drag'
+                    : this.state === 'chase' || this.state === 'pursue' ? 'run'
+                      : this.state === 'stalk' || this.state === 'peekGo' ? 'stalk'
+                        : this.state === 'search' || this.state === 'retreat' ? 'search' : 'walk';
+    // 'm:<mode>:<n>[:<id of the body it is holding>]'   (n: the peek side, or which key frame of a slam)
+    const held = c ? c.id : this.dragging ? this.dragging.id : '';
+    p.w = `m:${mode}${mode.startsWith('peek') ? '' : `:${c ? c.k : 1}`}${held ? `:${held}` : ''}`;
+    // where its head points: at whoever it is staring at or chasing, as an angle from straight ahead
+    // (it has no use for looking up and down, so this travels in its pitch)
+    const t = this.target;
+    p.pitch = t && t.alive && (staring || this.state === 'chase') && !c ? angTo(p.yaw, Math.atan2(-(t.x - p.x), -(t.z - p.z))) : 0;
   }
 
   step(dt, now) {
@@ -95,22 +101,8 @@ export class MonsterBrain {
     if (this.started == null) { this.started = now; this.listenAt = now + wake + 15; this.lastClue = now; this.nextPeek = now + wake + 25 + Math.random() * 30; }
     if (now - this.started < wake) { p.use = false; return; }
     if (this.state === 'wait') this.state = 'wander';
-    if (this.state === 'skin') { this.thinkAt = now; this.skinStep(dt, now); return; }
+    if (this.catching) { this.catchStep(dt, now); return; }
     if (this.kicking) { this.kickStep(dt, now); return; }
-    if (this.state === 'reveal') {
-      // changing back (0.9 s), then straight for whoever it was standing next to
-      p.use = false;
-      this.move(null, 0, dt);
-      if (now >= this.revealEnd) {
-        const t = this.target;
-        if (t && t.alive && !t.escaped) {
-          this.state = 'chase'; this.lostAt = now; this.s.monsterAlert(p, t);
-          this.last = { x: t.x, z: t.z, vx: 0, vz: 0, t: now, id: t.id }; this.lastClue = now;
-        } else { this.state = 'wander'; this.target = null; }
-        this.goal = null; this.path = null;
-      }
-      return;
-    }
     if (this.hanging) {
       // lifting the body up and pinning it to the wall
       p.use = false;
@@ -124,6 +116,8 @@ export class MonsterBrain {
       return;
     }
     if (now >= this.thinkAt) { this.thinkAt = now + 0.12; this.think(now); }
+    // it has just seen someone: it stops dead mid-step, only its head turns (update() above), and it stares
+    if (now < (this.noticeUntil || 0)) { p.use = false; this.vel.x = this.vel.z = 0; return; }
     if (now < this.pauseUntil) { p.use = false; this.move(null, 0, dt); return; }
     if (this.state === 'peek') { this.peekHold(dt, now); this.move(null, 0, dt); return; }
     // stalking, and they turned round: it stands dead still until they look away
@@ -173,8 +167,7 @@ export class MonsterBrain {
 
   // A shut door right in front of it. It can't open doors (owner's rule): it kicks them in. That takes
   // KICK_TIME (a boom every 0.75 s everyone near hears), then the door falls off its hinges and stays open
-  // for good. Its routes weigh that up (doorCost): if going round is quicker, it goes round. Wearing
-  // someone's skin it never kicks (that would give it away): it goes round.
+  // for good. Its routes weigh that up (doorCost): if going round is quicker, it goes round.
   doors(now, dir) {
     const p = this.p, w = this.world;
     if (!dir) return false;
@@ -183,7 +176,6 @@ export class MonsterBrain {
       if (d.kind !== 'way' || d.open || d.lock) continue;
       const dx = d.cx - p.x, dz = d.cz - p.z, dist = Math.hypot(dx, dz);
       if (dist > 1.2 || (dx * dir[0] + dz * dir[1]) / (dist || 1) < 0.3) continue;
-      if (this.state === 'skin') { this.path = null; this.repathAt = 0; return false; }
       this.kicking = { i, until: now + KICK_TIME, next: now + 0.3 };
       this.vel.x = this.vel.z = 0;
       return true;
@@ -246,7 +238,6 @@ export class MonsterBrain {
   // what it notices: who it can see, and footsteps it can hear
   think(now) {
     const p = this.p;
-    if (this.state === 'skin' || this.state === 'reveal') return;
     let seen = null, seenD = Infinity, heard = null, heardD = Infinity;
     for (const q of this.humans()) {
       const d = Math.hypot(q.x - p.x, q.z - p.z);
@@ -276,7 +267,7 @@ export class MonsterBrain {
     }
     // carrying a body: it lets go of it the moment it sees its next one
     if (this.dragging && (seen || now > this.dragging.until)) this.dropBody(now);
-    if (seen && this.ambush === seen.id) { this.ambush = null; this.s.monsterAlert(this.p, seen); this.state = 'chase'; this.target = seen; this.lostAt = now; }
+    if (seen && this.ambush === seen.id) { this.ambush = null; this.spot(seen, now); this.state = 'chase'; this.target = seen; this.lostAt = now; }
     const lookingAtMe = seen ? Math.abs(angTo(seen.yaw, Math.atan2(-(p.x - seen.x), -(p.z - seen.z)))) < 0.9 : false;
     // stalking someone and they turn round: it stops dead mid-step (unless they're close, or for longer than 5 s)
     if (seen && this.state === 'stalk' && this.target === seen && lookingAtMe && seenD > 6 && (!this.frozenAt || now - this.frozenAt < 5)) {
@@ -290,7 +281,7 @@ export class MonsterBrain {
       const canStalk = seenD > 9 && !lookingAtMe && this.state !== 'chase';
       if (canStalk && (this.state === 'stalk' || seenD > 13)) { this.state = 'stalk'; this.target = seen; }
       else {
-        if (this.state !== 'chase') this.s.monsterAlert(this.p, seen);
+        if (this.state !== 'chase') this.spot(seen, now);
         this.state = 'chase'; this.target = seen; this.lostAt = now;
       }
     } else if (this.state === 'hangGo') {
@@ -334,77 +325,10 @@ export class MonsterBrain {
     p.use = this.state === 'chase';     // clients: screeching, running animation
   }
 
-  // ---------- wearing someone ----------
-  // It has just caught q. If nobody else saw (and 1 time in 3) it takes their skin and wears it: everyone else
-  // still sees q, walking about. It goes to the nearest player like a teammate would, stands with them a
-  // moment too long, then changes back and goes for them. Small clues give it away to a careful player:
-  // it never turns a flashlight on, leaves a note or opens a door, its head twitches now and then, and it stares.
-  canWear(q) {
-    if (this.state === 'skin' || this.state === 'reveal') return false;
-    const others = this.humans().filter(o => o !== q);
-    if (!others.length) return false;                // nobody left to fool
-    const w = this.world, p = this.p;
-    return !others.some(o => Math.hypot(o.x - q.x, o.z - q.z) < 32
-      && (w.los(o.x, o.y + EYE, o.z, q.x, q.y + 1.2, q.z) || w.los(o.x, o.y + EYE, o.z, p.x, p.y + 2.2, p.z)));
-  }
-
-  wear(q) {
-    const now = this.lastNow || 0;
-    this.skin = { id: q.id, since: now, target: null, pickAt: 0, close: 0, away: 0, hold: 1.6 + Math.random() * 2.6, twitchAt: now + 3 + Math.random() * 5, twitchUntil: 0, twitch: 0 };
-    this.state = 'skin';
-    this.goal = null; this.path = null; this.target = null; this.kicking = null;
-    this.pauseUntil = 0; this.grabUntil = 0;
-    this.vel.x = this.vel.z = 0;
-  }
-
-  skinStep(dt, now) {
-    const p = this.p, s = this.skin, hs = this.humans();
-    p.use = false;
-    if (!hs.length) { this.unmask(now); return; }
-    // who it goes for: the nearest, thought about again every few seconds
-    if (!s.target || !s.target.alive || s.target.escaped || now > s.pickAt) {
-      s.target = hs.reduce((a, b) => (Math.hypot(b.x - p.x, b.z - p.z) < Math.hypot(a.x - p.x, a.z - p.z) ? b : a));
-      s.pickAt = now + 4;
-    }
-    const t = s.target, d = Math.hypot(t.x - p.x, t.z - p.z);
-    this.target = t;                                 // (standing still, it turns to face them: it stares)
-    // a clue: now and then its head twitches
-    if (now > s.twitchAt) { s.twitchUntil = now + 0.14; s.twitch = (Math.random() < 0.5 ? -1 : 1) * (0.35 + Math.random() * 0.25); s.twitchAt = now + 5 + Math.random() * 9; }
-    p.pitch = now < s.twitchUntil ? s.twitch : 0;
-    // it never found anyone to fool: it changes back where it is
-    if (now - s.since > 180) { this.unmask(now); return; }
-    const sees = this.world.los(p.x, p.y + EYE, p.z, t.x, t.y + EYE, t.z);
-    if (d < 2.6 && sees) {
-      // right next to them, the way a teammate stands... for a moment too long
-      s.close += dt;
-      const fx = -Math.sin(t.yaw), fz = -Math.cos(t.yaw);
-      const away = ((p.x - t.x) * fx + (p.z - t.z) * fz) / (d || 1) < -0.2;     // they turned their back on it
-      s.away = away ? s.away + dt : 0;
-      if (d < 1.3 || s.close > s.hold || (s.close > 0.6 && s.away > 0.35)) { this.unmask(now); return; }
-      this.move(d > 1.9 ? [(t.x - p.x) / d, (t.z - p.z) / d] : null, 1.2, dt);
-      return;
-    }
-    s.close = Math.max(0, s.close - dt * 0.5);
-    // on its way: walking like a person (it only sprints to catch up when they're far off and can't see it)
-    const speed = d > 22 && !sees ? BR.sprint : d > 7 ? BR.walk : Math.max(1.4, BR.walk * (d - 2) / 5);
-    const k = Math.max(0, (d - 2) / (d || 1));
-    const goal = sees && d < 9 ? { x: p.x + (t.x - p.x) * k, y: 0, z: p.z + (t.z - p.z) * k } : { x: t.x, y: 0, z: t.z };
-    const dir = this.navigate(goal, now);
-    this.doors(now, dir);
-    this.move(dir, speed, dt);
-  }
-
-  // stop pretending: it changes back where it stands (everyone now learns who it had been wearing)
-  unmask(now) {
-    const s = this.skin;
-    if (!s) return;
-    this.skin = null;
-    this.p.pitch = 0;
-    this.state = 'reveal';
-    this.revealEnd = now + 0.9;
-    this.vel.x = this.vel.z = 0;
-    this.target = s.target && s.target.alive && !s.target.escaped ? s.target : null;
-    this.s.revealSkin(this.p, s.id);
+  // It has just seen q: they hear it, and (unless it was chasing only a moment ago) it stares before it comes
+  spot(q, now) {
+    this.s.monsterAlert(this.p, q);
+    if (now - (this.chasedAt ?? -99) > STARE_AGAIN) this.noticeUntil = now + STARE;
   }
 
   // ---------- peeking ----------
@@ -526,23 +450,66 @@ export class MonsterBrain {
     for (const q of this.humans()) {
       if (Math.hypot(q.x - p.x, q.z - p.z) < MONSTER.reach && Math.abs(q.y - p.y) < 1.6 && this.world.los(p.x, p.y + 1.2, p.z, q.x, q.y + 1.2, q.z)) {
         p.yaw = Math.atan2(-(q.x - p.x), -(q.z - p.z));          // face to face (their screen shows its face)
-        this.s.monsterKill(p, q);
-        if (this.state === 'skin') return;          // it took their skin: now it is them
-        this.grabUntil = now + 0.7;
-        this.pauseUntil = now + 2.5;      // it stays over them for a moment
-        this.state = this.dragging && this.dragging.wall ? 'hangGo' : 'wander'; this.target = null; this.goal = null; this.path = null;
+        if (this.dragging) this.dropBody(now);                    // (its hand is needed)
+        this.s.monsterKill(p, q);                                 // -> startCatch: the slam, then what it does with the body
+        this.state = 'wander'; this.target = null; this.goal = null; this.path = null;
         return;
       }
     }
   }
 
-  // ---------- what it does with a body (Server.monsterKill decides: 1 in 6 each) ----------
-  // 'drag': it drags it about by the leg until it sees its next victim; 'hang': it takes it to the nearest wall
-  // and pins it up there.
-  carry(q, fate) {
-    const now = this.lastNow || 0;
-    this.dragging = { id: q.id, fate, until: now + 120, wall: fate === 'hang' ? this.wallSpot(q.x, q.z) : null };
-    if (fate === 'hang' && !this.dragging.wall) this.dragging.fate = 'drag';
+  // ---------- catching someone (owner's design) ----------
+  // It grabs them by an arm or a leg, lifts them, slams them once or twice on the floor (or into a wall, if one is
+  // in reach of its right arm), and then: 1 in 3 it hangs the body on the nearest wall, 1 in 3 it drags it about
+  // until it sees its next victim, otherwise it leaves it where it fell. The players' screens show the body as a
+  // ragdoll pinned to its hand (brfx.js); here it only stands and goes through the positions.
+  planCatch(q) {
+    const p = this.p, w = this.world;
+    const by = Math.random() < 0.5 ? 'leg' : 'arm';
+    // a wall close enough on some side to swing them into (not so close that it is in the way)
+    let wall = null;
+    for (let k = 0; k < 16; k++) {
+      const a = k / 16 * Math.PI * 2, dx = Math.cos(a), dz = Math.sin(a);
+      const r = w.trace(p.x, 1.5, p.z, dx, 0, dz, 1.7);
+      if (!r.solid || Math.abs(r.ny) > 0.5 || r.t < 1.2 || (wall && r.t >= wall.t)) continue;
+      wall = { t: r.t, dx, dz, x: p.x + dx * r.t, z: p.z + dz * r.t, nx: r.nx, nz: r.nz };
+    }
+    const on = wall && Math.random() < 0.5 ? 'wall' : 'floor';
+    const roll = Math.random();
+    let then = roll < 1 / 3 ? 'hang' : roll < 2 / 3 ? 'drag' : null;
+    const spot = then === 'hang' ? this.wallSpot(q.x, q.z) : null;
+    if (then === 'hang' && !spot) then = 'drag';                 // nowhere to hang it
+    return { by, on, n: Math.random() < 0.5 ? 1 : 2, then, wall: on === 'wall' ? wall : null, spot };
+  }
+
+  startCatch(q, c) {
+    const now = this.lastNow || 0, leg = c.by === 'leg', m = c.on === 'wall' ? 'slamWall' : 'slam';
+    const stages = []; let e = now;
+    const add = (mode, dur, k) => { e += dur; stages.push({ mode, k, end: e }); };
+    add('seize', 0.35, leg ? 1 : 0); add('hoist', leg ? 0.9 : 0.7, 1);
+    for (let i = 0; i < c.n; i++) {
+      // each slam is four positions: swung up (or turned away from the wall), halfway, the hit, the settle
+      add(m, i ? 0.42 : m === 'slam' ? 0.28 : 0.42, 0); add(m, 0.07, 1); add(m, i === c.n - 1 ? 0.6 : 0.38, 2); add(m, 0.25, 3);
+    }
+    // into a wall: while it lifts them it turns so that the wall is on its right, where the swing ends
+    this.catching = { id: q.id, c, stages, mode: 'seize', k: stages[0].k, yaw: c.wall ? Math.atan2(-c.wall.dz, c.wall.dx) : null };
+    this.vel.x = this.vel.z = 0; this.noticeUntil = 0; this.kicking = null;
+  }
+
+  catchStep(dt, now) {
+    const c = this.catching, p = this.p;
+    p.use = false; this.vel.x = this.vel.z = 0;
+    if (c.yaw != null && c.mode === 'hoist') p.yaw += angTo(p.yaw, c.yaw) * Math.min(1, dt * 10);
+    const st = c.stages.find(x => now < x.end);
+    if (st) { c.mode = st.mode; c.k = st.k; return; }
+    this.catching = null;
+    const then = c.c.then;
+    this.state = 'wander'; this.target = null; this.goal = null; this.path = null;
+    if (then) {
+      this.dragging = { id: c.id, fate: then, until: now + 120, wall: then === 'hang' ? c.c.spot : null };
+      if (then === 'hang') this.state = 'hangGo';
+    } else this.s.broadcast({ t: 'dropBody', id: c.id, x: Math.round(p.x * 100) / 100, z: Math.round(p.z * 100) / 100, yaw: Math.round(p.yaw * 100) / 100 });
+    this.pauseUntil = now + (then ? 0.7 : 1.6);       // it stands over them a moment
   }
 
   // the nearest bit of wall within 7 m, with room to stand in front of it

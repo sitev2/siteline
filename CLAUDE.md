@@ -80,7 +80,7 @@ The only folder is `server/` (the optional home game server).
   (`inspectTrick`: wrist cock, ~0.3 s full turn, catch; the gun turns about `pivot`, the hand only flicks; left hand lets go). `settle` (jump
   soaking) is an exactly-solved spring: a step-by-step one froze below ~32 fps and left the gun turned a bit more after every reload.
 - Night mode: `settings.night` (host lobby toggle / practice option); flashlights synced via `light` messages
-- `ragdoll.js` — death ragdolls (cannon-es physics), client only; the host never runs it
+- `ragdoll.js` — death ragdolls (cannon-es physics), client only; the host never runs it. A ragdoll can be held by one end (`hold`): the Backrooms entity swings it about
 - `three.module.js`, `three.core.js`, `peerjs.min.js`, `cannon-es.js` — bundled libraries, don't edit
 - Canal is a sunny hill village (theme `village`; own layout, generic Mediterranean style — not a copy of any CS map).
   `village: {...}` in a map def makes `World.fillHouses` split all leftover mass into separate houses (`world.houses`, `houseAt`),
@@ -142,8 +142,7 @@ The only folder is `server/` (the optional home game server).
   `{t:'doorKick', i, swing}` boom every 0.75 s — the leaves jump, `kickDoor` in `brview.js`), then `Server.breakDoor`: the door is
   `broken`, open for good, both leaves torn off and flat on the floor (`setDoor(..., broken)`, sound 'break'); players can't shut a
   broken door (toast; start message sends 2 for broken). Its routes weigh a shut door as `KICK_TIME` of running (`NavGrid.path(a, b, max, cost)`
-  with `doorCost`), so it goes round when that's quicker; `straight()` stops at '_door' spans; shut doors block its sight. Wearing
-  someone's skin it never kicks (doorCost = Infinity: it goes round). Opened by a player mid-kick: it stops and walks through. It hears doors within 14 m.
+  with `doorCost`), so it goes round when that's quicker; `straight()` stops at '_door' spans; shut doors block its sight. Opened by a player mid-kick: it stops and walks through. It hears doors within 14 m.
   `brview.js` `group.userData.setDoor` animates the leaves on hinges.
   Snatches (owner's design): ceiling holes (`plan.holes`: a missing or pushed-aside 0.6 m ceiling tile, by difficulty) — walk under one
   (reach 0.63 m from its middle: 50 % more than before, owner's request) and the host `snatch(p, 'ceiling', …)` takes you, every time;
@@ -188,39 +187,37 @@ The only folder is `server/` (the optional home game server).
   notes travel in the start message; `#note-read` shows the one you're looking at close up. Drawings can't be filtered.
   Hallucinations (`brfx.js`, client only — nobody else sees or hears them): footsteps behind you, whispers, knocking, a distant
   screech, lights going mad, a figure (the monster) standing far off that vanishes when looked at or approached; more often alone
-  or in the dark. No fake teammates any more (the owner replaced them with the skin-wearing below).
-  Wearing a skin (owner's design): when the monster catches someone and nobody else saw it (`canWear`: no living player with a line
-  of sight within 32 m) and someone is still alive to fool, 1 time in 3 (`SKIN_CHANCE`, all levels) it takes their skin
-  (`Server.monsterKill` → `brSkin = { id }`, `brain.wear`). Only the victim and the already dead/escaped are sent the kill (w 'skin',
-  no ragdoll, the victim's screen blacks out: "It took your skin"); `snapshot()` shows the victim alive where the monster is (no
-  flashlight) and hides the monster, so the scoreboard and "Inside" count still count them. While it lasts, chat from dead players
-  only reaches the dead/escaped. Brain state 'skin' (`skinStep`): walks like a player (`BR.walk`, sprints only when far and unseen)
-  to the nearest player, stands ~2 m away facing them; clues: head twitch (pitch jerk) every 5–14 s, it stares, never a flashlight,
-  a note or a door. It changes back (`unmask` → `revealSkin`: `{t:'skinReveal'}` + the delayed kill to
-  everyone) when they come within 1.3 m, after 1.6–4.2 s next to them, when they turn their back, after 180 s, or if the victim
-  leaves; state 'reveal' (0.9 s, mode 'm:reveal', game.js grows it from 0.6× after 0.3 s), then it chases. `brfx.onSkinReveal`:
-  the suit shudders and bursts into torn scraps that stay on the floor (sound 'tear' + screech). No gore.
-  Scarier monster (owner picked ALL of these):
-  - Looks: a matte black shadow (`makeMonsterModel`), two small eyes with glow sprites; `setGlow(k)` from `brfx.eyeGlow` (dark where it
-    stands, or in your flashlight beam = burning; barely there in light; low while it has you face to face).
-  - No darkness round it any more (owner removed it): `FLASH.uDark` strength stays 0 (the shader hook is still there, unused), and the
-    lights no longer dip/flicker when it is near (`dread` no longer dims anything in `brview`'s update).
-  - Moves wrong: game.js updates its model like a film with frames missing (`jerkAcc` / `jerkStep` 0.05–0.14 s, sometimes a stall);
-    the head sometimes snaps round 1.5–2.2 rad. Ducks through doorways (`duck` from the door it is in, `animateMonster(..., duck)`).
-    A new chase is on all fours 3 times in 10 (`crawl`, mode 'crawl'; owner's numbers, was 1 in 5). Stalking you and you turn round: it freezes mid-step (mode
-    'freeze', game.js holds the pose) until you look away, or 5 s of staring, or you're within 6 m — then it charges.
-  - Sound: your heartbeat (`playHeart`) faster/louder within 22 m, even through walls; breathing right behind you when it is
-    within 4.5 m behind you (BRS 'breath'); hallucinated breathing and footsteps that copy yours and stop a moment after you stop
-    (`follow`); it lures you (`{t:'lure', kind: 'steps'|'door'}` every 30–65 s from somewhere a player 7–24 m away can't see).
-  - Death: caught by it you're lifted face to face (`caughtMe` / `caughtCamera`, it turns to face you), the screen shakes hard and the
-    rumble peaks, then black. No screen grain any more (owner): within 10 m of it the screen shakes (`g.shake`, up to 0.9) and a low
-    distorted rumble swells (`sfx.setDread`, one looping buffer in audio.js), both from `brfx.staticK`.
-  - What it does with a body (`Server.monsterKill`, owner's numbers, one roll): 1/3 take the skin (if nobody saw and someone is left;
-    otherwise a normal kill), 1/6 'drag' (`brain.carry`: it drags it by the leg — kill message `fate`, its mode string carries the
-    body id `m:<mode>:1:<id>`, no ragdoll; `brfx.takeBody/updateBodies` lays the hazmat body on its back behind its right hand —
-    until it sees its next target or 120 s: `{t:'dropBody'}`), 1/6 'hang' (`wallSpot`: nearest wall within 7 m; state 'hangGo',
-    1.6 s lifting, `{t:'hangBody', x, z, nx, nz}`: pinned 0.8 m up by two black spikes, head hanging), else left where it fell.
-    Bodies are only on screens that saw the kill (not for people who join later).
+  or in the dark. No fake teammates, and no skin-wearing any more (the owner removed the shape-shifting when the tall one came in).
+  It, the main entity (owner's design brief; it REPLACED the old thin black shadow monster, which is gone): a tall stiff machine,
+  `makeTallModel` in `models.js` (`makeMonsterModel()`; `{ blind: true }` = the Listener's old-style body, `makeListenerModel`).
+  - Looks: ~2.8 m (root scale 0.88; ceiling 2.9), all black worn metal, like an animatronic: flat bars, rams, rivets, an open rib cage
+    round a motor drum, cables, arms to its knees with four flat fingers, two face plates out of line with a deep socket each, a hinged
+    jaw of slats. Each joint's fixed parts are merged (`mergeStatic`) — about 100 meshes. Eyes: pale pin-points, RED once it has
+    spotted you (notice / run / catching); `setGlow(k)` from `brfx.eyeGlow` still adds the dark / flashlight glow (`m.eyes(k, red)`).
+  - Moves (`animateTall`; `animateMonster` picks it by `m.tall`): nothing eases. Every joint is a motor (`sv`) turning at a fixed speed
+    to its next position and stopping dead; positions change on a step clock that keeps time with its real speed. Walking = 3
+    positions a step (`TALL_WALK_KEYS`, owner asked for the extra one; 2 = the first version), running = 2 with bigger strides, both
+    arms out in front with the elbows a bit bent (owner). Standing it is dead still, then one part clicks. NO crawling (removed), and
+    game.js no longer drops frames for it (only the Listener keeps `jerkAcc` / `jerkStep`). Ducks through doorways (`duck`), kicks
+    doors (mode 'kick'), peeks, and freezes mid-step when a stalked player turns round (mode 'freeze' = dt 0).
+  - The stare (owner): the moment it sees someone (`MonsterBrain.spot`) it stops dead, its head snaps onto them (the host sends the
+    angle to its target in the monster's `pitch` field → `lookYaw`) and it stares for `STARE` 1 s (mode 'notice': a head tilt, the jaw
+    drops, eyes red, sound 'servo'), then chases. Not again within `STARE_AGAIN` 8 s of a chase. Its speeds are unchanged.
+  - No darkness round it (owner removed it): `FLASH.uDark` stays 0, the lights don't dip when it is near.
+  - Sound: a metal 'clank' per footstep (from its own step clock, `model.stepHit`), 'servo' on the head snap, 'slam' on each hit
+    (all `BRS` in audio.js); your heartbeat (`playHeart`) within 22 m; breathing right behind you; hallucinated breathing and
+    footsteps (`follow`); lures (`{t:'lure'}`). Within 10 m the screen shakes and the rumble swells (`brfx.staticK`, `sfx.setDread`).
+  - Catching someone (owner's design; `MonsterBrain.planCatch` / `startCatch` / `catchStep`, `Server.monsterKill`): it grabs them by a
+    leg or an arm (50/50), lifts them, and slams them 1 or 2 times (50/50) on the floor, or into a wall when one is 1.2–1.7 m from
+    it (then 50/50; it turns so the wall is on its right). Modes seize → hoist → slam / slamWall with 4 key frames each (swung up,
+    halfway, the hit, the settle; the key travels as the mode's number) → then, one roll (owner's numbers): 1/3 'hang' (`wallSpot`
+    within 7 m, state 'hangGo', mode 'hang' 1.6 s, `{t:'hangBody'}`: pinned up by two spikes; no wall = drag), 1/3 'drag' (until it
+    sees its next victim or 120 s: `{t:'dropBody'}`), otherwise left where it fell. No blood. The kill message carries
+    `{ fate: 'slam'|'drag'|'hang', by, on, n, wall }`. On the players' screens the body is the real hazmat RAGDOLL (`ragdoll.js`
+    `hold` / `moveHold` / `release`: one ankle or wrist pinned to a point) held in its right hand for as long as the host names it
+    in the mode string (`m:<mode>:<n>:<body id>` → `dragId`; `brfx.takeBody` / `updateBodies`); `setCeiling` keeps it under 2.9 m.
+    The victim sees it through the ragdoll's eyes (`caughtMe` / `caughtCamera`), then black, then the usual death view. When the last
+    player is caught the host waits 6 s (not 2) before the results. Bodies are only on screens that saw the kill.
   The Listener (owner's pick; an OPTION when the game is made: lobby `#lobby-listener` → `settings.listener`, Practice `#p-listener`):
   a second creature, `ListenerBrain` in `monster.js` (extends MonsterBrain for walking/routes), player id `'listener'`, team 'monster',
   name "The Listener", spawned ≥ 45 m from the players and 20 m from It. Blind: it only hears (`LISTENER`: sprinting within 22 m through
@@ -234,7 +231,7 @@ The only folder is `server/` (the optional home game server).
   Monster peeking: now and then it picks one player (the most alone), finds a spot by an outside corner 7–16 m away where its body is
   hidden but its head leaning out is clearly visible (`findPeek`), leans out (mode `peek:±1`), and leaves 0.5 s after that player
   looks at its head (also if they come within 6 m, see its body, or after 15 s); after a few peeks it may charge them next time.
-  Its animation mode travels in its weapon field: `p.w = 'm:<idle|listen|walk|stalk|search|run|crawl|grab|kick|drag|freeze|skin|reveal>:1[:bodyId]'` (or `m:peek:±1`).
+  Its animation mode travels in its weapon field: `p.w = 'm:<idle|listen|walk|stalk|search|run|notice|kick|freeze|seize|hoist|slam|slamWall|hang|drag>:<n>[:bodyId]'` (or `m:peek:±1`).
   In the Backrooms players wear hazmat suits (`makePlayerModel(team, name, false, 'hazmat')`: yellow rubber, black boots/gloves/tape,
   hood with a dark visor and a respirator) with their name printed on a patch on the back instead of a name tag over the head.
   Suit legs: round hip joints, the thigh runs on past the knee + a knee sphere, so joints never open up when they bend. The torso shell's
@@ -250,9 +247,9 @@ The only folder is `server/` (the optional home game server).
   id `'monster'`, team `'monster'` = snapshot team index 3, `use` = chasing): waits `lv.wake` s; its route search may cover the whole walking grid (`nav.n * 1.2`: the longest ways across the big maze need up to ~65 % of it; ~35 ms at worst); states chase (aims ahead of a running
   target), stalk (creeps up on someone far away looking the other way, charges when they turn or it's within 9 m), pursue (runs to where you
   were heading), search (4 nearby spots, in your direction first, listening at each), wander (towards players, more surely the longer it has
-  no clue; stops to listen now and then). Hears sprinting (> 3.5 m/s) within `lv.hear` and walking within `lv.hearWalk`; kills on contact (`monsterKill`). Model `makeMonsterModel` / `animateMonster` in
-  `models.js` is OUR OWN design (the owner asked for a known character from someone else's Backrooms videos; we declined to copy it).
-  Sounds in `audio.js` (fluorescent buzz bed, monster steps/screech/grab). Account stats are not reported for this mode.
+  no clue; stops to listen now and then). Hears sprinting (> 3.5 m/s) within `lv.hear` and walking within `lv.hearWalk`; catches on contact (`monsterKill`). The models in
+  `models.js` are OUR OWN designs (the owner once asked for a known character from someone else's Backrooms videos; we declined to copy it).
+  Sounds in `audio.js` (fluorescent buzz bed, clank/servo/slam, screech/grab). Account stats are not reported for this mode.
 - `check_map.mjs` — `node check_map.mjs outpost` / `node check_map.mjs quarry large` checks every area and spawn is reachable
 
 - Rejoin: the last room joined as a guest is kept in localStorage for 30 min (`siteline-lastroom`); the menu shows

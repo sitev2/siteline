@@ -191,7 +191,7 @@ export class Hud {
     row.className = 'kf';
     // weapon silhouette (or the bomb), a headshot mark, then the victim
     const wIcon = WEAPON_ICONS[weapon] ? `<svg class="kf-icon" viewBox="0 0 120 40" aria-label="${esc(itemName(weapon))}">${WEAPON_ICONS[weapon]}</svg>`
-      : `<span class="kf-w">${weapon === 'bomb' ? icon('blast') : weapon === 'monster' || weapon === 'skin' ? icon('skull') : weapon === 'fall' ? 'fell' : esc(itemName(weapon))}</span>`;
+      : `<span class="kf-w">${weapon === 'bomb' ? icon('blast') : weapon === 'monster' ? icon('skull') : weapon === 'fall' ? 'fell' : esc(itemName(weapon))}</span>`;
     const col = t => (TEAM_COLORS[t] || TEAM_COLORS.ffa).css;
     const k = killer ? `<b style="color:${col(killer.team)}">${esc(killer.name)}</b> ` : '';
     row.innerHTML = `${k}${wIcon}${head ? `<span class="kf-hs" title="Headshot">${icon('star')}</span>` : ''} <b style="color:${col(victim.team)}">${esc(victim.name)}</b>`;
