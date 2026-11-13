@@ -98,7 +98,7 @@ export class Ragdolls {
       group.add(mesh);
       parts[name] = { body, mesh, half: info.half };
     }
-    const constraints = [];
+    const constraints = [], joints = [];
     for (const [child, parent, end, cone] of JOINTS) {
       const a = parts[child], b = parts[parent];
       if (!a || !b) continue;
@@ -114,6 +114,7 @@ export class Ragdolls {
       });
       this.world.addConstraint(c);
       constraints.push(c);
+      joints.push({ child, parent, pivotA, pivotB });
     }
     if (push && push.dir) {
       const target = parts[push.part === 'head' ? 'head' : push.part === 'legs' ? 'thighR' : push.part === 'stomach' ? 'pelvis' : 'chest'] || parts.chest;
@@ -125,7 +126,7 @@ export class Ragdolls {
       for (const p of Object.values(parts)) p.body.applyImpulse(imp.scale(0.06 * p.body.mass / 10), new CANNON.Vec3());
     }
     this.scene.add(group);
-    this.list.push({ id, parts, constraints, group, age: 0, frozen: false });
+    this.list.push({ id, parts, constraints, joints, group, age: 0, frozen: false });
     while (this.list.length > MAX_RAGDOLLS) this.dispose(this.list[0]);
   }
 
@@ -145,8 +146,8 @@ export class Ragdolls {
     this.world.addBody(pin);
     const c = new CANNON.PointToPointConstraint(part.body, end, pin, new CANNON.Vec3(0, 0, 0));
     this.world.addConstraint(c);
-    r.hold = { pin, c };
-    r.age = 0;
+    r.hold = { pin, c, part: partName, end };
+    r.age = 0; r.tight = 1e9;        // (keepTogether, below, for as long as it is held and a while after)
     for (const p of Object.values(r.parts)) { p.body.allowSleep = false; p.body.wakeUp(); }
     return { x: pin.position.x, y: pin.position.y, z: pin.position.z };
   }
@@ -168,8 +169,36 @@ export class Ragdolls {
     if (!r || !r.hold) return;
     this.world.removeConstraint(r.hold.c);
     this.world.removeBody(r.hold.pin);
-    r.hold = null; r.age = 0;
+    r.root = r.hold.part; r.hold = null; r.age = 0; r.tight = 2.5;
     for (const p of Object.values(r.parts)) p.body.allowSleep = true;
+  }
+
+  // Swung hard, the physics lets the joints stretch: limbs came away from the body (the owner saw it). So after each
+  // step every joint is closed again exactly: starting from the part that is held (its end goes back onto the pin),
+  // each neighbouring part is moved so the two halves of their joint meet, and so on outwards through the body.
+  keepTogether(r) {
+    const h = r.hold, start = h ? h.part : r.root || 'pelvis';
+    if (!r.parts[start]) return;
+    const a = new CANNON.Vec3(), b = new CANNON.Vec3();
+    if (h) {
+      const body = r.parts[start].body;
+      body.pointToWorldFrame(h.end, a);
+      body.position.x += h.pin.position.x - a.x; body.position.y += h.pin.position.y - a.y; body.position.z += h.pin.position.z - a.z;
+    }
+    const done = new Set([start]), queue = [start];
+    while (queue.length) {
+      const from = queue.shift();
+      for (const j of r.joints) {
+        const to = j.child === from ? j.parent : j.parent === from ? j.child : null;
+        if (!to || done.has(to)) continue;
+        done.add(to); queue.push(to);
+        r.parts[j.child].body.pointToWorldFrame(j.pivotA, a);
+        r.parts[j.parent].body.pointToWorldFrame(j.pivotB, b);
+        // move `to` so that its half of the joint lands on the other half
+        const s = to === j.child ? 1 : -1, body = r.parts[to].body;
+        body.position.x += (b.x - a.x) * s; body.position.y += (b.y - a.y) * s; body.position.z += (b.z - a.z) * s;
+      }
+    }
   }
 
   held(id) { const r = this.list.find(x => x.id === id); return !!(r && r.hold); }
@@ -213,7 +242,10 @@ export class Ragdolls {
       active = true;
     }
     if (!active) return;
-    this.world.step(1 / 60, Math.min(dt, 0.05), 3);
+    // a body being swung about by one end needs finer steps than one that just falls over
+    if (this.list.some(r => r.hold)) this.world.step(1 / 120, Math.min(dt, 0.05), 6);
+    else this.world.step(1 / 60, Math.min(dt, 0.05), 3);
+    for (const r of this.list) if (r.tight > 0 && !r.frozen) { this.keepTogether(r); if (!r.hold) r.tight -= dt; }
     for (const r of this.list) {
       if (r.frozen && r.synced) continue;
       for (const p of Object.values(r.parts)) {

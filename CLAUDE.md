@@ -80,7 +80,7 @@ The only folder is `server/` (the optional home game server).
   (`inspectTrick`: wrist cock, ~0.3 s full turn, catch; the gun turns about `pivot`, the hand only flicks; left hand lets go). `settle` (jump
   soaking) is an exactly-solved spring: a step-by-step one froze below ~32 fps and left the gun turned a bit more after every reload.
 - Night mode: `settings.night` (host lobby toggle / practice option); flashlights synced via `light` messages
-- `ragdoll.js` — death ragdolls (cannon-es physics), client only; the host never runs it. A ragdoll can be held by one end (`hold`): the Backrooms entity swings it about
+- `ragdoll.js` — death ragdolls (cannon-es physics), client only; the host never runs it. A ragdoll can be held by one end (`hold`): the Backrooms entity swings it about; `keepTogether` closes every joint again after each physics step while it is held (+2.5 s), because swung hard the joints stretched and limbs came away from the body (owner saw it)
 - `three.module.js`, `three.core.js`, `peerjs.min.js`, `cannon-es.js` — bundled libraries, don't edit
 - Canal is a sunny hill village (theme `village`; own layout, generic Mediterranean style — not a copy of any CS map).
   `village: {...}` in a map def makes `World.fillHouses` split all leftover mass into separate houses (`world.houses`, `houseAt`),
