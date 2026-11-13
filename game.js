@@ -2242,7 +2242,7 @@ export class Game {
       else if (me.alive && this.clock < (this.brHintUntil || 0)) hint = touch ? 'Hold [[run]] to sprint, but it hears you' : `Hold ${this.key('walk')} to sprint, but it hears you`;
       else if (me.alive && this.clock < (this.brHintUntil || 0) + 9) hint = touch ? 'Tap [[note]] to leave a note for the others' : `Press ${this.key('note')} to leave a note for the others`;
       else if (me.alive && this.clock < (this.brHintUntil || 0) + 16 && this.fx && this.fx.dim < 0.3) hint = touch ? 'Dark in here: tap [[light]] for your flashlight' : `Dark in here: press ${this.key('inspect')} for your flashlight`;
-      else if (me.alive && this.world.exit && Math.hypot(this.world.exit.x - me.pos.x, this.world.exit.z - me.pos.z) < 6) hint = 'The exit! Go through the door';
+      else if (me.alive && this.world.exit && Math.hypot(this.world.exit.x - me.pos.x, this.world.exit.z - me.pos.z) < 6 && (me.pos.x - this.world.exit.x) * this.world.exit.nx + (me.pos.z - this.world.exit.z) * this.world.exit.nz > 0) hint = 'The exit! Go through the door';
       else if (!me.alive && me.escaped) hint = 'You got out. Watching the others…';
     }
     hud.hint(hint);

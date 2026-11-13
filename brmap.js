@@ -6,8 +6,9 @@ import { World } from './world.js';
 // The maze sits on a grid of 4 m rooms. A random spanning tree makes sure everything is connected,
 // then extra walls are knocked out for loops, some blocks become bigger rooms, one becomes a hall of
 // repeating pillars, and two pit rooms (a grid of equal square holes with narrow walkways) are set across
-// the way to the exit. The exit is a door in the outer wall, as far from the start as possible; big black arrows on
-// some walls point roughly the right way.
+// the way to the exit. The exit is a door in a small room out in the maze, as far from the start as possible, whose
+// walls touch no other wall (so keeping a hand on the wall never gets you there); big black arrows on a few walls
+// point the rough compass direction of it.
 
 export const BR = {
   cells: 28,          // rooms across (4 m each); was 20, the owner asked for a bigger map (about twice the area)
@@ -27,15 +28,15 @@ export const BR = {
 // how far it hears running / walking, how many places it searches and when it wakes up (s).
 export const BR_LEVELS = {
   easy: {
-    bridge: 1.5, holes: 4, dark: 4, arrows: 0.45,
+    bridge: 1.5, holes: 4, dark: 4, arrows: 0.22,
     monster: { speed: 1.05, sight: 16, chaseSight: 13, fov: 1.0, lose: 0.25, lead: 0.7, hear: 11, hearWalk: 2.5, search: 3, wake: 30 },
   },
   normal: {
-    bridge: 1, holes: 6, dark: 6, arrows: 0.3,
+    bridge: 1, holes: 6, dark: 6, arrows: 0.15,
     monster: { speed: 1.10, sight: 22, chaseSight: 19, fov: 1.2, lose: 0.55, lead: 1.2, hear: 14, hearWalk: 3, search: 4, wake: 20 },
   },
   hard: {
-    bridge: 0.5, holes: 7, dark: 8, arrows: 0.18,
+    bridge: 0.5, holes: 7, dark: 8, arrows: 0.09,
     monster: { speed: 1.15, sight: 28, chaseSight: 28, fov: 1.3, lose: 0.9, lead: 1.6, hear: 16, hearWalk: 3.5, search: 5, wake: 15 },
   },
 };
@@ -129,21 +130,36 @@ export function planMaze(seed, level = 'normal') {
     }
     return dist;
   };
-  // 4. start in a corner room, the exit in the outer wall as far away as possible
+  // 4. start in a corner room. The exit is a door in a small room out in the maze, as far from the start as
+  // possible, and every wall that met that room's corners from outside is knocked out, so its walls touch no
+  // other wall: an island. Keeping a hand on the wall (always turning left, or always right) only ever goes
+  // round the walls you started at, so it never finds the exit (owner's request).
   const corners = [[0, 0], [N - 1, 0], [0, N - 1], [N - 1, N - 1]];
   const [sx, sz] = corners[Math.floor(R() * 4)];
   let dist = walk(sx, sz);
   let exit = null, far = -1;
-  for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
-    if (x !== 0 && z !== 0 && x !== N - 1 && z !== N - 1) continue;      // edge rooms only
-    if (Math.abs(x - sx) + Math.abs(z - sz) < N) continue;                // never on the start's side of the maze
+  for (let z = 1; z < N - 1; z++) for (let x = 1; x < N - 1; x++) {
+    if (Math.abs(x - sx) + Math.abs(z - sz) < N) continue;                    // never on the start's side of the maze
+    // (not by the pillar hall: a pillar on one of its corners would join its walls to the rest)
+    if (halls.some(h => overlaps(h, { x: x - 1, z: z - 1, w: 3, d: 3 }))) continue;
     const d = dist[z][x] + R() * 3;
     if (d > far) { far = d; exit = { x, z }; }
   }
-  // which outer wall the door is in (the side facing away from the middle)
-  exit.side = exit.x === 0 ? 'w' : exit.x === N - 1 ? 'e' : exit.z === 0 ? 'n' : 's';
-  if (exit.x === 0 && exit.z === 0) exit.side = R() < 0.5 ? 'w' : 'n';
-  if (exit.x === N - 1 && exit.z === N - 1) exit.side = R() < 0.5 ? 'e' : 's';
+  {
+    const ex = exit.x, ez = exit.z;
+    // the eight walls that meet its corners from outside go…
+    vWall[ez - 1][ex - 1] = vWall[ez - 1][ex] = vWall[ez + 1][ex - 1] = vWall[ez + 1][ex] = false;
+    hWall[ez - 1][ex - 1] = hWall[ez - 1][ex + 1] = hWall[ez][ex - 1] = hWall[ez][ex + 1] = false;
+    // …it gets all four of its own but one (the way in), and the door is in the wall facing the way in
+    vWall[ez][ex - 1] = vWall[ez][ex] = hWall[ez - 1][ex] = hWall[ez][ex] = true;
+    const [way, wdx, wdz] = [['w', -1, 0], ['e', 1, 0], ['n', 0, -1], ['s', 0, 1]][pick(0, 3)];
+    open(ex, ez, wdx, wdz);
+    exit.way = way;
+    exit.side = { w: 'e', e: 'w', n: 's', s: 'n' }[way];
+  }
+  // the rooms round the exit room (its walls must stay an island: no pit rooms or doors there)
+  const byExit = (x, z) => Math.abs(x - exit.x) <= 1 && Math.abs(z - exit.z) <= 1;
+  dist = walk(sx, sz);
   // the monster starts around half way between, out of sight of the start
   const maxD = Math.max(...dist.flat());
   let mon = null, best = -Infinity;
@@ -155,7 +171,7 @@ export function planMaze(seed, level = 'normal') {
   }
   // 5. pit rooms, set across the way to the exit: the floor is almost all hole, with narrow bridges between
   // the middles of its rooms (a random tree of them, so the way across winds) and out to each way in.
-  const special = (x, z) => (Math.abs(x - sx) <= 1 && Math.abs(z - sz) <= 1) || (x === exit.x && z === exit.z) || (x === mon.x && z === mon.z);
+  const special = (x, z) => (Math.abs(x - sx) <= 1 && Math.abs(z - sz) <= 1) || byExit(x, z) || (x === mon.x && z === mon.z);
   // the way from the start to the exit, room by room
   const route = [];
   {
@@ -196,7 +212,7 @@ export function planMaze(seed, level = 'normal') {
   // open doors, so a door only goes where there is another way round even with every door shut (a long
   // one: 6+ rooms): shutting one makes it go the long way, but never seals anyone in (or it out).
   const doorways = [];
-  const plain = (x, z) => !inHall(x, z) && !inPitRoom(x, z);
+  const plain = (x, z) => !inHall(x, z) && !inPitRoom(x, z) && !byExit(x, z);
   // rooms reachable from (x0, z0) with every door in `list` shut: steps to each (-1 = can't get there)
   const walkShut = (list, x0, z0) => {
     const isDoor = (x, z, dx, dz) => list.some(d => (dx ? d.dir === 'v' && d.z === z && d.x === Math.min(x, x + dx) : d.dir === 'h' && d.x === x && d.z === Math.min(z, z + dz)));
@@ -258,8 +274,9 @@ export function planMaze(seed, level = 'normal') {
     const tx = Math.floor((cx + Math.cos(ang) * 1.1) / T) * T, tz = Math.floor((cz + Math.sin(ang) * 1.1) / T) * T;
     holes.push({ rx: x, rz: z, x: tx + T / 2, z: tz + T / 2, size: T, kind: R() < 0.5 ? 'missing' : 'shifted', dir: pick(0, 3) });
   }
-  // 9. big black arrows sprayed on walls: in some of the rooms where the way splits, pointing roughly the
-  // right way (towards the next room on the shortest way to the exit), on a wall that runs that way
+  // 9. big black arrows sprayed on walls (the owner asked for fewer, and vaguer): in a few of the rooms where the
+  // way splits (and always the start), pointing the rough compass direction of the exit, as the crow flies, not
+  // the way through the maze; on a wall that runs that way
   dist = walk(exit.x, exit.z);
   const arrows = [];
   for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
@@ -267,14 +284,17 @@ export function planMaze(seed, level = 'normal') {
     const ways = DIRS.filter(([dx, dz]) => !wallTo(x, z, dx, dz));
     const atStart = x === sx && z === sz;
     if (!atStart && (ways.length < 3 || R() > L.arrows)) continue;
-    const go = ways.filter(([dx, dz]) => dist[z + dz][x + dx] === dist[z][x] - 1);
-    if (!go.length) continue;
-    const [dx, dz] = go[Math.floor(R() * go.length)];
-    // a solid wall of this room running the same way (its normal is across the way to go)
+    const ox = exit.x - x, oz = exit.z - z, big = Math.max(Math.abs(ox), Math.abs(oz)), small = Math.min(Math.abs(ox), Math.abs(oz));
+    // the bigger of the two compass directions; when it's nearly diagonal, either
+    let alongX = Math.abs(ox) >= Math.abs(oz);
+    if (small > big * 0.5 && R() < 0.4) alongX = !alongX;
+    const dx = alongX ? Math.sign(ox) : 0, dz = alongX ? 0 : Math.sign(oz);
+    if (!dx && !dz) continue;
+    // a solid wall of this room running the same way (its normal is across the arrow)
     const walls = (dx ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]]).filter(([wx, wz]) => wallTo(x, z, wx, wz));
     if (!walls.length) continue;
     const [wx, wz] = walls[Math.floor(R() * walls.length)];
-    arrows.push({ x, z, wx, wz, dx, dz, tilt: (R() - 0.5) * 0.18, s: 0.9 + R() * 0.3 });
+    arrows.push({ x, z, wx, wz, dx, dz, tilt: (R() - 0.5) * 0.18, s: 0.95 + R() * 0.1 });
   }
   return {
     seed, level: brLevel(level), N, vWall, hWall, halls, pitRooms, doorways, blankDoors: [], darkZones, holes, arrows,
@@ -417,10 +437,11 @@ function mazeDef(seed, level) {
       const toMid = Math.atan2(-(size / 2 - sx), -(size / 2 - sz));
       for (const [dx, dz] of [[-0.8, -0.8], [0.8, -0.8], [-0.8, 0.8], [0.8, 0.8]]) b.spawn('atk', sx + dx, sz + dz, toMid);
       b.spawn('def', at(plan.monster.x) + C / 2, at(plan.monster.z) + C / 2, 0);
-      // the exit door in the outer wall
-      const e = plan.exit, ex = at(e.x) + C / 2, ez = at(e.z) + C / 2, B = BR.border;
-      const door = e.side === 'w' ? { x: B, z: ez, nx: 1, nz: 0 } : e.side === 'e' ? { x: size - B, z: ez, nx: -1, nz: 0 }
-        : e.side === 'n' ? { x: ex, z: B, nx: 0, nz: 1 } : { x: ex, z: size - B, nx: 0, nz: -1 };
+      // the exit door: on the inside of the exit room's wall facing its way in (the faces of room x's walls are at
+      // at(x) + 0.5 and at(x + 1): a wall fills the half metre after its room line)
+      const e = plan.exit, ex = at(e.x) + 2.25, ez = at(e.z) + 2.25;
+      const door = e.side === 'w' ? { x: at(e.x) + 0.5, z: ez, nx: 1, nz: 0 } : e.side === 'e' ? { x: at(e.x + 1), z: ez, nx: -1, nz: 0 }
+        : e.side === 'n' ? { x: ex, z: at(e.z) + 0.5, nx: 0, nz: 1 } : { x: ex, z: at(e.z + 1), nx: 0, nz: -1 };
       b.exit(door);
     },
   };

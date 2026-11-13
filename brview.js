@@ -43,29 +43,29 @@ function blotches(ctx, w, h, n, col, alpha, R, rMin, rMax) {
 
 // a big black arrow sprayed on a wall (pointing right): soft overspray edges, speckles, drips
 function arrowTexture(renderer) {
-  const [c, g] = canvas(256, 128);
+  // just lines, big but skinny (owner's request): a long thin shaft and an open head, sprayed by hand, a little wobbly
+  const [c, g] = canvas(512, 256);
   const R = rng(4242);
-  const shape = () => {
-    g.beginPath();
-    g.moveTo(16, 47); g.lineTo(142, 43); g.lineTo(138, 12); g.lineTo(242, 64); g.lineTo(140, 116); g.lineTo(144, 86); g.lineTo(18, 82);
-    g.closePath();
-  };
-  g.lineJoin = 'round'; g.strokeStyle = g.fillStyle = '#000';
-  // overspray: the same outline stroked wider and fainter
-  for (const [w, a] of [[16, 0.07], [11, 0.1], [7, 0.16], [4, 0.3]]) { g.globalAlpha = a; g.lineWidth = w; shape(); g.stroke(); }
-  g.globalAlpha = 0.93; shape(); g.fill();
-  // speckles round the edges
-  for (let i = 0; i < 260; i++) {
-    const x = 10 + R() * 236, y = 14 + R() * 102;
-    g.globalAlpha = 0.25 + R() * 0.5;
-    g.fillRect(x, y, 1 + R() * 2, 1 + R() * 2);
+  const tip = [490, 128];
+  const strokes = [[[22, 132], [250, 121], tip], [[370, 34], [428, 84], tip], [[370, 222], [428, 174], tip]];   // from, bend, to
+  const at = ([a, m, b], t) => [(1 - t) * (1 - t) * a[0] + 2 * (1 - t) * t * m[0] + t * t * b[0], (1 - t) * (1 - t) * a[1] + 2 * (1 - t) * t * m[1] + t * t * b[1]];
+  const path = () => { g.beginPath(); for (const [a, m, b] of strokes) { g.moveTo(a[0], a[1]); g.quadraticCurveTo(m[0], m[1], b[0], b[1]); } };
+  g.lineCap = 'round'; g.lineJoin = 'round'; g.strokeStyle = g.fillStyle = '#000';
+  // overspray: the same lines wider and fainter, then the line itself
+  for (const [w, a] of [[22, 0.05], [15, 0.1], [11, 0.18]]) { g.globalAlpha = a; g.lineWidth = w; path(); g.stroke(); }
+  g.globalAlpha = 0.95; g.lineWidth = 8; path(); g.stroke();          // (about 5 cm wide on the wall)
+  // speckles along the lines
+  for (let i = 0; i < 360; i++) {
+    const [px, py] = at(strokes[Math.floor(R() * 3)], R()), r = 5 + R() * 11, ang = R() * Math.PI * 2;
+    g.globalAlpha = 0.2 + R() * 0.45;
+    g.fillRect(px + Math.cos(ang) * r, py + Math.sin(ang) * r, 1 + R() * 1.5, 1 + R() * 1.5);
   }
-  // drips running down from the bottom edge
+  // drips running down from the lines
   g.globalAlpha = 0.85;
-  for (let i = 0; i < 7; i++) {
-    const x = 26 + R() * 200, top = x > 142 ? 64 + (114 - 64) * (1 - (x - 142) / 100) : 80, len = 6 + R() * Math.min(34, 124 - top);
-    g.lineWidth = 1.5 + R() * 2; g.beginPath(); g.moveTo(x, top); g.lineTo(x + (R() - 0.5) * 1.5, top + len); g.stroke();
-    g.beginPath(); g.arc(x, top + len, g.lineWidth * 0.8, 0, Math.PI * 2); g.fill();
+  for (let i = 0; i < 9; i++) {
+    const k = i < 5 ? 0 : 1 + (i % 2), [px, py] = at(strokes[k], 0.08 + R() * 0.84), top = py + 3, len = Math.min(8 + R() * 40, 250 - top);
+    g.lineWidth = 1.5 + R() * 1.5; g.beginPath(); g.moveTo(px, top); g.lineTo(px + (R() - 0.5) * 2, top + len); g.stroke();
+    g.beginPath(); g.arc(px, top + len, g.lineWidth * 0.8, 0, Math.PI * 2); g.fill();
   }
   g.globalAlpha = 1;
   return tex(c, renderer, false);
@@ -787,7 +787,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     group.add(dg);
   }
 
-  // ---------- big black arrows sprayed on the walls, pointing roughly the way to the exit ----------
+  // ---------- big black arrows sprayed on the walls, pointing the rough compass direction of the exit ----------
   if ((plan.arrows || []).length) {
     const aPos = [], aUV = [];
     for (const a of plan.arrows) {
@@ -802,7 +802,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
       // across the wall, turned so the tip points the way to go; a little crooked, like it was done by hand
       let ux = nz, uz = -nx;
       if (ux * a.dx + uz * a.dz < 0) { ux = -ux; uz = -uz; }
-      const hw = 0.85 * a.s, hh = 0.425 * a.s, ct = Math.cos(a.tilt), st = Math.sin(a.tilt);      // about 1.7 m long
+      const hw = 1.62 * a.s, hh = 0.81 * a.s, ct = Math.cos(a.tilt), st = Math.sin(a.tilt);      // about 3.3 m long: twice as big (owner), as long as a wall
       const U = [ux * ct, st, uz * ct], V = [-ux * st, ct, -uz * st];
       const P = (su, sv) => [cx + U[0] * hw * su + V[0] * hh * sv, cy + U[1] * hw * su + V[1] * hh * sv, cz + U[2] * hw * su + V[2] * hh * sv];
       for (const [su, sv] of [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]]) { aPos.push(...P(su, sv)); aUV.push((su + 1) / 2, (sv + 1) / 2); }

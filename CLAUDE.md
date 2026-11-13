@@ -113,19 +113,24 @@ The only folder is `server/` (the optional home game server).
   NOT in `MAPS`, `resolveMap('backrooms', variant)`; the variant is "seed:level" (`brVariant` / `parseBrVariant`, a plain number = normal)):
   28×28 rooms of 4 m (`BR.cells`; was 20×20, the owner asked for a bigger map: about twice the area, ~5 s to load in a test browser),
   spanning tree + 14 % loops + bigger rooms (as many per area as before), ONE pillar hall (repeating 1 m pillars, 3–5 rooms a side), a few free
-  pillars (12 %), NO single pitfalls (owner removed them), exit door in the outer wall as far as possible from the start (`b.exit` →
-  `world.exit`, never on the start's side). Pit rooms (owner's reference picture; "composed of square holes", the room itself may be a
+  pillars (12 %), NO single pitfalls (owner removed them). The exit (owner: "going all left mustn't find it"): a door in a small room
+  out in the maze (not on an edge), as far as possible from the start and never on its side; the 8 walls meeting that room's corners from
+  outside are knocked out and it gets its own 4 walls but one (the way in, random), so its walls are an island: keeping a hand on one
+  wall (always left / always right) never gets there. The door is on the inside of the wall facing the way in (`b.exit` → `world.exit`,
+  n points into the room; the host only counts you through it from in front: `ahead > -0.3`). No pit rooms or doors in the 3×3 rooms
+  round it (`byExit`), and no pillar hall within a room of it (a pillar on its corner would join it to the rest). Pit rooms (owner's reference picture; "composed of square holes", the room itself may be a
   rectangle): two, 2×3 / 3×2 / 3×3 rooms (8×12 / 12×8 / 12×12 m), set across the shortest way to the exit; a regular grid of identical
   2.5 m square holes (`PIT_HOLE`, `pitHoles()`; `b.pit` → `world.pitGrid`, `isPit`: no floor, you fall; below y −3 the host kills you)
   with walkways of the level's width between them; at each end of a row the strip by the wall is either none (the holes touch the wall)
   or at least 1 m — never a thinner ledge, which nobody could walk along. Big black spray-painted arrows (`plan.arrows`, drawn in `brview.js` from
-  `arrowTexture`) on walls of rooms where the way splits, pointing to the next room on the shortest way to the exit ("vaguely": only some
-  rooms). Doorways: 3 a maze (owner wanted fewer), each where going round is a real detour (6+ rooms, `goodDoor`) and nothing is
+  `arrowTexture`): just lines, big but skinny (owner: a ~3.3 × 1.6 m quad, the size of a wall, 5 cm lines: a shaft + an open head,
+  overspray, drips); in few rooms (arrows 0.22 / 0.15 / 0.09 of the rooms where the way splits, plus the start) and vague (owner): they
+  point the rough compass direction of the exit as the crow flies (the bigger axis; nearly diagonal = either), not the way through the maze. Doorways: 3 a maze (owner wanted fewer), each where going round is a real detour (6+ rooms, `goodDoor`) and nothing is
   ever sealed off with every door shut (`walkShut`); a wall with a
   1.5 × 2.2 m gap; the wall above is a `wallpaper` span from 2.2 m. Walls fill the
   cell [line, line + 0.5) east/south of each room line. `backroomsMap` checks every maze (`mazeOk`: player start→exit, monster→start with
   3×3 clearance) and deterministically tries seed variations if one fails. `node check_br.mjs 300` checks many seeds (all three levels,
-  with every door shut). The NavGrid treats a
+  with every door shut, and that the exit room's walls are an island). The NavGrid treats a
   hole next to a cell as no wall (walk along its edge).
   Doors open and shut (`b.door` → `world.doors`; kind 'way' = double doors in a doorway; every door leads somewhere — the old 'blank' doors
   onto bricks were removed at the owner's request, the code for them is unused). The door frame covers the wall's cut edges (5 cm into the
@@ -213,7 +218,7 @@ The only folder is `server/` (the optional home game server).
   monster), strength = `settings.camShake` (Settings → General "Camera shake in the Backrooms", default 0.5, 0 = off). Head bobbing while you walk
   (Backrooms only, owner's request): `settings.headBob` (Settings → General "Head bobbing in the Backrooms", default 0.5, 0 = off; synced
   to the account), step-paced rise/fall + sway + a little roll in `Game.updateCamera`. `monster.js` = the monster's brain on the host (player
-  id `'monster'`, team `'monster'` = snapshot team index 3, `use` = chasing): waits `lv.wake` s; its route search limit grows with the maze (`nav.n * 0.5`, at least 20000); states chase (aims ahead of a running
+  id `'monster'`, team `'monster'` = snapshot team index 3, `use` = chasing): waits `lv.wake` s; its route search may cover the whole walking grid (`nav.n * 1.2`: the longest ways across the big maze need up to ~65 % of it; ~35 ms at worst); states chase (aims ahead of a running
   target), stalk (creeps up on someone far away looking the other way, charges when they turn or it's within 9 m), pursue (runs to where you
   were heading), search (4 nearby spots, in your direction first, listening at each), wander (towards players, more surely the longer it has
   no clue; stops to listen now and then). Hears sprinting (> 3.5 m/s) within `lv.hear` and walking within `lv.hearWalk`; kills on contact (`monsterKill`). Model `makeMonsterModel` / `animateMonster` in

@@ -1028,7 +1028,7 @@ export class Server {
       if (door) {
         const dx = p.x - door.x, dz = p.z - door.z;
         const ahead = dx * door.nx + dz * door.nz, side = Math.abs(-dx * door.nz + dz * door.nx);
-        if (ahead < 0.9 && side < 1.1 && Math.abs(p.y) < 0.5) {
+        if (ahead > -0.3 && ahead < 0.9 && side < 1.1 && Math.abs(p.y) < 0.5) {     // (not from behind its wall)
           p.escaped = true; p.alive = false; p.escapeTime = Math.round(this.timer);
           this.broadcast({ t: 'escaped', id: p.id, name: p.name, time: p.escapeTime });
           this.brCheck();
