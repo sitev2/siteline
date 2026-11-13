@@ -6,7 +6,7 @@ import { MAPS, resolveMap, mapsFor, isDmMap, dmVariant } from './maps.js';
 import { RULES } from './config.js';
 import { NavGrid, BotBrain, BOT_NAMES } from './bots.js';
 import { MonsterBrain, ListenerBrain, outerCorners, SKIN_CHANCE } from './monster.js';
-import { BR_LEVELS, brLevel, brVariant } from './brmap.js';
+import { BR_LEVELS, brLevel, brVariant, wallFace } from './brmap.js';
 import { cleanChat, CHAT_LIMIT } from './filter.js';
 import {
   WEAPONS, EQUIPMENT, MONEY, STARTER_PISTOL, canTeamBuy, rawDamage, applyArmor, isArmored, penMetres, HITGROUPS,
@@ -187,6 +187,7 @@ export class Server {
     if (!p) return;
     // the monster was wearing them: it changes back now (they can't be shown any more)
     if (this.brSkin && this.brSkin.id === id) { const b = this.bots.get('monster'); if (b && b.unmask) b.unmask(b.lastNow || 0); else this.brSkin = null; }
+    if (this.brKey) this.dropKey(p);
     this.bots.delete(id);
     // a friend left a practice game: a bot takes their place again
     if (this.botCfg && !p.bot && id !== this.localId && this.phase !== 'lobby' && this.phase !== 'over') {
@@ -238,8 +239,14 @@ export class Server {
       case 'door':
         if (this.phase === 'br' && p.alive && !p.escaped && Number.isInteger(msg.i)) {
           const d = this.world.doors[msg.i];
-          if (d && Math.hypot(d.cx - p.x, d.cz - p.z) < 2.4) this.toggleDoor(msg.i, !d.open, p);
+          if (d && Math.hypot(d.cx - p.x, d.cz - p.z) < 2.4) { if (d.lock) this.teamDoor(msg.i, p); else this.toggleDoor(msg.i, !d.open, p); }
         }
+        return;
+      case 'switch':
+        if (this.phase === 'br' && p.alive && !p.escaped && Number.isInteger(msg.i)) this.pressSwitch(p, msg.i);
+        return;
+      case 'boost':
+        if (this.phase === 'br' && p.alive && !p.escaped) this.tryBoost(p);
         return;
       case 'pong':
         if (Number.isFinite(msg.ts)) {
@@ -681,6 +688,7 @@ export class Server {
   kill(tgt, attacker, weapon, head, from = null, part = 'chest', extra = null) {
     if (!tgt.alive) return;
     tgt.alive = false;
+    if (this.brKey) this.dropKey(tgt);
     tgt.deaths++;
     tgt.use = false;
     if (attacker && attacker !== tgt) {
@@ -747,6 +755,7 @@ export class Server {
       mode: this.br ? 'br' : this.dm ? 'dm' : 'wingman', variant: this.variant,
       doors: this.br && this.world ? this.world.doors.map(d => (d.broken ? 2 : d.open ? 1 : 0)) : undefined,     // 2 = kicked in
       notes: this.br ? this.notes : undefined,
+      key: this.br && this.brKey ? (this.brKey.holder ? 1 : 0) : undefined,      // the red key isn't on its shelf
     };
   }
 
@@ -996,6 +1005,14 @@ export class Server {
     this.brSkin = null;                             // { id }: the player whose skin the monster is wearing
     this.notes = [];                                // paper notes people have left
     this.noteSeq = 0;
+    // the team shortcuts (owner's picks): the red key on its high shelf, the two switches, someone on someone's shoulders
+    const plan = this.world.def.br;
+    const spot = (r, out) => { const f = wallFace(r.x, r.z, r.wx, r.wz); return { x: f.x + f.nx * out, z: f.z + f.nz * out }; };
+    this.keySpot = plan.key ? spot(plan.key, 0.55) : null;      // where you stand to reach it
+    this.switchSpots = (plan.switches || []).map(s => spot(s, 0.5));
+    this.brKey = { holder: null };                  // null: on its shelf; a player id; 'used': the red door is open
+    this.switchAt = this.switchSpots.map(() => -1e9);
+    this.boost = null;                              // { climber, lifter, t0, given }
     this.phase = 'br';
     this.broadcast(this.startMsg());
     this.broadcastRoster();
@@ -1021,6 +1038,7 @@ export class Server {
 
   brTick() {
     const door = this.world.exit, now = performance.now();
+    this.boostTick(now);
     // where everyone has been in the last second or so (for the corner snatch)
     for (const p of this.humans()) {
       if (!p.alive || p.escaped) continue;
@@ -1044,6 +1062,7 @@ export class Server {
         const ahead = dx * door.nx + dz * door.nz, side = Math.abs(-dx * door.nz + dz * door.nx);
         if (ahead > -0.3 && ahead < 0.9 && side < 1.1 && Math.abs(p.y) < 0.5) {     // (not from behind its wall)
           p.escaped = true; p.alive = false; p.escapeTime = Math.round(this.timer);
+          this.dropKey(p);
           this.broadcast({ t: 'escaped', id: p.id, name: p.name, time: p.escapeTime });
           this.brCheck();
         }
@@ -1077,6 +1096,83 @@ export class Server {
     const L = this.bots.get('listener');
     if (L && by && !by.bot) L.hearNoise(d.cx, d.cz, 18);
     return true;
+  }
+
+  // ---------- the team shortcuts (they need two or more players) ----------
+  // a locked team door: red (the red key opens it), heavy (two push at once), twin (the two switches open it).
+  // Once open they stay open.
+  teamDoor(i, p) {
+    const d = this.world.doors[i], now = performance.now();
+    if (d.open) return;
+    const near = (q) => q && q.alive && !q.escaped && Math.hypot(q.x - d.cx, q.z - d.cz) < 2.6;
+    if (d.lock === 'red') {
+      if (this.brKey.holder !== p.id) { this.send(p.id, { t: 'toast', text: 'Locked. It needs the red key: look high up' }); this.broadcast({ t: 'doorRattle', i }); return; }
+      this.brKey.holder = 'used'; p.key = false;
+      this.openTeamDoor(i, p, `${p.name} unlocked the red door`);
+    } else if (d.lock === 'heavy') {
+      d.pushes = d.pushes || {};
+      d.pushes[p.id] = now;
+      const helper = Object.entries(d.pushes).some(([id, t]) => id !== p.id && now - t < 1500 && near(this.players.get(id)));
+      if (helper) this.openTeamDoor(i, p, 'Together you push the heavy door open');
+      else { this.send(p.id, { t: 'toast', text: 'Too heavy for one. Two of you: push at the same moment' }); this.broadcast({ t: 'doorRattle', i }); }
+    } else if (d.lock === 'twin') {
+      this.send(p.id, { t: 'toast', text: "It won't move. Two switches nearby open it" });
+      this.broadcast({ t: 'doorRattle', i });
+    }
+  }
+
+  openTeamDoor(i, p, text) {
+    const d = this.world.doors[i];
+    this.world.setDoor(i, true);
+    this.doorAt[i] = performance.now();
+    const s = p ? Math.sign((p.x - d.cx) * d.nx + (p.z - d.cz) * d.nz) || 1 : 1;
+    this.broadcast({ t: 'door', i, open: true, swing: -s, by: p ? p.id : null });
+    this.broadcast({ t: 'toast', text });
+    // a door that heavy is loud
+    for (const id of ['monster', 'listener']) { const b = this.bots.get(id); if (b) b.hearNoise(d.cx, d.cz, 18); }
+  }
+
+  // one of the two switches: both pressed within 2 s of each other opens the twin door
+  pressSwitch(p, i) {
+    const s = this.switchSpots && this.switchSpots[i];
+    if (!s || Math.hypot(p.x - s.x, p.z - s.z) > 2) return;
+    const now = performance.now();
+    this.switchAt[i] = now;
+    this.broadcast({ t: 'switch', i });
+    const di = this.world.doors.findIndex(d => d.lock === 'twin');
+    if (di < 0 || this.world.doors[di].open) return;
+    if (this.switchAt.some((t, j) => j !== i && now - t < 2000)) this.openTeamDoor(di, null, 'Both switches at once: the door is open');
+    else this.send(p.id, { t: 'toast', text: 'Click. Nothing happens. The other switch has to go at the same moment' });
+  }
+
+  // the red key is too high to reach: one climbs onto another's shoulders (both must stand under it)
+  tryBoost(p) {
+    const k = this.keySpot;
+    if (!k || this.brKey.holder || this.boost || Math.hypot(p.x - k.x, p.z - k.z) > 1.6) return;
+    const lifter = this.humans().find(q => q !== p && q.alive && !q.escaped && Math.hypot(q.x - k.x, q.z - k.z) < 1.8);
+    if (!lifter) { this.send(p.id, { t: 'toast', text: "Too high to reach. Someone has to lift you: both stand here, then press E" }); return; }
+    this.boost = { climber: p.id, lifter: lifter.id, t0: performance.now(), given: false };
+    this.broadcast({ t: 'boost', climber: p.id, lifter: lifter.id, x: r2(k.x), z: r2(k.z), dur: 2.6 });
+  }
+
+  boostTick(now) {
+    const b = this.boost;
+    if (!b) return;
+    const c = this.players.get(b.climber), l = this.players.get(b.lifter);
+    if (!c || !l || !c.alive || !l.alive) { this.boost = null; this.broadcast({ t: 'boost', end: true }); return; }
+    if (!b.given && now - b.t0 > 1300) {
+      b.given = true;
+      this.brKey.holder = c.id; c.key = true;
+      this.broadcast({ t: 'key', id: c.id, name: c.name });
+    }
+    if (now - b.t0 > 2600) this.boost = null;
+  }
+
+  // whoever had the red key is gone (dead, out or left): it is back up on its shelf
+  dropKey(p) {
+    if (!this.br || !p || this.brKey.holder !== p.id) return;
+    this.brKey.holder = null; p.key = false;
+    this.broadcast({ t: 'keyBack' });
   }
 
   // the monster kicked a shut door in: it falls off its hinges and stays open for good

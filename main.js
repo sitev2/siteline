@@ -914,6 +914,7 @@ function startGame(msg) {
     variant: msg.variant,
     doors: msg.doors,
     notes: msg.notes,
+    key: msg.key,
     night: !!(msg.settings && msg.settings.night),
     settings,
     quality: resolvedQuality(),

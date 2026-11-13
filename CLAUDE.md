@@ -164,9 +164,20 @@ The only folder is `server/` (the optional home game server).
   SpotLight for people 12.8 / 11.2 intensity, others' beam cone at 0.8, 48 / 42 m, 0.36 rad, penumbra 0.9; 2v2 night mode keeps the old flashlight); the baked surfaces get flashlight cones through a shader hook (`addFlash` / `FLASH`
   uniforms in `brview.js`, filled by `brfx.js`); people and the haze dim with the light where you stand (`lightAt`, `dimPeople`).
   Flickering panels throw sparks + a zap when they stutter back on (`userData.update(dt, dread, cam)`, `onSpark`).
+  Team shortcuts (owner's picks; need 2+ players, solo just goes the long way): `plan.locked` (brmap step 6b) — walls that would cut the
+  way to the exit by 10+ rooms get a locked 'way' door with `lock`: 'red' (red painted; opens with the red key), 'heavy' (riveted steel,
+  `steelTexture`; two players press E within 1.5 s of each other) and 'twin' (hazard stripes, `stripeTexture`; opens when the two
+  `plan.switches` — wall switches in different rooms 1–5 rooms back, ≥ 3 apart — are pulled within 2 s). They stay walls in the plan (maze
+  solved without them), `used` keeps arrows/logs/switches off their walls. Once open they stay open; It and the Listener can't pass them shut
+  (doorCost Infinity, no kicking). The red key (`plan.key`): hangs on a nail above a high shelf 2–7 rooms back from the red door (brview
+  `setKey`); stand under it with a teammate and press E (`{t:'boost'}` → host `tryBoost`): the presser climbs onto the other's shoulders
+  (`{t:'boost', climber, lifter, x, z, dur 2.6}`; both frozen, the climber's own client lifts them to y 0.95, `Game.boostMe`), and after
+  1.3 s gets the key (`{t:'key'}`, `p.key`); E at the red door then opens it. The key goes back on its shelf if its holder dies, escapes or
+  leaves (`dropKey`, `{t:'keyBack'}`); the start message carries `key`. E / the hand button picks the target with `Game.useTarget()` (key spot,
+  switch, then door), with hints for each. Explorer logs 9–11 explain them, taped up near each.
   Explorer logs (owner's pick): `plan.logs` (brmap step 10, `LOG_COUNT` 7 a maze: clue 0 always in the start room, the rest spread out
   ≥ 6 rooms apart, never on a wall with an arrow) → `brfx.startNotes` adds them as wall notes (ids −1…, `log` = clue index, 0.42 m) drawn
-  by `paintNote` with the clue's text + its own pencil drawing (`LOGS` in `brfx.js`: our own words/pictures; signatures `WHO`); read close
+  by `paintNote` with the clue's text + its own pencil drawing (`LOGS` in `brfx.js`: our own words/pictures; signatures `WHO`; 9–11 = the team shortcuts); read close
   up like any note. Self-drawn map (owner's pick): M (`map` key) / `#btn-map` → `#br-map`: only cells you've been within 2.4 m of AND could
   see (2D ray through `mapKind`), drawn like pencil on paper (`initMap` / `mapStep` / `drawMap`: floor, walls, holes, your trail in blue,
   you as a red arrowhead, EXIT once you've seen its door); client only. Ending scene (owner's pick): your own `escaped` →
