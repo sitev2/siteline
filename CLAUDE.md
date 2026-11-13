@@ -104,14 +104,15 @@ The only folder is `server/` (the optional home game server).
   (`BACKROOMS_TESTERS` = `test123`; `backroomsAllowed()` / `hideBackrooms()`, re-checked on login/logout). 1–4 players co-op,
   no guns (`p.w = 'none'`, empty hands), find the exit door. Three difficulties (`BR_LEVELS` in `brmap.js`: easy / normal / hard; lobby
   `#lobby-level` → `settings.level`, Practice uses `#p-level`): walkway width in pit rooms (1.5 / 1 / 0.5 m), ceiling holes
-  (8 / 11 / 14), dark areas (2 / 3 / 4), arrows, and the monster (`lv`): chase speed = your sprint × 1.05 / 1.10 / 1.15 (owner's choice),
+  (4 / 6 / 7: the owner halved them), dark areas (4 / 6 / 8: doubled with the maze's area), arrows, and the monster (`lv`): chase speed = your sprint × 1.05 / 1.10 / 1.15 (owner's choice),
   sight / chaseSight (it loses you sooner on easy), fov, `lose` (s before it gives up seeing you), `lead`, hearing, search spots, wake time.
   Controls in the Backrooms only (owner's choice; 2v2/DM unchanged): you WALK by default (`BR.walk` 2.7 m/s, quiet; was 3.2 — owner asked for slower, may still tune), Shift (the 'walk'
   key) or holding the jump button on phones (it shows the `run` icon; `input.jumpHeld`) SPRINTS (`BR.sprint` 4.5 m/s, was 5.3, loud; the monster's speeds were cut ~15 % too; `Game.sprinting()`),
   no jumping, F (the inspect key) is the flashlight as well as L.
   A new random maze every game: `brmap.js` (`planMaze(seed, level)` / `backroomsMap(variant)`;
   NOT in `MAPS`, `resolveMap('backrooms', variant)`; the variant is "seed:level" (`brVariant` / `parseBrVariant`, a plain number = normal)):
-  20×20 rooms of 4 m, spanning tree + 14 % loops + bigger rooms, ONE pillar hall (repeating 1 m pillars, 3–5 rooms a side), a few free
+  28×28 rooms of 4 m (`BR.cells`; was 20×20, the owner asked for a bigger map: about twice the area, ~5 s to load in a test browser),
+  spanning tree + 14 % loops + bigger rooms (as many per area as before), ONE pillar hall (repeating 1 m pillars, 3–5 rooms a side), a few free
   pillars (12 %), NO single pitfalls (owner removed them), exit door in the outer wall as far as possible from the start (`b.exit` →
   `world.exit`, never on the start's side). Pit rooms (owner's reference picture; "composed of square holes", the room itself may be a
   rectangle): two, 2×3 / 3×2 / 3×3 rooms (8×12 / 12×8 / 12×12 m), set across the shortest way to the exit; a regular grid of identical
@@ -148,7 +149,7 @@ The only folder is `server/` (the optional home game server).
   15 % per corner. Both broadcast `{t:'snatch', id, kind, x, z}` then a kill with weapon 'ceiling' / 'corner' (no kill feed, no
   ragdoll: the body is gone). `brfx.js` animates the arm (`makeSnatchArm` in `models.js`), the victim's body and the victim's
   own camera (fades to `#br-black`).
-  Dark areas: `plan.darkZones` (blocks of rooms with dead lights; `darkK` fades the light from 2 m before the edge to 4 m inside
+  Dark areas: `plan.darkZones` (blocks of rooms with every light off — no flickering ones in there either, owner's request; `darkK` fades the light from 2 m before the edge to 4 m inside
   (`FADE_OUT` / `FADE_IN`) in even-looking steps (`DARK_MIN ** smoothstep`, owner: "blend more"), down to `DARK_MIN` 2 %, nearly pitch
   black — owner asked for darker twice; people dim to 2.5 % and the haze to 1.5 % there; `keepHue()` in the
   shader keeps very dim baked light in the surface's own colour, just darker (owner: walls must not lose their colour in the dark; plain
@@ -212,7 +213,7 @@ The only folder is `server/` (the optional home game server).
   monster), strength = `settings.camShake` (Settings → General "Camera shake in the Backrooms", default 0.5, 0 = off). Head bobbing while you walk
   (Backrooms only, owner's request): `settings.headBob` (Settings → General "Head bobbing in the Backrooms", default 0.5, 0 = off; synced
   to the account), step-paced rise/fall + sway + a little roll in `Game.updateCamera`. `monster.js` = the monster's brain on the host (player
-  id `'monster'`, team `'monster'` = snapshot team index 3, `use` = chasing): waits `lv.wake` s; states chase (aims ahead of a running
+  id `'monster'`, team `'monster'` = snapshot team index 3, `use` = chasing): waits `lv.wake` s; its route search limit grows with the maze (`nav.n * 0.5`, at least 20000); states chase (aims ahead of a running
   target), stalk (creeps up on someone far away looking the other way, charges when they turn or it's within 9 m), pursue (runs to where you
   were heading), search (4 nearby spots, in your direction first, listening at each), wander (towards players, more surely the longer it has
   no clue; stops to listen now and then). Hears sprinting (> 3.5 m/s) within `lv.hear` and walking within `lv.hearWalk`; kills on contact (`monsterKill`). Model `makeMonsterModel` / `animateMonster` in

@@ -304,9 +304,9 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     const cx = at(x) + BR.cell / 2, cz = at(z) + BR.cell / 2;
     if (isSolid(Math.floor(cx / CELL), Math.floor(cz / CELL))) continue;
     const r = R();
-    // dark areas: every light dead, now and then one stuttering
+    // dark areas: every light off (owner's request: no stuttering ones in there either)
     const dark = (plan.darkZones || []).some(d => x >= d.x && x < d.x + d.w && z >= d.z && z < d.z + d.d);
-    const state = dark ? (r < 0.12 ? 'flicker' : 'dead') : r < 0.06 ? 'dead' : r < 0.12 ? 'flicker' : 'on';
+    const state = dark ? 'dead' : r < 0.06 ? 'dead' : r < 0.12 ? 'flicker' : 'on';
     lights.push({ x: cx, z: cz, y: H - 0.02, ax: 'x', I: state === 'dead' ? 0 : state === 'flicker' ? 0.7 : 1, col: LIGHT, state, seed: R() });
   }
   // the exit glows green-white

@@ -592,7 +592,7 @@ export class MonsterBrain {
     const key = `${Math.round(goal.x)},${Math.round(goal.z)}`;
     if (!this.path || key !== this.pathKey || now > this.repathAt) {
       this.pathKey = key;
-      this.path = nav.path(nav.nearest(p.x, p.y, p.z), nav.nearest(goal.x, 0, goal.z), 20000, this.doorCost);
+      this.path = nav.path(nav.nearest(p.x, p.y, p.z), nav.nearest(goal.x, 0, goal.z), Math.max(20000, Math.round(nav.n * 0.5)), this.doorCost);   // (search limit grows with the maze)
       this.pathIdx = 0;
       this.repathAt = now + (this.state === 'chase' ? 0.5 : this.state === 'pursue' || this.state === 'stalk' ? 1 : 4);
       if (!this.path) { this.goal = null; return null; }
