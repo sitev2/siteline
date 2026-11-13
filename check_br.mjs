@@ -1,6 +1,7 @@
 // Checks Backrooms mazes: for many random seeds, a player can always walk from the start to the
 // exit without falling down a pit, and the monster can always reach the players — even with every
-// door shut (it can't open doors).
+// door shut (it can't open doors) — and the exit room's walls touch no other wall (so following
+// one wall, always left or always right, never finds the exit).
 // Usage: node check_br.mjs [how many seeds = 40] [print one seed's map] [easy|normal|hard = all three]
 import { resolveMap } from './maps.js';
 import { World, CELL } from './world.js';
@@ -40,11 +41,25 @@ for (let k = 0; k < runs; k++) {
   w.doors.forEach((d, i) => w.setDoor(i, false));         // (…and it steers round the shut ones)
   const doorCell = new Set(w.doors.flatMap(d => d.cells));
   const m = w.spawns.def[0];
-  const path = nav.path(nav.nearest(m.x, 0, m.z), nav.nearest(s.x, 0, s.z), 30000, j => doorCell.has(Math.floor(nav.z[j] / CELL) * w.w + Math.floor(nav.x[j] / CELL)));
+  const path = nav.path(nav.nearest(m.x, 0, m.z), nav.nearest(s.x, 0, s.z), nav.n, j => doorCell.has(Math.floor(nav.z[j] / CELL) * w.w + Math.floor(nav.x[j] / CELL)));
   const spawnsOk = w.spawns.atk.every(p => !w.isPit(p.x, p.z) && fits(Math.floor(p.x / CELL), Math.floor(p.z / CELL)));
-  const ok = found && !!path && spawnsOk;
+  // the exit's walls must touch no other wall (8-way, every door shut), or keeping a hand on the wall would lead there
+  const solid = (ix, iz) => ix < 0 || iz < 0 || ix >= w.w || iz >= w.h || !free(ix, iz);
+  const outer = new Uint8Array(w.w * w.h), sq = [[0, 0]];
+  outer[0] = 1;
+  for (let i = 0; i < sq.length; i++) {
+    const [ix, iz] = sq[i];
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      const nx = ix + dx, nz = iz + dz;
+      if (nx < 0 || nz < 0 || nx >= w.w || nz >= w.h || outer[nz * w.w + nx] || !solid(nx, nz)) continue;
+      outer[nz * w.w + nx] = 1; sq.push([nx, nz]);
+    }
+  }
+  const behind = [Math.floor((e.x - e.nx * 0.25) / CELL), Math.floor((e.z - e.nz * 0.25) / CELL)];
+  const island = solid(behind[0], behind[1]) && !outer[behind[1] * w.w + behind[0]];
+  const ok = found && !!path && spawnsOk && island;
   if (!ok) bad++;
-  console.log(`${ok ? 'OK  ' : 'FAIL'} seed ${seed} ${level}: exit ${found ? 'reachable' : 'NOT reachable'}, monster ${path ? `path ${path.length} steps` : 'NO path'}, spawns ${spawnsOk ? 'ok' : 'BAD'}, doors ${w.doors.length} (all shut), pits ${w.pits.length}, built in ${ms} ms`);
+  console.log(`${ok ? 'OK  ' : 'FAIL'} seed ${seed} ${level}: exit ${found ? 'reachable' : 'NOT reachable'}, monster ${path ? `path ${path.length} steps` : 'NO path'}, spawns ${spawnsOk ? 'ok' : 'BAD'}, exit ${island ? 'on an island' : 'TOUCHES THE OTHER WALLS'}, doors ${w.doors.length} (all shut), pits ${w.pits.length}, built in ${ms} ms`);
   if (show) {
     // a rough picture: # wall, o pillar, . floor, _ pit, S start, E exit, M monster
     const rows = [];
