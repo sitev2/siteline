@@ -44,7 +44,8 @@ export class MonsterBrain {
       for (let i = 0; i < nav.n; i++) if (cells.has(Math.floor(nav.z[i] / 0.5) * w.w + Math.floor(nav.x[i] / 0.5))) this.doorOf[i] = k;
     });
     // a shut door on a route costs what kicking it in takes (KICK_TIME of running); wearing someone, it won't kick
-    this.doorCost = (i) => (this.doorOf[i] >= 0 && !w.doors[this.doorOf[i]].open ? (this.state === 'skin' ? Infinity : KICK_TIME * this.chaseSpeed) : 0);
+    // (a locked team door, red / heavy / switches, it can't kick in at all: a wall to it until the players open it)
+    this.doorCost = (i) => { const d = this.doorOf[i] >= 0 && w.doors[this.doorOf[i]]; return d && !d.open ? (this.state === 'skin' || d.lock ? Infinity : KICK_TIME * this.chaseSpeed) : 0; };
     this.vel = { x: 0, y: 0, z: 0 };
     this.onGround = true;
     this.state = 'wait';
@@ -179,7 +180,7 @@ export class MonsterBrain {
     if (!dir) return false;
     for (let i = 0; i < w.doors.length; i++) {
       const d = w.doors[i];
-      if (d.kind !== 'way' || d.open) continue;
+      if (d.kind !== 'way' || d.open || d.lock) continue;
       const dx = d.cx - p.x, dz = d.cz - p.z, dist = Math.hypot(dx, dz);
       if (dist > 1.2 || (dx * dir[0] + dz * dir[1]) / (dist || 1) < 0.3) continue;
       if (this.state === 'skin') { this.path = null; this.repathAt = 0; return false; }

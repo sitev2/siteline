@@ -21,7 +21,7 @@ import { Hud, TEAM_NAMES } from './hud.js';
 import { BuyMenu } from './buy.js';
 import { icon } from './icons.js';
 import { BackroomsFX } from './brfx.js';
-import { BR } from './brmap.js';
+import { BR, wallFace } from './brmap.js';
 
 const BOMB_STATES = ['none', 'carried', 'dropped', 'planted', 'defused', 'exploded'];
 const INTERP_DELAY = 110; // ms
@@ -60,7 +60,7 @@ const d0 = (esc) => ({ x: esc.door.x + esc.door.nx * 0.15, z: esc.door.z + esc.d
 const smoothstep = t => t * t * (3 - 2 * t);
 
 export class Game {
-  constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night, doors, notes }) {
+  constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night, doors, notes, key }) {
     this.transport = transport;
     this.myId = myId;
     this.practice = practice;
@@ -126,6 +126,13 @@ export class Game {
     if (doors) doors.forEach((o, i) => { this.world.setDoor(i, !!o); if (o === 2 && this.world.doors[i]) this.world.doors[i].broken = true; if (this.setDoorView) this.setDoorView(i, !!o, 1, true, o === 2); });
     this.builtMap = built;
     this.pendingNotes = notes;
+    // the team shortcuts: where you stand for the red key and for the two switches (the same sums as the host)
+    const plan = this.br && this.world.def.br;
+    const spot = (r, out) => { const f = wallFace(r.x, r.z, r.wx, r.wz); return { x: f.x + f.nx * out, z: f.z + f.nz * out, fx: f.x, fz: f.z }; };
+    this.keySpot = plan && plan.key ? spot(plan.key, 0.55) : null;
+    this.switchSpots = plan ? (plan.switches || []).map(s => spot(s, 0.5)) : [];
+    this.keyTaken = !!key;
+    if (built.group.userData.setKey) built.group.userData.setKey(!this.keyTaken);
     // this map's acoustics and background sound
     sfx.setRoom(this.world.def.theme);
     sfx.setStepVolume(STEP_VOLUME[this.mapId] ?? 1);
@@ -448,6 +455,32 @@ export class Game {
         if (this.setDoorView) this.setDoorView(m.i, m.open, m.swing, false, !!m.broken);
         sfx.playDoor({ x: d.cx, y: 1.2, z: d.cz }, m.broken ? 'break' : m.open ? 'open' : 'shut', this.occlusion(d.cx, 1.2, d.cz));
         if (m.broken && Math.hypot(d.cx - this.me.pos.x, d.cz - this.me.pos.z) < 8) this.shake = Math.min(1.5, this.shake + 0.9);
+        return;
+      }
+      case 'switch': {
+        // someone pulled one of the two switches: its lamp goes green for 2 s
+        if (this.builtMap && this.builtMap.group.userData.setSwitch) this.builtMap.group.userData.setSwitch(m.i, this.clock);
+        const s = this.switchSpots[m.i];
+        if (s && Math.hypot(s.fx - this.me.pos.x, s.fz - this.me.pos.z) < 12) sfx.playClick();
+        return;
+      }
+      case 'boost': {
+        if (m.end) { this.boostMe = null; return; }
+        if (m.climber === this.myId || m.lifter === this.myId) this.boostMe = { t0: this.clock, dur: m.dur || 2.6, x: m.x, z: m.z, climber: m.climber === this.myId };
+        return;
+      }
+      case 'key': {
+        this.keyTaken = true;
+        if (this.builtMap && this.builtMap.group.userData.setKey) this.builtMap.group.userData.setKey(false);
+        if (m.id === this.myId) this.me.key = true;
+        this.hud.center('', m.id === this.myId ? 'You have the red key: find the red door' : `${m.name} got the red key`, '#ff8a7a', 3);
+        sfx.playClick();
+        return;
+      }
+      case 'keyBack': {
+        this.keyTaken = false; this.me.key = false;
+        if (this.builtMap && this.builtMap.group.userData.setKey) this.builtMap.group.userData.setKey(true);
+        this.hud.center('', 'The red key is back up on its shelf', '#ff8a7a', 3);
         return;
       }
       case 'doorRattle': {
@@ -1389,8 +1422,26 @@ export class Game {
       if (this.fx && this.fx.editing) { inp.consume('use'); inp.consume('inspect'); if (inp.consume('escape')) this.fx.closeEditor(); return; }
       // F (the inspect key) is the flashlight in here, as well as L
       if (inp.consume('inspect')) this.toggleFlashlight();
-      // E / the hand button: open or shut the door in front of you
-      if (inp.consume('use')) { const i = this.doorTarget(); if (i >= 0) this.transport.send({ t: 'door', i }); }
+      // E / the hand button: a door, a switch, or climbing up for the red key
+      if (inp.consume('use')) {
+        const u = this.useTarget();
+        if (u) this.transport.send(u.kind === 'door' ? { t: 'door', i: u.i } : u.kind === 'switch' ? { t: 'switch', i: u.i } : { t: 'boost' });
+      }
+      // up on someone's shoulders (or holding someone up): nobody moves until it's done
+      const b = this.boostMe;
+      if (b) {
+        const t = this.clock - b.t0;
+        if (t > b.dur) this.boostMe = null;
+        else {
+          me.vel.x = me.vel.y = me.vel.z = 0;
+          if (b.climber) {
+            const up = Math.min(1, t / 0.45, (b.dur - t) / 0.45);
+            me.pos.x += (b.x - me.pos.x) * Math.min(1, dt * 6); me.pos.z += (b.z - me.pos.z) * Math.min(1, dt * 6);
+            me.pos.y = 0.95 * up * up * (3 - 2 * up);
+          }
+          return;
+        }
+      }
       this.updateMovement(dt, false);
       return;
     }
@@ -1951,6 +2002,20 @@ export class Game {
   }
 
   // the door you could open or shut right now: close by and in front of you (or right next to you), or -1
+  // what E / the hand button would do where you stand: climb up for the red key, press a switch, or a door
+  useTarget() {
+    const me = this.me;
+    if (!me.alive || !this.br) return null;
+    const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw);
+    if (this.keySpot && !this.keyTaken && Math.hypot(this.keySpot.x - me.pos.x, this.keySpot.z - me.pos.z) < 1.4) return { kind: 'key' };
+    for (let i = 0; i < this.switchSpots.length; i++) {
+      const s = this.switchSpots[i], dx = s.fx - me.pos.x, dz = s.fz - me.pos.z, d = Math.hypot(dx, dz);
+      if (d < 1.8 && (dx * fx + dz * fz) / (d || 1) > 0.3) return { kind: 'switch', i };
+    }
+    const di = this.doorTarget();
+    return di >= 0 ? { kind: 'door', i: di } : null;
+  }
+
   doorTarget() {
     const me = this.me, ds = this.world.doors;
     if (!me.alive || !ds || !ds.length) return -1;
@@ -1958,6 +2023,7 @@ export class Game {
     let best = -1, bd = Infinity;
     ds.forEach((d, i) => {
       if (d.broken) return;                    // kicked in: nothing left to shut
+      if (d.lock && d.open) return;            // a team door, once open, stays open
       const dx = d.cx - me.pos.x, dz = d.cz - me.pos.z, dist = Math.hypot(dx, dz);
       if (dist > 1.9) return;
       const facing = (dx * fx + dz * fz) / (dist || 1);
@@ -2272,8 +2338,14 @@ export class Game {
     else if (me.alive && this.dm && this.clock - (this.spawnedAt || 0) < 3) hint = touch ? 'Tap [[cart]] to change guns' : `Press ${this.key('buy')} to change guns`;
     if (this.br) {
       hint = '';
-      const di = this.doorTarget(), door = di >= 0 ? this.world.doors[di] : null;
-      if (door) hint = `${touch ? 'Tap [[hand]]' : `Press ${this.key('use')}`} to ${door.open ? 'shut' : 'open'} the door`;
+      const u = this.useTarget(), door = u && u.kind === 'door' ? this.world.doors[u.i] : null, press = touch ? 'Tap [[hand]]' : `Press ${this.key('use')}`;
+      if (this.boostMe) hint = this.boostMe.climber ? 'Up on their shoulders… reaching for the key' : 'Holding them up…';
+      else if (u && u.kind === 'key') hint = `The red key is up on that shelf. ${press} to climb on a teammate's shoulders (they stand here too)`;
+      else if (u && u.kind === 'switch') hint = `${press} to pull the switch (both switches at the same moment)`;
+      else if (door && door.lock && !door.open) hint = door.lock === 'red' ? (me.key ? `${press} to unlock the red door` : 'The red door is locked. Its key is somewhere up high')
+        : door.lock === 'heavy' ? `Too heavy for one: two of you ${touch ? 'tap [[hand]]' : `press ${this.key('use')}`} at the same moment` : 'This door opens with two switches nearby, pulled together';
+      else if (door && !door.lock) hint = `${press} to ${door.open ? 'shut' : 'open'} the door`;
+      else if (me.alive && me.key) hint = 'You have the red key: find the red door';
       else if (me.alive && this.clock < (this.brHintUntil || 0)) hint = touch ? 'Hold [[run]] to sprint, but it hears you' : `Hold ${this.key('walk')} to sprint, but it hears you`;
       else if (me.alive && this.clock < (this.brHintUntil || 0) + 9) hint = touch ? 'Tap [[note]] to leave a note for the others' : `Press ${this.key('note')} to leave a note for the others`;
       else if (me.alive && this.clock < (this.brHintUntil || 0) + 16 && this.fx && this.fx.dim < 0.3) hint = touch ? 'Dark in here: tap [[light]] for your flashlight' : `Dark in here: press ${this.key('inspect')} for your flashlight`;
@@ -2284,7 +2356,7 @@ export class Game {
     const useBtn = document.getElementById('btn-use');
     useBtn.classList.toggle('hidden', use !== 'plant' && use !== 'defuse' && !pick);
     useBtn.classList.toggle('pick', !!pick && use !== 'plant' && use !== 'defuse');
-    if (this.br) useBtn.classList.toggle('hidden', this.doorTarget() < 0);
+    if (this.br) useBtn.classList.toggle('hidden', !this.useTarget());
     const altBtn = document.getElementById('btn-alt');
     altBtn.classList.toggle('hidden', !w.alt);
     const altLabel = w.alt === 'scope' ? 'scope' : w.alt === 'stab' ? 'spoon' : 'burst';
@@ -2414,6 +2486,7 @@ export class Game {
     this.updateEffects(dt);
     this.updateCamera(dt);
     this.updateFlashlights();
+    if (this.builtMap && this.builtMap.group.userData.switchTick) this.builtMap.group.userData.switchTick(this.clock);
     this.updateHud(dt);
     if (this.mapUpdate) {
       const d = this.monsterDist ?? Infinity;

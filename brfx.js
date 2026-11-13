@@ -108,6 +108,26 @@ export const LOGS = [
     shadow(g, 190, 244, 1);
     pen(g, 1.6, 0.6); g.setLineDash([3, 5]); line(g, 106, 196, 166, 196); g.setLineDash([]);
   } },
+  // the team shortcuts (9 red key, 10 heavy door, 11 two switches): taped up near each one
+  { text: "The red door's key is up on a shelf. Too high for one: climb on a friend's shoulders.", draw(g) {
+    stick(g, 120, 248); stick(g, 120, 206, 0.9);
+    pen(g, 2.2); line(g, 60, 150, 110, 150); line(g, 66, 150, 66, 160); line(g, 104, 150, 104, 160);
+    g.save(); g.strokeStyle = 'rgba(170,30,30,0.9)'; g.lineWidth = 2.5; g.beginPath(); g.arc(80, 143, 6, 0, Math.PI * 2); g.stroke(); line(g, 86, 143, 100, 143); g.restore();
+    pen(g, 2); line(g, 128, 176, 104, 152);
+    g.font = '30px "Segoe Print", "Comic Sans MS", cursive'; g.fillStyle = 'rgba(170,30,30,0.85)'; g.fillText('!', 150, 160);
+  } },
+  { text: 'The grey door is too heavy for one person. Two of you push at the same moment.', draw(g) {
+    pen(g); g.strokeRect(150, 140, 60, 104); line(g, 150, 160, 210, 160); line(g, 150, 200, 210, 200);
+    stick(g, 100, 244); stick(g, 126, 244);
+    pen(g, 2); line(g, 111, 214, 148, 210); line(g, 137, 214, 148, 218);
+    g.font = '22px "Segoe Print", "Comic Sans MS", cursive'; g.fillStyle = 'rgba(35,35,48,0.85)'; g.fillText('+', 108, 176);
+  } },
+  { text: 'The yellow door opens with two switches, pulled together. Split up and count to three.', draw(g) {
+    pen(g); g.strokeRect(36, 160, 34, 48); g.strokeRect(186, 160, 34, 48); line(g, 53, 176, 53, 196); line(g, 203, 176, 203, 196);
+    g.save(); g.strokeStyle = 'rgba(35,35,48,0.6)'; g.setLineDash([4, 6]); line(g, 70, 184, 186, 184); g.restore();
+    g.font = '24px "Segoe Print", "Comic Sans MS", cursive'; g.fillStyle = 'rgba(35,35,48,0.9)'; g.fillText('1 2 3', 98, 176);
+    stick(g, 53, 252, 0.7); stick(g, 203, 252, 0.7);
+  } },
 ];
 
 export class BackroomsFX {

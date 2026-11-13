@@ -5,7 +5,7 @@
 // bounced back off the yellow carpet, and darker corners. At runtime it costs almost nothing.
 import * as THREE from 'three';
 import { CELL, hash2 } from './world.js';
-import { BR, rng } from './brmap.js';
+import { BR, rng, wallFace } from './brmap.js';
 
 const at = i => BR.border + i * BR.cell;
 
@@ -156,6 +156,27 @@ function panelTexture(renderer) {
 }
 
 // a plain painted wooden door: two recessed panels, a brass handle
+// the heavy team door: a riveted steel slab with a worn hand-plate; the switch door: yellow and black hazard stripes
+function steelTexture(renderer) {
+  const [c, ctx] = canvas(128, 256), R = rng(77);
+  ctx.fillStyle = '#9aa0a6'; ctx.fillRect(0, 0, 128, 256);
+  noise(ctx, 128, 256, 2200, ['#8b9197', '#a9afb5', '#7d8389'], 0.35, R, 1.2);
+  ctx.strokeStyle = 'rgba(40,44,48,0.55)'; ctx.lineWidth = 3;
+  for (const y of [8, 84, 168, 248]) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(128, y); ctx.stroke(); }
+  ctx.fillStyle = 'rgba(40,44,48,0.7)';
+  for (const y of [14, 78, 90, 162, 174, 242]) for (let x = 10; x < 128; x += 18) { ctx.beginPath(); ctx.arc(x, y, 2.2, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = 'rgba(150,120,80,0.35)'; ctx.fillRect(40, 110, 48, 30);          // worn where hands push
+  return tex(c, renderer, false);
+}
+function stripeTexture(renderer) {
+  const [c, ctx] = canvas(128, 256), R = rng(78);
+  ctx.fillStyle = '#d9b31f'; ctx.fillRect(0, 0, 128, 256);
+  ctx.fillStyle = '#1b1a17';
+  for (let k = -256; k < 256; k += 44) { ctx.beginPath(); ctx.moveTo(k, 256); ctx.lineTo(k + 22, 256); ctx.lineTo(k + 22 + 256, 0); ctx.lineTo(k + 256, 0); ctx.fill(); }
+  noise(ctx, 128, 256, 1600, ['rgba(60,50,30,0.5)', 'rgba(255,240,180,0.3)'], 0.3, R, 1.4);
+  return tex(c, renderer, false);
+}
+
 function doorTexture(renderer) {
   const [c, ctx] = canvas(128, 256), R = rng(51);
   ctx.fillStyle = '#9a8460'; ctx.fillRect(0, 0, 128, 256);
@@ -282,6 +303,9 @@ vec3 flashLight(vec3 P, vec3 N) {
 // ---------- baked lighting ----------
 const LIGHT = [1.0, 0.95, 0.82];         // warm fluorescent
 const BOUNCE = [1.0, 0.9, 0.55];          // light bounced off yellow carpet and walls
+
+// the team doors' paint (they're the same doors, just coloured): red (the red key), steel (two push), yellow (two switches)
+const LOCK_TINT = { red: new THREE.Color(1.1, 0.22, 0.2), heavy: new THREE.Color(1, 1, 1), twin: new THREE.Color(1, 1, 1) };
 
 export function buildBackroomsScene(world, renderer, gfx = {}) {
   const plan = world.def.br, H = BR.ceiling, N = BR.cells, Wc = world.w, Dc = world.h;
@@ -583,6 +607,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
   const spotLight = (x, y, z, nx, nz) => { const c = wallLight(x + nx * 0.06, z + nz * 0.06, nx, nz, y, 1, 1); return new THREE.Color(c[0], c[1], c[2]); };
   const frameM = addFlash(new THREE.MeshBasicMaterial({ color: '#cfc6a2' }));
   const doorTex = doorTexture(renderer);
+  const steelTex = steelTexture(renderer), stripeTex = stripeTexture(renderer);
   const box = (w, h, d, m, x, y, z, ry = 0, tint = null) => {
     const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), tint ? addFlash(m.clone()) : m);
     if (tint) o.material.color.multiply(tint);
@@ -612,8 +637,9 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
         const pivot = new THREE.Group();
         const p = at3(hinge, 0, wl);
         pivot.position.set(p[0], 0, p[2]);
-        const leaf = new THREE.Mesh(new THREE.BoxGeometry(dw, lh, 0.045), addFlash(new THREE.MeshBasicMaterial({ map: doorTex })));
+        const leaf = new THREE.Mesh(new THREE.BoxGeometry(dw, lh, 0.045), addFlash(new THREE.MeshBasicMaterial({ map: d.lock === 'heavy' ? steelTex : d.lock === 'twin' ? stripeTex : doorTex })));
         leaf.material.color.copy(tint);
+        if (d.lock) leaf.material.color.multiply(LOCK_TINT[d.lock]);      // the team doors: red / heavy steel / striped yellow
         leaf.position.set(dw / 2, 0.012 + lh / 2, 0);
         pivot.add(leaf);
         group.add(pivot);
@@ -762,6 +788,45 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     const inst = new THREE.InstancedMesh(panelGeo, panelMats[st], list.length);
     list.forEach((L, i) => { m4.makeTranslation(L.x, H - 0.006, L.z); inst.setMatrixAt(i, m4); });
     group.add(inst);
+  }
+
+  // ---------- the team shortcuts: the red key on its high shelf, and the two switches ----------
+  if (plan.key) {
+    const f = wallFace(plan.key.x, plan.key.z, plan.key.wx, plan.key.wz), ry = Math.atan2(f.nx, f.nz);
+    const tint = spotLight(f.x, 2.4, f.z, f.nx, f.nz);
+    const shelf = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.22), addFlash(new THREE.MeshBasicMaterial({ color: new THREE.Color(0.42, 0.3, 0.18).multiply(tint) })));
+    shelf.position.set(f.x + f.nx * 0.11, 2.42, f.z + f.nz * 0.11); shelf.rotation.y = ry; group.add(shelf);
+    for (const s of [-0.18, 0.18]) {        // two little brackets under it
+      const br = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.12, 0.16), shelf.material);
+      br.position.set(f.x + f.nx * 0.09 + f.nz * s, 2.35, f.z + f.nz * 0.09 - f.nx * s); br.rotation.y = ry; group.add(br);
+    }
+    // the key: a big red key hanging from a nail just above the shelf (you can see it from the floor, not reach it)
+    const key = new THREE.Group(), keyM = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.5, 0.16, 0.14) });
+    const bow = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.014, 6, 16), keyM); key.add(bow);
+    const bit = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.14, 0.018), keyM); bit.position.y = -0.11; key.add(bit);
+    for (const [y, w] of [[-0.15, 0.04], [-0.17, 0.03]]) { const t = new THREE.Mesh(new THREE.BoxGeometry(w, 0.014, 0.018), keyM); t.position.set(w / 2, y, 0); key.add(t); }
+    key.position.set(f.x + f.nx * 0.05, 2.7, f.z + f.nz * 0.05); key.rotation.y = ry; key.rotation.z = 0.12;
+    group.add(key);
+    group.userData.setKey = (on) => { key.visible = on; };
+  }
+  if ((plan.switches || []).length) {
+    const lamps = [];
+    plan.switches.forEach((s) => {
+      const f = wallFace(s.x, s.z, s.wx, s.wz), ry = Math.atan2(f.nx, f.nz), tint = spotLight(f.x, 1.3, f.z, f.nx, f.nz);
+      const boxM = addFlash(new THREE.MeshBasicMaterial({ color: new THREE.Color(0.85, 0.72, 0.2).multiply(tint) }));
+      const plate = new THREE.Mesh(new THREE.BoxGeometry(0.26, 0.38, 0.06), boxM);
+      plate.position.set(f.x + f.nx * 0.03, 1.3, f.z + f.nz * 0.03); plate.rotation.y = ry; group.add(plate);
+      const lever = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.16, 0.05), addFlash(new THREE.MeshBasicMaterial({ color: new THREE.Color(0.15, 0.15, 0.17) })));
+      lever.position.set(f.x + f.nx * 0.08, 1.28, f.z + f.nz * 0.08); lever.rotation.y = ry; lever.rotation.x = 0.35; group.add(lever);
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.026, 10, 8), new THREE.MeshBasicMaterial({ color: new THREE.Color(0.45, 0.08, 0.06) }));
+      lamp.position.set(f.x + f.nx * 0.065, 1.44, f.z + f.nz * 0.065); group.add(lamp);
+      lamps.push({ lamp, lever, until: 0 });
+    });
+    // pressed: its lamp goes green for 2 s and the lever drops (both at once opens the yellow door)
+    group.userData.setSwitch = (i, now) => { const l = lamps[i]; if (l) l.until = now + 2; };
+    group.userData.switchTick = (now) => {
+      for (const l of lamps) { const on = now < l.until; l.lamp.material.color.setRGB(on ? 0.25 : 0.45, on ? 1.6 : 0.08, on ? 0.35 : 0.06); l.lever.rotation.x = on ? -0.35 : 0.35; }
+    };
   }
 
   // ---------- the exit door ----------
