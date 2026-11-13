@@ -62,6 +62,11 @@ export function rng(seed) {
   };
 }
 
+// The maze is four areas in a row, counted in rooms from the start corner (across + down): the start area, the
+// key area (from ZONES[0]), the area behind the locked door (from ZONES[1]) and the last area (from ZONES[2]),
+// which holds the lever room and the exit. See step 5b in planMaze.
+const ZONES = [12, 25, 38];
+
 // Plan the maze (pure data): walls between rooms, the pillar hall, pit rooms, doors, start, exit, monster
 // start, arrows. `level` is the difficulty (BR_LEVELS).
 export function planMaze(seed, level = 'normal') {
@@ -141,7 +146,7 @@ export function planMaze(seed, level = 'normal') {
   let dist = walk(sx, sz);
   let exit = null, far = -1;
   for (let z = 1; z < N - 1; z++) for (let x = 1; x < N - 1; x++) {
-    if (Math.abs(x - sx) + Math.abs(z - sz) < N) continue;                    // never on the start's side of the maze
+    if (Math.abs(x - sx) + Math.abs(z - sz) < ZONES[2] + 2) continue;          // deep in the last area (and so never on the start's side)
     // (not by the pillar hall: a pillar on one of its corners would join its walls to the rest)
     if (halls.some(h => overlaps(h, { x: x - 1, z: z - 1, w: 3, d: 3 }))) continue;
     const d = dist[z][x] + R() * 3;
@@ -217,6 +222,188 @@ export function planMaze(seed, level = 'normal') {
   // one: 6+ rooms): shutting one makes it go the long way, but never seals anyone in (or it out).
   const doorways = [];
   const plain = (x, z) => !inHall(x, z) && !inPitRoom(x, z) && !byExit(x, z);
+  // 5b. THE ORDER OF THE GAME (owner's design). The maze is cut into four areas, and the only way from each to the
+  // next is one gate, so everyone has to do the same things in the same order:
+  //   area 0 (start)  --[ the heavy door: two push at once ]-->  area 1 (the key, up on its shelf)
+  //   area 1          --[ the locked door: the key opens it ]-->  area 2
+  //   area 2          --[ the BIG pit room: the only way on is across it ]-->  area 3 (the lever room)
+  //   area 3: both levers pulled together unlock the door of the exit room, and then they can leave.
+  // (Alone, the two-player parts work for one: Server.brSolo.)
+  // Each room's area comes from how many rooms it is from the start corner, across + down (ZONES); every opening
+  // between two areas is walled up, each area is joined up again inside where that cut it in pieces, and then
+  // the gates are opened. Gates are openings in the plan with a locked door in them (plan.locked).
+  let bad = false;                            // this seed can't be laid out this way: backroomsMap tries another
+  const uOf = (x, z) => Math.abs(x - sx) + Math.abs(z - sz);
+  const zone = Array.from({ length: N }, (_, z) => Array.from({ length: N }, (_, x) => { const u = uOf(x, z); return u < ZONES[0] ? 0 : u < ZONES[1] ? 1 : u < ZONES[2] ? 2 : 3; }));
+  // (a pillar hall or a pit room is never cut in two: all of it goes to the area its middle is in)
+  for (const r of [...halls, ...pitRooms]) {
+    const zc = zone[r.z + (r.d >> 1)][r.x + (r.w >> 1)];
+    for (let z = r.z; z < r.z + r.d; z++) for (let x = r.x; x < r.x + r.w; x++) zone[z][x] = zc;
+  }
+  // the big pit room: 5 × 4 rooms (20 × 16 m), lying across the line between areas 2 and 3. You go in at its end
+  // nearer the start and come out at its far end, 20 m of walkways later.
+  let big = null;
+  for (let tries = 0; tries < 600 && !big; tries++) {
+    const alongX = R() < 0.5, r = { w: alongX ? 5 : 4, d: alongX ? 4 : 5, big: true };
+    r.x = pick(1, N - r.w - 1); r.z = pick(1, N - r.d - 1);
+    if (Math.abs(uOf(r.x + (r.w >> 1), r.z + (r.d >> 1)) - ZONES[2]) > 1) continue;
+    if (halls.some(o => overlaps(o, r)) || pitRooms.some(o => overlaps(o, r))) continue;
+    if (exit.x >= r.x - 3 && exit.x < r.x + r.w + 3 && exit.z >= r.z - 3 && exit.z < r.z + r.d + 3) continue;
+    const lowNear = alongX ? sx === 0 : sz === 0;       // which end faces the start
+    const edge = (low) => {
+      const out = [];
+      if (alongX) for (let z = r.z; z < r.z + r.d; z++) out.push([[low ? r.x : r.x + r.w - 1, z], [low ? r.x - 1 : r.x + r.w, z]]);
+      else for (let x = r.x; x < r.x + r.w; x++) out.push([[x, low ? r.z : r.z + r.d - 1], [x, low ? r.z - 1 : r.z + r.d]]);
+      return out;
+    };
+    const ins = edge(lowNear).filter(([, o]) => zone[o[1]][o[0]] === 2 && plain(o[0], o[1]));
+    const outs = edge(!lowNear).filter(([, o]) => zone[o[1]][o[0]] === 3 && plain(o[0], o[1]));
+    if (!ins.length || !outs.length) continue;
+    r.in = ins[Math.floor(R() * ins.length)]; r.out = outs[Math.floor(R() * outs.length)];
+    big = r;
+  }
+  if (big) {
+    pitRooms.push(big);
+    clearBlock(big.x, big.z, big.w, big.d);
+    big.bridge = L.bridge;
+    for (let z = big.z; z < big.z + big.d; z++) for (let x = big.x; x < big.x + big.w; x++) zone[z][x] = 9;
+  } else bad = true;
+  // wall up everything between two different areas…
+  for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+    if (x < N - 1 && zone[z][x] !== zone[z][x + 1]) vWall[z][x] = true;
+    if (z < N - 1 && zone[z][x] !== zone[z + 1][x]) hWall[z][x] = true;
+  }
+  // …join each area up again inside (knocking out a wall between two of its pieces until it is one piece)…
+  for (const zn of [0, 1, 2, 3]) {
+    for (let guard = 0; guard < 500; guard++) {
+      const lab = Array.from({ length: N }, () => new Array(N).fill(-1));
+      let n = 0;
+      for (let z0 = 0; z0 < N; z0++) for (let x0 = 0; x0 < N; x0++) {
+        if (zone[z0][x0] !== zn || lab[z0][x0] >= 0) continue;
+        const q = [[x0, z0]]; lab[z0][x0] = n;
+        for (let i = 0; i < q.length; i++) {
+          const [x, z] = q[i];
+          for (const [dx, dz] of DIRS) {
+            const nx = x + dx, nz = z + dz;
+            if (!inside(nx, nz) || zone[nz][nx] !== zn || lab[nz][nx] >= 0 || wallTo(x, z, dx, dz)) continue;
+            lab[nz][nx] = n; q.push([nx, nz]);
+          }
+        }
+        n++;
+      }
+      if (n <= 1) break;
+      const cands = [];
+      for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) for (const [dx, dz] of [[1, 0], [0, 1]]) {
+        const nx = x + dx, nz = z + dz;
+        if (!inside(nx, nz) || zone[z][x] !== zn || zone[nz][nx] !== zn || lab[z][x] === lab[nz][nx]) continue;
+        if ((x === exit.x && z === exit.z) || (nx === exit.x && nz === exit.z)) continue;      // (the exit room keeps its walls)
+        cands.push([x, z, dx, dz]);
+      }
+      if (!cands.length) { bad = true; break; }
+      const [x, z, dx, dz] = cands[Math.floor(R() * cands.length)];
+      open(x, z, dx, dz);
+    }
+  }
+  // …and open the gates
+  if (big) { open(big.in[0][0], big.in[0][1], big.in[1][0] - big.in[0][0], big.in[1][1] - big.in[0][1]); open(big.out[0][0], big.out[0][1], big.out[1][0] - big.out[0][0], big.out[1][1] - big.out[0][1]); }
+  const used = new Set();                    // walls (room + side) taken by a gate, a lever or the key shelf
+  const wkey = (x, z, wx, wz) => `${x},${z},${wx},${wz}`;
+  const locked = [], switches = [];
+  let key = null;
+  const nearStart = (x, z) => Math.abs(x - sx) <= 1 && Math.abs(z - sz) <= 1;
+  const addGate = (x, z, dx, dz, lock, from, to) => {
+    open(x, z, dx, dz);
+    const g = { dir: dx ? 'v' : 'h', x: Math.min(x, x + dx), z: Math.min(z, z + dz), lock, from, to };
+    locked.push(g);
+    used.add(wkey(x, z, dx, dz)); used.add(wkey(x + dx, z + dz, -dx, -dz));
+    return g;
+  };
+  const gateBetween = (a, b, lock) => {
+    const cands = [];
+    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) for (const [dx, dz] of DIRS) {
+      const nx = x + dx, nz = z + dz;
+      if (!inside(nx, nz) || zone[z][x] !== a || zone[nz][nx] !== b || !plain(x, z) || !plain(nx, nz) || nearStart(x, z)) continue;
+      // (a little way from the other gates, so they aren't found side by side)
+      if (locked.some(g => Math.abs(g.x - x) + Math.abs(g.z - z) < 6)) continue;
+      cands.push([x, z, dx, dz]);
+    }
+    if (!cands.length) { bad = true; return null; }
+    const [x, z, dx, dz] = cands[Math.floor(R() * cands.length)];
+    return addGate(x, z, dx, dz, lock, [x, z], [x + dx, z + dz]);
+  };
+  const heavy = gateBetween(0, 1, 'heavy');
+  const keyDoor = gateBetween(1, 2, 'red');       // ('red' is only its name in the code now: the owner made the key and its door ordinary colours)
+  // the exit room's one way in gets the lever door
+  {
+    const [wdx, wdz] = { w: [-1, 0], e: [1, 0], n: [0, -1], s: [0, 1] }[exit.way];
+    addGate(exit.x, exit.z, wdx, wdz, 'twin', [exit.x + wdx, exit.z + wdz], [exit.x, exit.z]);
+  }
+  // a free wall in room (x, z) for a lever or the shelf: a real wall that nothing else is on
+  const freeWall = (x, z) => [[0, -1], [0, 1], [-1, 0], [1, 0]].filter(([wx, wz]) => wallTo(x, z, wx, wz) && !used.has(wkey(x, z, wx, wz)));
+  // the key: on its high shelf somewhere in area 1, a good walk from both of that area's gates
+  if (heavy && keyDoor) {
+    const dA = walk(heavy.to[0], heavy.to[1]), dB = walk(keyDoor.from[0], keyDoor.from[1]);
+    for (const far of [6, 4, 2, 0]) {
+      const rooms = [];
+      for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) if (zone[z][x] === 1 && plain(x, z) && dA[z][x] >= far && dB[z][x] >= far && freeWall(x, z).length) rooms.push([x, z]);
+      if (!rooms.length) continue;
+      const [kx, kz] = rooms[Math.floor(R() * rooms.length)], ws = freeWall(kx, kz), [wx, wz] = ws[Math.floor(R() * ws.length)];
+      key = { x: kx, z: kz, wx, wz };
+      used.add(wkey(kx, kz, wx, wz));
+      break;
+    }
+    if (!key) bad = true;
+  }
+  // the lever room: one room in area 3 with both levers in it, on two of its walls, a few rooms from the exit
+  {
+    const tw = locked.find(g => g.lock === 'twin'), dE = walk(tw.from[0], tw.from[1]);
+    for (const [lo, hi] of [[3, 9], [2, 14], [1, 40]]) {
+      const rooms = [];
+      for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) if (zone[z][x] === 3 && plain(x, z) && dE[z][x] >= lo && dE[z][x] <= hi && freeWall(x, z).length >= 2) rooms.push([x, z]);
+      if (!rooms.length) continue;
+      const [lx, lz] = rooms[Math.floor(R() * rooms.length)], ws = freeWall(lx, lz);
+      for (let i = ws.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [ws[i], ws[j]] = [ws[j], ws[i]]; }
+      for (const [wx, wz] of ws.slice(0, 2)) { switches.push({ x: lx, z: lz, wx, wz }); used.add(wkey(lx, lz, wx, wz)); }
+      break;
+    }
+    if (switches.length < 2) bad = true;
+  }
+  // it starts in area 1, as far from the heavy door as it can: the start area is quiet until that door is open
+  if (heavy) {
+    const dA = walk(heavy.to[0], heavy.to[1]);
+    let bestM = -Infinity;
+    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+      if (zone[z][x] !== 1 || !plain(x, z) || dA[z][x] < 0) continue;
+      const score = dA[z][x] + R() * 4;
+      if (score > bestM) { bestM = score; mon = { x, z }; }
+    }
+  }
+  // check it: everything joined up with the gates open, and nothing past a gate that is shut
+  {
+    const flood = (shut, noPit) => {
+      const seenR = Array.from({ length: N }, () => new Array(N).fill(false)), q = [[sx, sz]];
+      seenR[sz][sx] = true;
+      for (let i = 0; i < q.length; i++) {
+        const [x, z] = q[i];
+        for (const [dx, dz] of DIRS) {
+          const nx = x + dx, nz = z + dz;
+          if (!inside(nx, nz) || seenR[nz][nx] || wallTo(x, z, dx, dz)) continue;
+          if (shut && shut.dir === (dx ? 'v' : 'h') && shut.x === Math.min(x, nx) && shut.z === Math.min(z, nz)) continue;
+          if (noPit && zone[nz][nx] === 9) continue;
+          seenR[nz][nx] = true; q.push([nx, nz]);
+        }
+      }
+      return seenR;
+    };
+    const all = flood(null, false);
+    if (all.some(row => row.some(v => !v))) bad = true;
+    const past = (seenR, zs) => seenR.some((row, z) => row.some((v, x) => v && zs.includes(zone[z][x])));
+    if (heavy && past(flood(heavy, false), [1, 2, 3, 9])) bad = true;
+    if (keyDoor && past(flood(keyDoor, false), [2, 3, 9])) bad = true;
+    if (past(flood(null, true), [3])) bad = true;
+    if (flood(locked.find(g => g.lock === 'twin'), false)[exit.z][exit.x]) bad = true;
+    if (key && zone[key.z][key.x] !== 1) bad = true;
+  }
   // rooms reachable from (x0, z0) with every door in `list` shut: steps to each (-1 = can't get there)
   const walkShut = (list, x0, z0) => {
     const set = new Set(list.map(d => `${d.dir}${d.x},${d.z}`));      // (a set: with 20-odd doors this runs thousands of times)
@@ -250,67 +437,8 @@ export function planMaze(seed, level = 'normal') {
       if (z >= N - 1 || hWall[z][x] || !plain(x, z) || !plain(x, z + 1)) continue;
       d = { dir: 'h', x, z, open: R() < 0.6 };
     }
+    if (locked.some(g => g.dir === d.dir && g.x === d.x && g.z === d.z)) continue;      // (that opening is a gate)
     if (goodDoor([...doorways, d], d)) doorways.push(d);
-  }
-  // 6b. team shortcuts (owner's picks; they need two or more players, so a solo game just goes the long way):
-  // walls that would cut the way to the exit short by 10+ rooms get a locked door instead: a red one (its key is
-  // on a shelf too high to reach without climbing onto someone's shoulders), a heavy one (two must push at once)
-  // and a 'twin' one that opens when two switches in different rooms are pressed together. They stay walls in the
-  // plan, so the maze is solved without them.
-  const used = new Set();                    // walls (room + side) taken by a locked door, a switch or the key shelf
-  const wkey = (x, z, wx, wz) => `${x},${z},${wx},${wz}`;
-  const distE = walk(exit.x, exit.z);
-  const locked = [], switches = [];
-  let key = null;
-  {
-    const cands = [];
-    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) for (const [dir, dx, dz] of [['v', 1, 0], ['h', 0, 1]]) {
-      const x2 = x + dx, z2 = z + dz;
-      if (!inside(x2, z2) || !wallTo(x, z, dx, dz) || !plain(x, z) || !plain(x2, z2)) continue;
-      if (doorways.some(d => Math.abs(d.x - x) + Math.abs(d.z - z) < 3) || distE[z][x] < 0 || distE[z2][x2] < 0) continue;
-      if ((Math.abs(x - sx) <= 1 && Math.abs(z - sz) <= 1) || (Math.abs(x2 - sx) <= 1 && Math.abs(z2 - sz) <= 1)) continue;
-      const gain = Math.abs(distE[z][x] - distE[z2][x2]) - 1;
-      // `from`: the side you come from (further from the exit); `to`: the side it lets you through to
-      const fromA = distE[z][x] > distE[z2][x2];
-      if (gain >= 10) cands.push({ dir, x, z, gain, from: fromA ? [x, z] : [x2, z2], to: fromA ? [x2, z2] : [x, z], score: gain * (0.6 + R() * 0.8) });
-    }
-    cands.sort((a, b) => b.score - a.score);
-    // a free wall in room (x, z) for a switch or the shelf: not open, not a locked door, not taken
-    const freeWall = (x, z) => [[0, -1], [0, 1], [-1, 0], [1, 0]].filter(([wx, wz]) => wallTo(x, z, wx, wz) && !used.has(wkey(x, z, wx, wz)));
-    // rooms by how far they are (on foot) from room (x, z)
-    const around = (x, z, lo, hi) => { const d = walk(x, z), out = []; for (let zz = 0; zz < N; zz++) for (let xx = 0; xx < N; xx++) if (d[zz][xx] >= lo && d[zz][xx] <= hi && plain(xx, zz) && !(Math.abs(xx - sx) <= 1 && Math.abs(zz - sz) <= 1)) out.push([xx, zz, d[zz][xx]]); return out; };
-    for (const lock of ['red', 'heavy', 'twin']) {
-      for (const c of cands) {
-        if (locked.some(o => Math.abs(o.x - c.x) + Math.abs(o.z - c.z) < 6)) continue;
-        if (used.has(wkey(c.x, c.z, c.dir === 'v' ? 1 : 0, c.dir === 'h' ? 1 : 0))) continue;
-        const [fx, fz] = c.from;
-        let extra = null;
-        if (lock === 'red') {
-          // the key: on a high shelf 2–7 rooms back from the door, on the side you come from
-          const rooms = around(fx, fz, 2, 7);
-          for (let k = 0; k < 40 && !extra && rooms.length; k++) {
-            const [kx, kz] = rooms[Math.floor(R() * rooms.length)], ws = freeWall(kx, kz);
-            if (ws.length) { const [wx, wz] = ws[Math.floor(R() * ws.length)]; extra = { x: kx, z: kz, wx, wz }; }
-          }
-        } else if (lock === 'twin') {
-          // two switches in different rooms near the door (1–5 rooms back), at least 3 rooms apart on foot
-          const rooms = around(fx, fz, 1, 5);
-          for (let k = 0; k < 80 && !extra && rooms.length > 1; k++) {
-            const a = rooms[Math.floor(R() * rooms.length)], b = rooms[Math.floor(R() * rooms.length)];
-            if (walk(a[0], a[1])[b[1]][b[0]] < 3) continue;
-            const wa = freeWall(a[0], a[1]), wb = freeWall(b[0], b[1]);
-            if (wa.length && wb.length) extra = [{ x: a[0], z: a[1], wx: wa[0][0], wz: wa[0][1] }, { x: b[0], z: b[1], wx: wb[0][0], wz: wb[0][1] }];
-          }
-        } else extra = true;
-        if (!extra) continue;
-        locked.push({ dir: c.dir, x: c.x, z: c.z, lock, from: c.from, to: c.to });
-        used.add(wkey(c.x, c.z, c.dir === 'v' ? 1 : 0, c.dir === 'h' ? 1 : 0));
-        used.add(wkey(c.x + (c.dir === 'v' ? 1 : 0), c.z + (c.dir === 'h' ? 1 : 0), c.dir === 'v' ? -1 : 0, c.dir === 'h' ? -1 : 0));
-        if (lock === 'red') { key = extra; used.add(wkey(extra.x, extra.z, extra.wx, extra.wz)); }
-        if (lock === 'twin') for (const sw of extra) { switches.push(sw); used.add(wkey(sw.x, sw.z, sw.wx, sw.wz)); }
-        break;
-      }
-    }
   }
   // 7. dark areas: blocks of rooms whose lights are all dead (bring a flashlight); never the start or the
   // exit, and (except on hard) never over a pit room
@@ -370,7 +498,7 @@ export function planMaze(seed, level = 'normal') {
     for (let i = kinds.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [kinds[i], kinds[j]] = [kinds[j], kinds[i]]; }
     const want = [0, ...kinds.slice(0, LOG_COUNT - 1)];
     const free = (x, z) => [[0, -1], [0, 1], [-1, 0], [1, 0]].filter(([wx, wz]) => wallTo(x, z, wx, wz) && !used.has(wkey(x, z, wx, wz)) && !arrows.some(a => a.x === x && a.z === z && a.wx === wx && a.wz === wz));
-    // a clue for each team shortcut, taped up near the side you come to it from (9 red key, 10 heavy, 11 switches)
+    // a clue for each gate, taped up near the side you come to it from (9 the key, 10 the heavy door, 11 the levers)
     for (const L of locked) {
       const d = walk(L.from[0], L.from[1]);
       const rooms = [];
@@ -392,7 +520,7 @@ export function planMaze(seed, level = 'normal') {
   }
   return {
     seed, level: brLevel(level), N, vWall, hWall, halls, pitRooms, doorways, blankDoors: [], darkZones, holes, arrows, logs: [...logs.filter(Boolean), ...extraLogs],
-    locked, switches, key,
+    locked, switches, key, zone, big, bad,
     start: { x: sx, z: sz }, exit, monster: mon, pits: [], flicker: R(),
   };
 }
@@ -439,17 +567,21 @@ const CELL = 0.5;
 // seed is tried instead; every computer makes the same choice, so everyone still gets the same maze.
 export function backroomsMap(variant) {
   const { seed, level } = parseBrVariant(variant);
-  for (let k = 0; k < 12; k++) {
+  for (let k = 0; k < 40; k++) {
     const def = mazeDef(k ? ((seed * 7919 + k * 104729) >>> 0) || 1 : seed, level);
     def.variant = variant;
     def.level = level;
-    if (k === 11 || mazeOk(def)) return def;
+    if (def.br.bad && k < 39) continue;             // (the areas and gates couldn't be laid out: next seed)
+    if (k === 39 || mazeOk(def)) return def;
   }
 }
 
 function mazeOk(def) {
   const w = new World(def), C = 0.5;
-  const wall = (ix, iz) => ix < 0 || iz < 0 || ix >= w.w || iz >= w.h || w.cellSpans(ix, iz).some(s => s.m[0] !== '_' && s.y0 < 1.8 && s.y1 > 0.42);
+  // (every ordinary door shut, the gates open: the plan promises that nothing is cut off that way, but the plan
+  // works in whole rooms; here it is checked on the real floor, where a wall end can pinch a 1 m pit walkway shut)
+  w.doors.forEach((d, i) => w.setDoor(i, !!d.lock));
+  const wall = (ix, iz) => ix < 0 || iz < 0 || ix >= w.w || iz >= w.h || w.cellSpans(ix, iz).some(s => s.y0 < 1.8 && s.y1 > 0.42);
   const ok = (ix, iz) => {
     if (w.pitCell(ix, iz)) return false;
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) if (wall(ix + dx, iz + dz)) return false;
@@ -471,7 +603,9 @@ function mazeOk(def) {
     return false;
   };
   const s = w.spawns.atk[0], m = w.spawns.def[0], e = w.exit;
-  return !!e && reach(s.x, s.z, e.x + e.nx * 0.8, e.z + e.nz * 0.8) && reach(m.x, m.z, s.x, s.z);
+  const P = def.br, mid = (r) => [BR.border + r.x * BR.cell + 2.25, BR.border + r.z * BR.cell + 2.25];
+  return !!e && reach(s.x, s.z, e.x + e.nx * 0.8, e.z + e.nz * 0.8) && reach(m.x, m.z, s.x, s.z)
+    && !!P.key && reach(s.x, s.z, ...mid(P.key)) && P.switches.length === 2 && reach(s.x, s.z, ...mid(P.switches[0]));
 }
 
 function mazeDef(seed, level) {
@@ -514,15 +648,17 @@ function mazeDef(seed, level) {
           b.door({ kind: 'way', v: false, open: d.open, plan: i }, c - 0.75, wz - T, c + 0.75, wz + T);
         }
       });
-      // the team shortcuts: a door-sized gap in their wall, with a locked door in it (red / heavy / twin)
+      // the gates (step 5b): a wall with a door-sized gap and a locked door in it (heavy / the key's / the levers')
       for (const d of plan.locked || []) {
         const i = (plan.doorways || []).length + plan.locked.indexOf(d);
         if (d.dir === 'v') {
           const wx = at(d.x + 1), c = at(d.z) + C / 2;
+          b.wall(wx - T, at(d.z) - T, wx + T, at(d.z + 1) + T, H, 'wallpaper');
           b.cut(wx - T, c - 0.75, wx + T, c + 0.75, 0, BR.door);
           b.door({ kind: 'way', v: true, open: false, plan: i, lock: d.lock }, wx - T, c - 0.75, wx + T, c + 0.75);
         } else {
           const wz = at(d.z + 1), c = at(d.x) + C / 2;
+          b.wall(at(d.x) - T, wz - T, at(d.x + 1) + T, wz + T, H, 'wallpaper');
           b.cut(c - 0.75, wz - T, c + 0.75, wz + T, 0, BR.door);
           b.door({ kind: 'way', v: false, open: false, plan: i, lock: d.lock }, c - 0.75, wz - T, c + 0.75, wz + T);
         }

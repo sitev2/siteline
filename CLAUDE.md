@@ -163,17 +163,26 @@ The only folder is `server/` (the optional home game server).
   SpotLight for people 12.8 / 11.2 intensity, others' beam cone at 0.8, 48 / 42 m, 0.36 rad, penumbra 0.9; 2v2 night mode keeps the old flashlight); the baked surfaces get flashlight cones through a shader hook (`addFlash` / `FLASH`
   uniforms in `brview.js`, filled by `brfx.js`); people and the haze dim with the light where you stand (`lightAt`, `dimPeople`).
   Flickering panels throw sparks + a zap when they stutter back on (`userData.update(dt, dread, cam)`, `onSpark`).
-  Team shortcuts (owner's picks; need 2+ players, solo just goes the long way): `plan.locked` (brmap step 6b) — walls that would cut the
-  way to the exit by 10+ rooms get a locked 'way' door with `lock`: 'red' (red painted; opens with the red key), 'heavy' (riveted steel,
-  `steelTexture`; two players press E within 1.5 s of each other) and 'twin' (hazard stripes, `stripeTexture`; opens when the two
-  `plan.switches` — wall switches in different rooms 1–5 rooms back, ≥ 3 apart — are pulled within 2 s). They stay walls in the plan (maze
-  solved without them), `used` keeps arrows/logs/switches off their walls. Once open they stay open; It and the Listener can't pass them shut
-  (doorCost Infinity, no kicking). The red key (`plan.key`): hangs on a nail above a high shelf 2–7 rooms back from the red door (brview
-  `setKey`); stand under it with a teammate and press E (`{t:'boost'}` → host `tryBoost`): the presser climbs onto the other's shoulders
-  (`{t:'boost', climber, lifter, x, z, dur 2.6}`; both frozen, the climber's own client lifts them to y 0.95, `Game.boostMe`), and after
-  1.3 s gets the key (`{t:'key'}`, `p.key`); E at the red door then opens it. The key goes back on its shelf if its holder dies, escapes or
+  THE ORDER (owner's design; it replaced the optional team shortcuts): everyone has to finish the Backrooms in one order. `planMaze`
+  step 5b cuts the maze into four areas by how many rooms a room is from the start corner, across + down (`ZONES` 12 / 25 / 38;
+  `plan.zone[z][x]` = 0–3, 9 = the big pit room), walls up every opening between two areas, joins each area up again inside, and opens
+  one gate between each (`plan.locked`, now real openings with a locked 'way' door in them):
+  area 0 (start) → 'heavy' door (riveted steel; two players press E within 1.5 s) → area 1, where the key hangs (`plan.key`, a BRASS
+  key now, owner asked for a normal colour) on its high shelf: climb on a teammate's shoulders (`{t:'boost'}` → `tryBoost`) → 'red'
+  door (only its name in the code: it is an ordinary dark door with a brass lock plate; the key opens it) → area 2 → the BIG pit room
+  (`plan.big`, 5 × 4 rooms = 20 × 16 m of the same 2.5 m holes, the only way from area 2 to area 3: in at the near end, out at the
+  far end) → area 3 with the lever room (`plan.switches`: both levers in ONE room, on two walls, pulled within 2 s) → 'twin' door
+  (hazard stripes) on the exit room's one way in → the exit. The exit is deep in area 3. Solo (`Server.brSolo()`: fewer than 2
+  players alive inside): the heavy door opens for one, E under the shelf just takes the key, and a pulled lever stays down so one
+  player pulls one then the other. The top bar shows the step ("1/5 Open the heavy door" … "5/5 Find the exit",
+  `hud.setBackrooms(inside, out, step)`). It starts in area 1 and can't pass a shut gate: `MonsterBrain.region` / `canReach` (it
+  ignores players and goals behind one, so the start area is quiet until the heavy door opens). A seed that can't be laid out sets
+  `plan.bad` and `backroomsMap` tries the next (up to 40); `mazeOk` now also checks, on the real floor with every ordinary door shut
+  and the gates open, that the exit, the key and the lever room can be walked to (a wall end can pinch a 1 m pit walkway shut).
+  `check_br.mjs` checks the order: with a gate shut nothing after it is reachable, and the levers can't be reached without crossing
+  the big pit room. Once open the gates stay open. The key goes back on its shelf if its holder dies, escapes or
   leaves (`dropKey`, `{t:'keyBack'}`); the start message carries `key`. E / the hand button picks the target with `Game.useTarget()` (key spot,
-  switch, then door), with hints for each. Explorer logs 9–11 explain them, taped up near each.
+  lever, then door), with hints for each. Explorer logs 9–11 explain them, taped up near each.
   Explorer logs (owner's pick): `plan.logs` (brmap step 10, `LOG_COUNT` 7 a maze: clue 0 always in the start room, the rest spread out
   ≥ 6 rooms apart, never on a wall with an arrow) → `brfx.startNotes` adds them as wall notes (ids −1…, `log` = clue index, 0.42 m) drawn
   by `paintNote` with the clue's text + its own pencil drawing (`LOGS` in `brfx.js`: our own words/pictures; signatures `WHO`; 9–11 = the team shortcuts); read close

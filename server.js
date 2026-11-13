@@ -999,12 +999,13 @@ export class Server {
     this.cornerUsed = false;                        // the corner snatch happens at most once a game
     this.notes = [];                                // paper notes people have left
     this.noteSeq = 0;
-    // the team shortcuts (owner's picks): the red key on its high shelf, the two switches, someone on someone's shoulders
+    // the gates (owner's design): the key on its high shelf, the two levers, someone on someone's shoulders
     const plan = this.world.def.br;
     const spot = (r, out) => { const f = wallFace(r.x, r.z, r.wx, r.wz); return { x: f.x + f.nx * out, z: f.z + f.nz * out }; };
     this.keySpot = plan.key ? spot(plan.key, 0.55) : null;      // where you stand to reach it
     this.switchSpots = (plan.switches || []).map(s => spot(s, 0.5));
-    this.brKey = { holder: null };                  // null: on its shelf; a player id; 'used': the red door is open
+    this.brKey = { holder: null };                  // null: on its shelf; a player id; 'used': the locked door is open
+    this.switchDown = {};
     this.switchAt = this.switchSpots.map(() => -1e9);
     this.boost = null;                              // { climber, lifter, t0, given }
     this.phase = 'br';
@@ -1092,25 +1093,29 @@ export class Server {
     return true;
   }
 
-  // ---------- the team shortcuts (they need two or more players) ----------
-  // a locked team door: red (the red key opens it), heavy (two push at once), twin (the two switches open it).
-  // Once open they stay open.
+  // ---------- the gates (owner's design: the order everyone has to follow; brmap.js step 5b) ----------
+  // heavy door (two push at once) -> the key, up on its shelf -> the locked door ('red' in the code: the key opens it)
+  // -> the big pit room -> the lever room: both levers together open the exit room's door ('twin'). Once open they
+  // stay open. Alone (one player left inside), each two-player part works for one: brSolo().
+  brSolo() { return this.humans().filter(q => q.alive && !q.escaped).length < 2; }
+
   teamDoor(i, p) {
     const d = this.world.doors[i], now = performance.now();
     if (d.open) return;
     const near = (q) => q && q.alive && !q.escaped && Math.hypot(q.x - d.cx, q.z - d.cz) < 2.6;
     if (d.lock === 'red') {
-      if (this.brKey.holder !== p.id) { this.send(p.id, { t: 'toast', text: 'Locked. It needs the red key: look high up' }); this.broadcast({ t: 'doorRattle', i }); return; }
+      if (this.brKey.holder !== p.id) { this.send(p.id, { t: 'toast', text: 'Locked. It needs the key: look for a high shelf on this side' }); this.broadcast({ t: 'doorRattle', i }); return; }
       this.brKey.holder = 'used'; p.key = false;
-      this.openTeamDoor(i, p, `${p.name} unlocked the red door`);
+      this.openTeamDoor(i, p, `${p.name} unlocked the door`);
     } else if (d.lock === 'heavy') {
       d.pushes = d.pushes || {};
       d.pushes[p.id] = now;
       const helper = Object.entries(d.pushes).some(([id, t]) => id !== p.id && now - t < 1500 && near(this.players.get(id)));
-      if (helper) this.openTeamDoor(i, p, 'Together you push the heavy door open');
+      if (this.brSolo()) this.openTeamDoor(i, p, 'You put your shoulder to the heavy door and it gives');
+      else if (helper) this.openTeamDoor(i, p, 'Together you push the heavy door open');
       else { this.send(p.id, { t: 'toast', text: 'Too heavy for one. Two of you: push at the same moment' }); this.broadcast({ t: 'doorRattle', i }); }
     } else if (d.lock === 'twin') {
-      this.send(p.id, { t: 'toast', text: "It won't move. Two switches nearby open it" });
+      this.send(p.id, { t: 'toast', text: "It won't move. The two levers open it: find the lever room" });
       this.broadcast({ t: 'doorRattle', i });
     }
   }
@@ -1126,7 +1131,8 @@ export class Server {
     for (const id of ['monster', 'listener']) { const b = this.bots.get(id); if (b) b.hearNoise(d.cx, d.cz, 18); }
   }
 
-  // one of the two switches: both pressed within 2 s of each other opens the twin door
+  // one of the two levers (in one room): both pulled within 2 s of each other open the exit room's door.
+  // Alone, a pulled lever stays down, so one player can pull one and then the other.
   pressSwitch(p, i) {
     const s = this.switchSpots && this.switchSpots[i];
     if (!s || Math.hypot(p.x - s.x, p.z - s.z) > 2) return;
@@ -1135,8 +1141,11 @@ export class Server {
     this.broadcast({ t: 'switch', i });
     const di = this.world.doors.findIndex(d => d.lock === 'twin');
     if (di < 0 || this.world.doors[di].open) return;
-    if (this.switchAt.some((t, j) => j !== i && now - t < 2000)) this.openTeamDoor(di, null, 'Both switches at once: the door is open');
-    else this.send(p.id, { t: 'toast', text: 'Click. Nothing happens. The other switch has to go at the same moment' });
+    const solo = this.brSolo();
+    if (solo) { this.switchDown = this.switchDown || {}; this.switchDown[i] = true; }
+    const other = this.switchAt.some((t, j) => j !== i && (solo ? this.switchDown[j] : now - t < 2000));
+    if (other) this.openTeamDoor(di, null, 'Both levers are down: the exit room is open');
+    else this.send(p.id, { t: 'toast', text: solo ? 'Clunk. One lever is down. Now the other one' : 'Clunk. Nothing happens. The other lever has to go at the same moment' });
   }
 
   // the red key is too high to reach: one climbs onto another's shoulders (both must stand under it)
@@ -1144,6 +1153,12 @@ export class Server {
     const k = this.keySpot;
     if (!k || this.brKey.holder || this.boost || Math.hypot(p.x - k.x, p.z - k.z) > 1.6) return;
     const lifter = this.humans().find(q => q !== p && q.alive && !q.escaped && Math.hypot(q.x - k.x, q.z - k.z) < 1.8);
+    if (!lifter && this.brSolo()) {
+      // alone: nobody to climb on, so you jump for it and get it
+      this.brKey.holder = p.id; p.key = true;
+      this.broadcast({ t: 'key', id: p.id, name: p.name });
+      return;
+    }
     if (!lifter) { this.send(p.id, { t: 'toast', text: "Too high to reach. Someone has to lift you: both stand here, then press E" }); return; }
     this.boost = { climber: p.id, lifter: lifter.id, t0: performance.now(), given: false };
     this.broadcast({ t: 'boost', climber: p.id, lifter: lifter.id, x: r2(k.x), z: r2(k.z), dur: 2.6 });

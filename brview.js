@@ -305,7 +305,8 @@ const LIGHT = [1.0, 0.95, 0.82];         // warm fluorescent
 const BOUNCE = [1.0, 0.9, 0.55];          // light bounced off yellow carpet and walls
 
 // the team doors' paint (they're the same doors, just coloured): red (the red key), steel (two push), yellow (two switches)
-const LOCK_TINT = { red: new THREE.Color(1.1, 0.22, 0.2), heavy: new THREE.Color(1, 1, 1), twin: new THREE.Color(1, 1, 1) };
+// ('red' is the door the key opens: an ordinary door now, the owner asked for normal colours; it gets a brass lock plate)
+const LOCK_TINT = { red: new THREE.Color(0.82, 0.74, 0.66), heavy: new THREE.Color(1, 1, 1), twin: new THREE.Color(1, 1, 1) };
 
 export function buildBackroomsScene(world, renderer, gfx = {}) {
   const plan = world.def.br, H = BR.ceiling, N = BR.cells, Wc = world.w, Dc = world.h;
@@ -642,6 +643,14 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
         if (d.lock) leaf.material.color.multiply(LOCK_TINT[d.lock]);      // the team doors: red / heavy steel / striped yellow
         leaf.position.set(dw / 2, 0.012 + lh / 2, 0);
         pivot.add(leaf);
+        if (d.lock === 'red') {
+          // a brass lock plate with a keyhole, on both faces, by the edge where the leaves meet
+          const brass = addFlash(new THREE.MeshBasicMaterial({ color: new THREE.Color(0.78, 0.6, 0.24).multiply(tint) })), hole = new THREE.MeshBasicMaterial({ color: 0x050505 });
+          for (const sgn of [-1, 1]) {
+            const pl = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.2, 0.012), brass); pl.position.set(dw - 0.08, 1.05, sgn * 0.028); pivot.add(pl);
+            const kh = new THREE.Mesh(new THREE.BoxGeometry(0.016, 0.05, 0.004), hole); kh.position.set(dw - 0.08, 1.03, sgn * 0.036); pivot.add(kh);
+          }
+        }
         group.add(pivot);
         const shut = v ? dirAngle(0, toward) : dirAngle(toward, 0);
         // open: turned a quarter, so the free edge points into one room or the other
@@ -800,8 +809,9 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
       const br = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.12, 0.16), shelf.material);
       br.position.set(f.x + f.nx * 0.09 + f.nz * s, 2.35, f.z + f.nz * 0.09 - f.nx * s); br.rotation.y = ry; group.add(br);
     }
-    // the key: a big red key hanging from a nail just above the shelf (you can see it from the floor, not reach it)
-    const key = new THREE.Group(), keyM = new THREE.MeshBasicMaterial({ color: new THREE.Color(1.5, 0.16, 0.14) });
+    // the key: a big brass key hanging from a nail just above the shelf (you can see it from the floor, not reach it;
+    // it was red: the owner asked for a normal colour)
+    const key = new THREE.Group(), keyM = new THREE.MeshBasicMaterial({ color: new THREE.Color(0.95, 0.72, 0.26) });
     const bow = new THREE.Mesh(new THREE.TorusGeometry(0.05, 0.014, 6, 16), keyM); key.add(bow);
     const bit = new THREE.Mesh(new THREE.BoxGeometry(0.018, 0.14, 0.018), keyM); bit.position.y = -0.11; key.add(bit);
     for (const [y, w] of [[-0.15, 0.04], [-0.17, 0.03]]) { const t = new THREE.Mesh(new THREE.BoxGeometry(w, 0.014, 0.018), keyM); t.position.set(w / 2, y, 0); key.add(t); }

@@ -48,6 +48,8 @@ export class MonsterBrain {
     // a shut door on a route costs what kicking it in takes (KICK_TIME of running)
     // (a locked team door, red / heavy / switches, it can't kick in at all: a wall to it until the players open it)
     this.doorCost = (i) => { const d = this.doorOf[i] >= 0 && w.doors[this.doorOf[i]]; return d && !d.open ? (d.lock ? Infinity : KICK_TIME * this.chaseSpeed) : 0; };
+    // the maze is areas shut off from each other by gates until the players open them (brmap.js step 5b)
+    this.gates = ['heavy', 'red', 'twin'].map(l => w.doors.find(d => d.lock === l) || null);
     this.vel = { x: 0, y: 0, z: 0 };
     this.onGround = true;
     this.state = 'wait';
@@ -64,6 +66,22 @@ export class MonsterBrain {
   }
 
   reset() { this.state = 'wait'; this.path = null; }
+
+  // Which shut-off part of the maze a spot is in: 0 the start area, 1 the key's, 2 everything past the locked door
+  // (the big pit room has no door), 3 the exit room. It can't get from one to another while the gate between is shut.
+  region(x, z) {
+    const plan = this.world.def.br, zone = plan && plan.zone;
+    if (!zone) return 0;
+    const N = zone.length, rx = Math.max(0, Math.min(N - 1, Math.floor((x - BR.border) / BR.cell))), rz = Math.max(0, Math.min(N - 1, Math.floor((z - BR.border) / BR.cell)));
+    if (rx === plan.exit.x && rz === plan.exit.z) return 3;
+    const zn = zone[rz][rx];
+    return zn === 0 ? 0 : zn === 1 ? 1 : 2;
+  }
+  canReach(x, z) {
+    const a = this.region(this.p.x, this.p.z), b = this.region(x, z);
+    for (let k = Math.min(a, b); k < Math.max(a, b); k++) { const g = this.gates[k]; if (g && !g.open) return false; }
+    return true;
+  }
 
   humans() { return [...this.s.players.values()].filter(q => !q.bot && !q.dummy && q.alive && !q.escaped); }
 
@@ -250,6 +268,7 @@ export class MonsterBrain {
         if (sp < 12) { tr.vx = tr.vx * 0.5 + vx * 0.5; tr.vz = tr.vz * 0.5 + vz * 0.5; }
         tr.x = q.x; tr.z = q.z; tr.t = now;
       } else this.track.set(q.id, { x: q.x, z: q.z, vx: 0, vz: 0, t: now });
+      if (!this.canReach(q.x, q.z)) continue;                 // the other side of a shut gate: nothing to do about them
       if (d < seenD && this.sees(q)) { seen = q; seenD = d; }
       const loud = sp > RUN_SPEED && sp < 12;
       if ((loud && d < this.lv.hear) || (sp > 0.4 && d < this.lv.hearWalk) || d < 2) { if (d < heardD) { heard = q; heardD = d; } }
@@ -428,7 +447,7 @@ export class MonsterBrain {
     const bored = Math.min(1, (now - this.lastClue) / 60);
     const q = hs.length && Math.random() < 0.45 + bored * 0.4 ? hs[Math.floor(Math.random() * hs.length)] : null;
     const r = 24 - bored * 12;
-    const i = nav.randomNode((x, y, z) => y < 0.1 && (!q || Math.hypot(x - q.x, z - q.z) < r) && Math.hypot(x - this.p.x, z - this.p.z) > 8);
+    const i = nav.randomNode((x, y, z) => y < 0.1 && (!q || Math.hypot(x - q.x, z - q.z) < r) && Math.hypot(x - this.p.x, z - this.p.z) > 8 && this.canReach(x, z));
     return i >= 0 ? { x: nav.x[i], y: 0, z: nav.z[i] } : null;
   }
 
@@ -560,6 +579,8 @@ export class MonsterBrain {
     const p = this.p, nav = this.nav;
     const dGoal = Math.hypot(goal.x - p.x, goal.z - p.z);
     if (dGoal < 0.6) return null;
+    // behind a gate that is still shut: no way there (and no searching the whole maze for one)
+    if (!this.canReach(goal.x, goal.z)) { this.goal = null; this.path = null; return null; }
     const key = `${Math.round(goal.x)},${Math.round(goal.z)}`;
     if (!this.path || key !== this.pathKey || now > this.repathAt) {
       this.pathKey = key;
