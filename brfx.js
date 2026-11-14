@@ -606,7 +606,7 @@ export class BackroomsFX {
   }
 
   // ---------- the monster, felt rather than seen ----------
-  monster() { return this.g.remotes.get('monster') || null; }      // (the main one: not the Listener)
+  monster() { return this.g.remotes.get('monster') || null; }
 
   // how brightly its eyes burn: barely at all in the light, fully in the dark or in your flashlight beam
   eyeGlow(r) {

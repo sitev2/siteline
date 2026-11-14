@@ -186,13 +186,15 @@ function meshSpans(world, theme = {}) {
         }
         const vv = s.house != null ? 1 : v;     // a house is one even colour
         const top = tint ? [vv * tint[0], vv * tint[1], vv * tint[2]] : [v, v, v];
-        // top face
-        if (!spans.some(o => o !== s && o.y0 <= s.y1 + 0.001 && o.y1 > s.y1 + 0.001)) {
+        // top face (only a visible wall right on top hides it: an invisible '_' block or a prop sitting there
+        // used to hide it too, which left the top of the wall see-through, e.g. under Flame's railings)
+        const solid = solidOnly(spans);
+        if (!solid.some(o => o !== s && o.y0 <= s.y1 + 0.001 && o.y1 > s.y1 + 0.001)) {
           quad(G, [x0, s.y1, z0], [x0, s.y1, z1], [x1, s.y1, z1], [x1, s.y1, z0], [0, 1, 0],
             [[x0 / tile, z0 / tile], [x0 / tile, z1 / tile], [x1 / tile, z1 / tile], [x1 / tile, z0 / tile]], [top, top, top, top]);
         }
         // underside (balconies, upper floors, roofs)
-        if (s.y0 > 0.01 && !spans.some(o => o !== s && o.y1 >= s.y0 - 0.001 && o.y0 < s.y0 - 0.001)) {
+        if (s.y0 > 0.01 && !solid.some(o => o !== s && o.y1 >= s.y0 - 0.001 && o.y0 < s.y0 - 0.001)) {
           const u = [v * 0.72, v * 0.72, v * 0.72];
           quad(G, [x0, s.y0, z0], [x1, s.y0, z0], [x1, s.y0, z1], [x0, s.y0, z1], [0, -1, 0],
             [[x0 / tile, z0 / tile], [x1 / tile, z0 / tile], [x1 / tile, z1 / tile], [x0 / tile, z1 / tile]], [u, u, u, u]);

@@ -287,6 +287,17 @@ export class World {
     }
   }
 
+  // a door just shut on someone standing in its doorway: move them out to the side they're more on (owner's rule:
+  // doors shut whoever is in the way). p = { x, z }, changed in place; true if they were moved.
+  pushOutOfDoor(i, p, r = PLAYER_RADIUS) {
+    const d = this.doors[i];
+    if (!d || d.x0 == null) return false;
+    if (p.x <= d.x0 - r || p.x >= d.x1 + r || p.z <= d.z0 - r || p.z >= d.z1 + r) return false;
+    if (d.nx) p.x = d.cx + (p.x >= d.cx ? 1 : -1) * ((d.x1 - d.x0) / 2 + r + 0.02);
+    else p.z = d.cz + (p.z >= d.cz ? 1 : -1) * ((d.z1 - d.z0) / 2 + r + 0.02);
+    return true;
+  }
+
   // the door nearest to (x, z) within reach, or -1
   doorNear(x, z, reach = 1.9) {
     let best = -1, bd = reach;
