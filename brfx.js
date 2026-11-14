@@ -8,7 +8,6 @@ import { EYE } from './world.js';
 import { makeSnatchArm, makeMonsterModel, animateMonster, makePlayerModel, animateModel, setModelWeapon } from './models.js';
 import * as sfx from './audio.js';
 import { cleanChat } from './filter.js';
-import { toView, viewRect } from './turn.js';
 
 const $ = id => document.getElementById(id);
 const H = BR.ceiling;
@@ -476,7 +475,7 @@ export class BackroomsFX {
     this.bound = [];
     const on = (el, ev, fn, opt) => { el.addEventListener(ev, fn, opt); this.bound.push([el, ev, fn]); };
     let drawing = null;
-    const at = e => { const r = viewRect(c.getBoundingClientRect()), [x, y] = toView(e.clientX, e.clientY); return [(x - r.left) * c.width / r.width, (y - r.top) * c.height / r.height]; };
+    const at = e => { const r = c.getBoundingClientRect(); return [(e.clientX - r.left) * c.width / r.width, (e.clientY - r.top) * c.height / r.height]; };
     on(c, 'pointerdown', e => { e.preventDefault(); c.setPointerCapture(e.pointerId); drawing = at(e); this.drawn = true; ctx.fillStyle = '#1b1b22'; ctx.beginPath(); ctx.arc(drawing[0], drawing[1], 2, 0, Math.PI * 2); ctx.fill(); });
     on(c, 'pointermove', e => {
       if (!drawing) return;

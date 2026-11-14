@@ -1,6 +1,5 @@
 // Keyboard + mouse (pointer lock) and multi-touch controls. Keys come from settings.keys (see keys.js).
 import { reverseMap } from './keys.js';
-import { toView, viewW } from './turn.js';
 
 export class Input {
   constructor(canvas, touchRoot, settings) {
@@ -149,10 +148,9 @@ export class Input {
     this.on(root, 'pointerdown', (e) => {
       if (!this.enabled || e.pointerType === 'mouse') return;
       const btn = e.target.closest('[data-act]');
-      const [cx, cy] = toView(e.clientX, e.clientY);     // (the page may be turned sideways: turn.js)
       e.preventDefault();
       try { root.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
-      const info = { kind: 'look', x: cx, y: cy, ox: cx, oy: cy, btn: null };
+      const info = { kind: 'look', x: e.clientX, y: e.clientY, ox: e.clientX, oy: e.clientY, btn: null };
       if (btn) {
         const act = btn.dataset.act;
         info.btn = btn; btn.classList.add('down');
@@ -161,9 +159,9 @@ export class Input {
         else if (act === 'score') { this.scoreHeld = true; info.kind = 'hold'; }
         else if (act === 'jump') { this.jumpHeld = true; this.press('jump'); info.kind = 'hold'; }   // (held: sprint in the Backrooms)
         else { this.press(act); info.kind = 'tap'; }
-      } else if (cx < viewW() * 0.42 && ![...this.pointers.values()].some(p => p.kind === 'joy')) {
+      } else if (e.clientX < window.innerWidth * 0.42 && ![...this.pointers.values()].some(p => p.kind === 'joy')) {
         info.kind = 'joy';
-        joy.style.left = `${cx}px`; joy.style.top = `${cy}px`;
+        joy.style.left = `${e.clientX}px`; joy.style.top = `${e.clientY}px`;
         joy.classList.add('active');
         knob.style.transform = 'translate(-50%,-50%)';
       }
@@ -173,9 +171,8 @@ export class Input {
       const info = this.pointers.get(e.pointerId);
       if (!info) return;
       e.preventDefault();
-      const [cx, cy] = toView(e.clientX, e.clientY);
       if (info.kind === 'joy') {
-        let dx = cx - info.ox, dy = cy - info.oy;
+        let dx = e.clientX - info.ox, dy = e.clientY - info.oy;
         const d = Math.hypot(dx, dy);
         if (d > R) { dx *= R / d; dy *= R / d; }
         knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
@@ -186,9 +183,9 @@ export class Input {
         this.updateMove();
       } else if (info.kind === 'look') {
         const s = 0.0055 * this.settings.sens;
-        this.lookX += (cx - info.x) * s;
-        this.lookY += (cy - info.y) * s * (this.settings.invert ? -1 : 1);
-        info.x = cx; info.y = cy;
+        this.lookX += (e.clientX - info.x) * s;
+        this.lookY += (e.clientY - info.y) * s * (this.settings.invert ? -1 : 1);
+        info.x = e.clientX; info.y = e.clientY;
       }
     }, { passive: false });
     const end = (e) => {
