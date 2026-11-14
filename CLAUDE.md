@@ -267,18 +267,11 @@ The only folder is `server/` (the optional home game server).
   that arrive meanwhile wait in `app.starting` and are handled in order once the game exists (so your spawn is never lost).
 - `Game.loop` clamps dt to ≥ 0: a first frame stamped before loading finished used to wind the game clock back by seconds (monsters' jerky
   steps froze until it caught up).
-- Phones held upright in a game: the game turns ITSELF sideways (owner's request; iPhones can't lock orientation, Android only in
-  full screen, which `tryFullscreen` still tries). `turn.js`: `updateTurn()` sets `body.rot90` when in-game + touch + portrait + width
-  ≤ 820, and style.css rotates the whole body 90° (`--W` / `--H`). Read sizes and touch points through `viewW()` / `viewH()` /
-  `toView(x, y)` / `viewRect(r)`, never raw `innerWidth` / `clientX` (input.js, touchlayout.js, brfx.js notes, game.js already do).
-  style.css uses body classes `vw760`, `vw700`, `vh500`, `vh600`, `land` (kept by turn.js) instead of size @media queries, and
-  `calc(N * var(--vw))` instead of `Nvw` (a media query / vw sees the upright glass). The old "turn your device" pop-up is gone.
-  On iPhones (owner's screen recording): Safari's innerHeight leaves out its toolbar strip, so the turned picture uses `100lvh`
-  (`fullH()` probe) for its length; and the safe-area insets are swapped in `body.rot90` (--sal = top inset, --sar = bottom,
-  --sat = right, --sab = left), else the minimap sat under the notch/clock and the top HUD was pushed in.
+- Phones held upright in a game get the "Turn your device sideways" pop-up (`#rotate`). A self-turning page (`turn.js`) was tried and
+  REMOVED at the owner's request; don't bring it back.
 - Pause menu on phones: the tap on the pause button also arrived as a click on the dark background (which resumes), so the menu shut
   at once and Leave was unreachable; background taps are ignored for 0.5 s after it opens (`app.pauseAt`). Overlays scroll when taller
-  than the screen, and the pause menu is compact (2 columns) on short screens (`body.vh500`).
+  than the screen, and the pause menu is compact (2 columns) when the screen is under 500 px tall.
 - Phones: the canvas always fills the page by CSS; `renderer.setSize(w, h, false)` only (never let three.js write a pixel size
   on the canvas, that caused half-black screens after turning the phone). `Game.loop` re-checks the window size 3×/s.
   `stopPageZoom()` in `main.js` blocks pinch / double-tap zoom.

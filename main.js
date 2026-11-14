@@ -19,7 +19,6 @@ import * as acct from './accounts.js';
 import { initFriends, openFriends, activityChanged } from './friends.js';
 import { initAdmin, openAdmin } from './admin.js';
 import { WEAPONS } from './weapons.js';
-import { initTurn } from './turn.js';
 
 const $ = (id) => document.getElementById(id);
 const screens = ['menu', 'lobby', 'settings', 'practice', 'account', 'nettest', 'friends', 'admin'];
@@ -1354,7 +1353,6 @@ function init() {
   $('btn-rejoin').addEventListener('click', () => { const code = lastRoom(); if (code) joinGame(code); else updateRejoin(); });
   updateRejoin();
   stopPageZoom();
-  initTurn();      // phones held upright during a game: the game turns itself sideways (turn.js)
   $('btn-join').addEventListener('click', () => joinGame($('code').value));
   $('code').addEventListener('keydown', e => { if (e.key === 'Enter') joinGame($('code').value); });
   $('code').addEventListener('input', e => { e.target.value = normaliseCode(e.target.value); });
