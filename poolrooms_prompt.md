@@ -8,6 +8,7 @@ ACCESS + PLAYERS
 - This is the end of the run for now (no next level). Account stats are not reported.
 
 THE LOOK (owner's reference picture)
+- TOP PRIORITY: the Poolrooms must look REALLY good: beautiful, believable water (gentle ripples, clear see-through depth, reflections, caustics, soft wet highlights on the tiles) and high-quality tiles, light and everything else. Take the time it needs; polish it, compare it with the reference picture in browser screenshots and keep improving until it looks great (still smooth on phones on Low).
 - Wide, low halls with big ROUND pillars covered in small white square tiles with dark grout, a few tall square tiled pillars, smooth pale walls and ceiling.
 - Floors are a MIX: some flooded with shallow, glassy teal-green water that mirrors the pillars, some dry, plus real pools.
 - Soft hazy light, brighter in the distance, with dark openings far back. Mostly empty and quiet: only pillars, ladders and drains, no loungers or plants. Our own build, nothing copied.
