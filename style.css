@@ -176,9 +176,19 @@ body:not(.is-host) .host-only { display: none !important; }
 .keys td { padding: 5px 4px; border-bottom: 1px solid var(--line); }
 .keys td:first-child { white-space: nowrap; }
 
-.overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 20px; background: rgba(8,9,11,.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+.overlay { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; padding: 20px; background: rgba(8,9,11,.72); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+  overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.overlay > .panel { margin: auto; flex-shrink: 0; }      /* centred, but scrollable from the top when taller than the screen */
+@media (max-height: 500px) {
+  #pause { padding: 10px; }
+  #pause .panel { padding: 14px 16px; gap: 8px; grid-template-columns: 1fr 1fr; width: min(460px, 100%); }
+  #pause .panel > :not(button) { grid-column: 1 / -1; }
+  #pause h2 { margin: 0; font-size: 1.2rem; }
+  #pause-sub { display: none; }
+  #pause .panel button { padding: 10px 12px; font-size: .9rem; }
+}
 #pause .panel button { width: 100%; }
-#loading { gap: 14px; align-content: center; text-align: center; }
+#loading { gap: 14px; justify-content: center; align-items: center; text-align: center; }
 /* the loading screen while a game is being built (map, lighting, first picture) */
 #game-loading {
   position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 24px;

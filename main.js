@@ -941,6 +941,7 @@ function showPause(first = false) {
   $('btn-resume').textContent = first === true ? 'Play' : 'Resume';
   $('btn-fullscreen').classList.toggle('hidden', !(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen));
   $('pause').classList.remove('hidden');
+  app.pauseAt = performance.now();
 }
 
 function resume() {
@@ -1388,7 +1389,9 @@ function init() {
   $('btn-pause-invite').addEventListener('click', shareInvite);
   $('btn-over-leave').addEventListener('click', leaveToMenu);
   $('btn-cancel-load').addEventListener('click', leaveToMenu);
-  $('pause').addEventListener('click', e => { if (e.target === $('pause') && app.game) resume(); });
+  // a tap on the dark background resumes, but not the tap that just opened the menu: on phones the same tap on the
+  // pause button arrives here as a click on the background, so the menu used to shut at once (no way to Leave)
+  $('pause').addEventListener('click', e => { if (e.target === $('pause') && app.game && performance.now() - (app.pauseAt || 0) > 500) resume(); });
 
   bindSettings();
   bindPracticeMenu();
