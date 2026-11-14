@@ -1,6 +1,7 @@
 // Phone / tablet button layout: every touch button can be moved, resized and faded.
 // settings.touchLayout = { 'btn-fire': { x, y, s, o }, … } — x / y are the button centre as a
 // share of the screen width / height, s = size (1 = normal), o = opacity. Missing = default spot.
+import { toView, viewRect, viewW, viewH } from './turn.js';
 
 const EDITABLE = ['btn-fire', 'btn-fire-left', 'btn-jump', 'btn-reload', 'btn-alt', 'btn-swap', 'btn-use',
   'btn-buy', 'btn-drop', 'btn-inspect', 'btn-chat', 'btn-light', 'btn-note', 'btn-map', 'btn-score', 'btn-menu'];
@@ -34,8 +35,8 @@ export function openLayoutEditor(layout, onSave) {
   let sel = null, drag = null;
 
   const centreOf = (el) => {
-    const r = el.getBoundingClientRect();
-    return { x: (r.left + r.width / 2) / innerWidth, y: (r.top + r.height / 2) / innerHeight };
+    const r = viewRect(el.getBoundingClientRect());
+    return { x: (r.left + r.width / 2) / viewW(), y: (r.top + r.height / 2) / viewH() };
   };
   const entry = (el) => {
     if (!L[el.id]) { const c = centreOf(el); L[el.id] = { x: c.x, y: c.y, s: 1, o: 1 }; }
@@ -49,8 +50,8 @@ export function openLayoutEditor(layout, onSave) {
     if (!el) { $('le-title').textContent = 'Tap a button to change it, drag to move it'; return; }
     el.classList.add('le-selected');
     // keep the panel away from the button being edited
-    const r = el.getBoundingClientRect();
-    panel.classList.toggle('bottom', r.top + r.height / 2 < innerHeight * 0.45);
+    const r = viewRect(el.getBoundingClientRect());
+    panel.classList.toggle('bottom', r.top + r.height / 2 < viewH() * 0.45);
     const e = L[el.id] || { s: 1, o: 1 };
     $('le-title').textContent = `Button: ${el.getAttribute('aria-label') || el.id}`;
     $('le-size').value = e.s || 1; $('le-size-out').textContent = `${Math.round((e.s || 1) * 100)}%`;
@@ -63,15 +64,17 @@ export function openLayoutEditor(layout, onSave) {
     e.preventDefault(); e.stopPropagation();
     select(btn);
     const c = entry(btn);
-    drag = { id: e.pointerId, el: btn, dx: e.clientX / innerWidth - c.x, dy: e.clientY / innerHeight - c.y };
+    const [px, py] = toView(e.clientX, e.clientY);
+    drag = { id: e.pointerId, el: btn, dx: px / viewW() - c.x, dy: py / viewH() - c.y };
     try { root.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
   };
   const move = (e) => {
     if (!drag || e.pointerId !== drag.id) return;
     e.preventDefault();
     const c = L[drag.el.id];
-    c.x = Math.max(0.03, Math.min(0.97, e.clientX / innerWidth - drag.dx));
-    c.y = Math.max(0.04, Math.min(0.96, e.clientY / innerHeight - drag.dy));
+    const [px, py] = toView(e.clientX, e.clientY);
+    c.x = Math.max(0.03, Math.min(0.97, px / viewW() - drag.dx));
+    c.y = Math.max(0.04, Math.min(0.96, py / viewH() - drag.dy));
     applyTouchLayout(L);
   };
   const up = (e) => { if (drag && e.pointerId === drag.id) drag = null; };

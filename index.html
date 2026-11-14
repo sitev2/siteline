@@ -22,7 +22,7 @@
     // New .js files: add them to this list (libraries stay unversioned).
     (function () {
       var v = Date.parse(document.lastModified) || Date.now();
-      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'brfx', 'brmap', 'brview', 'buy', 'config', 'crosshair', 'filter', 'friends', 'game', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'models', 'monster', 'net', 'netlog', 'nettest', 'post', 'ragdoll', 'server', 'textures', 'touchlayout', 'weapons', 'world'];
+      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'brfx', 'brmap', 'brview', 'buy', 'config', 'crosshair', 'filter', 'friends', 'game', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'models', 'monster', 'net', 'netlog', 'nettest', 'post', 'ragdoll', 'server', 'textures', 'touchlayout', 'turn', 'weapons', 'world'];
       var imports = { three: './three.module.js' };
       for (var i = 0; i < files.length; i++) imports['./' + files[i] + '.js'] = './' + files[i] + '.js?v=' + v;
       window.SITELINE_V = v;
@@ -472,7 +472,6 @@
       </div>
     </div>
     <div id="loading" class="overlay hidden"><div class="spinner"></div><p id="loading-text">Connecting…</p><button id="btn-cancel-load" class="ghost">Cancel</button></div>
-    <div id="rotate"><div class="rot-icon">⟳</div><p>Turn your device sideways to play</p></div>
     <div id="toasts"></div>
     <div id="invite-pop" class="invite-pop hidden" role="alert">
       <span id="invite-pop-text"></span>
