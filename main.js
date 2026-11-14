@@ -19,6 +19,7 @@ import * as acct from './accounts.js';
 import { initFriends, openFriends, activityChanged } from './friends.js';
 import { initAdmin, openAdmin } from './admin.js';
 import { WEAPONS } from './weapons.js';
+import { initTurn } from './turn.js';
 
 const $ = (id) => document.getElementById(id);
 const screens = ['menu', 'lobby', 'settings', 'practice', 'account', 'nettest', 'friends', 'admin'];
@@ -941,6 +942,7 @@ function showPause(first = false) {
   $('btn-resume').textContent = first === true ? 'Play' : 'Resume';
   $('btn-fullscreen').classList.toggle('hidden', !(document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen));
   $('pause').classList.remove('hidden');
+  app.pauseAt = performance.now();
 }
 
 function resume() {
@@ -1352,6 +1354,7 @@ function init() {
   $('btn-rejoin').addEventListener('click', () => { const code = lastRoom(); if (code) joinGame(code); else updateRejoin(); });
   updateRejoin();
   stopPageZoom();
+  initTurn();      // phones held upright during a game: the game turns itself sideways (turn.js)
   $('btn-join').addEventListener('click', () => joinGame($('code').value));
   $('code').addEventListener('keydown', e => { if (e.key === 'Enter') joinGame($('code').value); });
   $('code').addEventListener('input', e => { e.target.value = normaliseCode(e.target.value); });
@@ -1388,7 +1391,9 @@ function init() {
   $('btn-pause-invite').addEventListener('click', shareInvite);
   $('btn-over-leave').addEventListener('click', leaveToMenu);
   $('btn-cancel-load').addEventListener('click', leaveToMenu);
-  $('pause').addEventListener('click', e => { if (e.target === $('pause') && app.game) resume(); });
+  // a tap on the dark background resumes, but not the tap that just opened the menu: on phones the same tap on the
+  // pause button arrives here as a click on the background, so the menu used to shut at once (no way to Leave)
+  $('pause').addEventListener('click', e => { if (e.target === $('pause') && app.game && performance.now() - (app.pauseAt || 0) > 500) resume(); });
 
   bindSettings();
   bindPracticeMenu();

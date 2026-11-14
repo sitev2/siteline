@@ -23,6 +23,7 @@ import { BuyMenu } from './buy.js';
 import { icon } from './icons.js';
 import { BackroomsFX } from './brfx.js';
 import { BR, wallFace } from './brmap.js';
+import { viewW, viewH } from './turn.js';
 
 const BOMB_STATES = ['none', 'carried', 'dropped', 'planted', 'defused', 'exploded'];
 const INTERP_DELAY = 110; // ms
@@ -83,7 +84,7 @@ export class Game {
     const usePost = G.ao || G.bloom || G.aa === 'fxaa';
     this.renderer = new THREE.WebGLRenderer({ antialias: G.aa === 'msaa' && !usePost, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.max(0.5, Math.min(3, Math.min(window.devicePixelRatio || 1, 2) * (G.renderScale || 1))));
-    this.renderer.setSize(window.innerWidth, window.innerHeight, false);   // false: the canvas keeps filling the page (style.css)
+    this.renderer.setSize(viewW(), viewH(), false);   // false: the canvas keeps filling the page (style.css)
     this.renderer.shadowMap.enabled = G.shadows !== 'off';
     this.renderer.shadowMap.type = G.shadows === 'high' || G.shadows === 'ultra' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     this.renderer.autoClear = false;
@@ -115,7 +116,7 @@ export class Game {
 
     this.scene = new THREE.Scene();
     const built = buildMapScene(this.world, this.renderer, G, this.night);
-    this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.05, Math.max(120, built.far + 40));
+    this.camera = new THREE.PerspectiveCamera(75, viewW() / viewH(), 0.05, Math.max(120, built.far + 40));
     this.camera.rotation.order = 'YXZ';
     this.sky = [];
     built.group.traverse(o => { if (o.userData.sky) this.sky.push(o); });
@@ -146,7 +147,7 @@ export class Game {
     // first-person weapon is drawn in its own pass so it never clips walls
     this.vmScene = new THREE.Scene();
     if (this.envMap) { this.vmScene.environment = this.envMap; this.scene.environment = this.envMap; this.scene.environmentIntensity = 0.6; }
-    this.vmCamera = new THREE.PerspectiveCamera(68, window.innerWidth / window.innerHeight, 0.01, 10);
+    this.vmCamera = new THREE.PerspectiveCamera(68, viewW() / viewH(), 0.01, 10);
     this.vmScene.add(new THREE.HemisphereLight('#ffffff', '#776655', this.night ? 0.9 : 1.9));
     const vmSun = new THREE.DirectionalLight(this.night ? '#c8d4f0' : '#fff6e8', this.night ? 0.9 : 2.4);
     vmSun.position.set(1, 2, 1.5);
@@ -222,7 +223,7 @@ export class Game {
     // for it the game also looks a few times a second (see loop). The canvas itself always fills
     // the page (style.css); only the drawing size is changed here.
     this.onResize = () => {
-      const w = Math.max(1, window.innerWidth), h = Math.max(1, window.innerHeight);
+      const w = Math.max(1, viewW()), h = Math.max(1, viewH());
       this.viewW = w; this.viewH = h;
       this.renderer.setSize(w, h, false);
       this.camera.aspect = this.vmCamera.aspect = w / h;
@@ -2324,7 +2325,7 @@ export class Game {
 
     // crosshair gap from spread
     const fovR = this.camera.fov * Math.PI / 180;
-    const gap = Math.tan(this.currentSpread()) / Math.tan(fovR / 2) * (window.innerHeight / 2);
+    const gap = Math.tan(this.currentSpread()) / Math.tan(fovR / 2) * (viewH() / 2);
     // follow recoil: the camera only shows half the recoil, so put the crosshair where the next bullet
     // really goes (the same direction fireOnce uses), projected onto the screen
     let rox = 0, roy = 0;
@@ -2336,8 +2337,8 @@ export class Game {
       const pitch = me.pitch + me.recP + me.hurtP, yaw = me.yaw - me.recY + me.hurtY;
       const p = TMP.set(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch)).multiplyScalar(50).add(this.camera.position).project(this.camera);
       if (p.z < 1) {
-        rox = Math.max(-0.45, Math.min(0.45, p.x)) * window.innerWidth / 2;
-        roy = -Math.max(-0.45, Math.min(0.45, p.y)) * window.innerHeight / 2;
+        rox = Math.max(-0.45, Math.min(0.45, p.x)) * viewW() / 2;
+        roy = -Math.max(-0.45, Math.min(0.45, p.y)) * viewH() / 2;
       }
     }
     if (spec) {
@@ -2349,7 +2350,7 @@ export class Game {
         sprd = (sw.type === 'sniper' && spec.zm ? sw.scoped : sw.stand) + sw.move * Math.max(0, Math.min(1, (hs - thr) / (max - thr)))
           + (Math.abs((spec.vel && spec.vel.y) || 0) > 1.2 ? sw.air : 0);
       }
-      const sgap = Math.tan(sprd) / Math.tan(fovR / 2) * (window.innerHeight / 2);
+      const sgap = Math.tan(sprd) / Math.tan(fovR / 2) * (viewH() / 2);
       hud.crosshair(Math.max(0, Math.min(60, (sgap - 4) * 0.7)), !spec.zm, { ...sxc, recoil: false }, 0, 0);
     } else hud.crosshair(Math.max(0, Math.min(60, (gap - 4) * 0.7)), me.alive && !me.zoom, xc, rox, roy);
 
@@ -2529,7 +2530,7 @@ export class Game {
     this.clock += dt;
     // the screen changed size without telling us (phones): catch up
     this.sizeCheck = (this.sizeCheck || 0) - dt;
-    if (this.sizeCheck <= 0) { this.sizeCheck = 0.3; if (window.innerWidth !== this.viewW || window.innerHeight !== this.viewH) this.onResize(); }
+    if (this.sizeCheck <= 0) { this.sizeCheck = 0.3; if (viewW() !== this.viewW || viewH() !== this.viewH) this.onResize(); }
     if (this.paused) { this.input.takeLook(); }
     else this.updateLocal(dt);
     this.sendState(dt);
