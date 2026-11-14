@@ -5,7 +5,7 @@ import { World, CELL, EYE, blastField, blastDamage } from './world.js';
 import { MAPS, resolveMap, mapsFor, isDmMap, dmVariant } from './maps.js';
 import { RULES } from './config.js';
 import { NavGrid, BotBrain, BOT_NAMES } from './bots.js';
-import { MonsterBrain, ListenerBrain, outerCorners } from './monster.js';
+import { MonsterBrain, outerCorners } from './monster.js';
 import { BR_LEVELS, brLevel, brVariant, wallFace } from './brmap.js';
 import { cleanChat, CHAT_LIMIT } from './filter.js';
 import {
@@ -269,7 +269,6 @@ export class Server {
         if (msg.mode === 'wingman' || msg.mode === 'dm' || msg.mode === 'br') this.settings.mode = msg.mode;
         if (typeof msg.night === 'boolean') this.settings.night = msg.night;
         if (BR_LEVELS[msg.level]) this.settings.level = msg.level;
-        if (typeof msg.listener === 'boolean') this.settings.listener = msg.listener;     // the Backrooms' second creature (option)
         if (MAPS[msg.map]) this.settings.map = msg.map;
         this.broadcastRoster();
         return;
@@ -839,7 +838,6 @@ export class Server {
     if (cfg.kind === 'br') {
       this.settings.mode = 'br';
       this.settings.level = brLevel(cfg.level);
-      this.settings.listener = !!cfg.listener;
       this.startBackrooms();
       return;
     }
@@ -988,18 +986,6 @@ export class Server {
     };
     this.players.set(mp.id, mp);
     this.bots.set(mp.id, new MonsterBrain(this, mp));     // (its walking grid is made with every door open)
-    // the second creature (an option when the game is made): blind, it hunts by sound. It starts far from
-    // the players and from the other one.
-    if (this.settings.listener) {
-      const nav = this.navGrid(), s0 = this.world.spawns.atk[0];
-      let i = nav.randomNode((x, y, z) => y < 0.1 && Math.hypot(x - s0.x, z - s0.z) > 45 && Math.hypot(x - m.x, z - m.z) > 20);
-      if (i < 0) i = nav.randomNode((x, y, z) => y < 0.1 && Math.hypot(x - s0.x, z - s0.z) > 25);
-      if (i >= 0) {
-        const lp = { ...mp, id: 'listener', name: 'The Listener', x: nav.x[i], z: nav.z[i], inv: { primary: null, secondary: null }, ammo: {} };
-        this.players.set(lp.id, lp);
-        this.bots.set(lp.id, new ListenerBrain(this, lp));
-      }
-    }
     // then the doors that start shut are shut
     this.world.doors.forEach((d, i) => this.world.setDoor(i, d.open));
     this.doorAt = this.world.doors.map(() => 0);
@@ -1078,26 +1064,17 @@ export class Server {
     const d = this.world.doors[i], now = performance.now();
     if (d && d.broken) { if (by && !by.bot) this.send(by.id, { t: 'toast', text: 'It kicked this door in. It won\'t shut any more' }); return false; }
     if (!d || d.open === open || now - (this.doorAt[i] || 0) < 450) return false;
-    if (!open && d.kind === 'way') {
-      // nobody may be standing in the doorway when it shuts
-      for (const q of this.players.values()) {
-        if (!q.alive || q.escaped) continue;
-        if (q.x > d.x0 - 0.45 && q.x < d.x1 + 0.45 && q.z > d.z0 - 0.45 && q.z < d.z1 + 0.45) {
-          if (by && !by.bot) this.send(by.id, { t: 'toast', text: 'Something is in the way' });
-          return false;
-        }
-      }
-    }
     this.doorAt[i] = now;
     this.world.setDoor(i, open);
+    // it shuts even with someone in the doorway (owner's rule): they're pushed out to the side they're more on.
+    // Players move themselves (game.js does the same on their screen); the monster is moved here.
+    if (!open) for (const q of this.players.values()) if (q.bot && q.alive) this.world.pushOutOfDoor(i, q);
     // the door swings away from whoever moved it (a door to nowhere always opens outwards)
     const s = by ? Math.sign((by.x - d.cx) * d.nx + (by.z - d.cz) * d.nz) || 1 : 1;
     this.broadcast({ t: 'door', i, open, swing: d.kind === 'blank' ? 1 : -s, by: by ? by.id : null });
     // it hears doors
     const m = this.bots.get('monster');
     if (m && by && !by.bot) m.hearNoise(d.cx, d.cz, 14);
-    const L = this.bots.get('listener');
-    if (L && by && !by.bot) L.hearNoise(d.cx, d.cz, 18);
     return true;
   }
 
@@ -1136,7 +1113,7 @@ export class Server {
     this.broadcast({ t: 'door', i, open: true, swing: -s, by: p ? p.id : null });
     this.broadcast({ t: 'toast', text });
     // a door that heavy is loud
-    for (const id of ['monster', 'listener']) { const b = this.bots.get(id); if (b) b.hearNoise(d.cx, d.cz, 18); }
+    const mb = this.bots.get('monster'); if (mb) mb.hearNoise(d.cx, d.cz, 18);
   }
 
   // one of the two levers (in one room): both pulled within 2 s of each other open the exit room's door.
@@ -1289,14 +1266,6 @@ export class Server {
     if (c) brain.startCatch(q, c);
   }
 
-  // the Listener found someone by sound: an ordinary death (no skin, no carrying off)
-  listenerKill(m, q) {
-    if (!q.alive || this.phase !== 'br') return;
-    q.brDeath = 'listener';
-    q.hp = 0;
-    this.kill(q, m, 'listener', false, [m.x, m.y + 1.4, m.z], 'chest');
-  }
-
   // the monster has just spotted this player: they hear it scream
   monsterAlert(m, q) { this.send(q.id, { t: 'spotted' }); }
 
@@ -1313,7 +1282,7 @@ export class Server {
   }
 
   brEnd() {
-    for (const id of ['monster', 'listener']) { this.bots.delete(id); this.players.delete(id); }
+    this.bots.delete('monster'); this.players.delete('monster');
     for (const p of this.humans()) { p.team = p.lobbyTeam === 'def' ? 'def' : 'atk'; p.escaped = false; p.w = STARTER_PISTOL[p.team]; }
     this.br = false;
   }

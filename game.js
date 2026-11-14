@@ -331,7 +331,7 @@ export class Game {
       rem.bot = !!r.bot;
       if (rem.xhCode !== r.xh) { rem.xhCode = r.xh; rem.xh = r.xh ? parseCrosshairCode(r.xh) : null; }
       if (!rem.model && r.team === 'monster') {
-        rem.model = makeMonsterModel({ blind: r.id === 'listener' });     // (the Listener: pale, no eyes)
+        rem.model = makeMonsterModel();
         rem.model.root.visible = false;
         this.scene.add(rem.model.root);
       }
@@ -456,6 +456,8 @@ export class Game {
         if (!d) return;
         this.world.setDoor(m.i, m.open);
         if (m.broken) d.broken = true;
+        // shut on me while I stood in the doorway: I'm pushed out to the side I was more on
+        if (!m.open && this.me.alive && this.world.pushOutOfDoor(m.i, this.me.pos)) { this.me.vel.x = this.me.vel.z = 0; }
         if (this.setDoorView) this.setDoorView(m.i, m.open, m.swing, false, !!m.broken);
         sfx.playDoor({ x: d.cx, y: 1.2, z: d.cz }, m.broken ? 'break' : m.open ? 'open' : 'shut', this.occlusion(d.cx, 1.2, d.cz));
         if (m.broken && Math.hypot(d.cx - this.me.pos.x, d.cz - this.me.pos.z) < 8) this.shake = Math.min(1.5, this.shake + 0.9);
@@ -706,8 +708,7 @@ export class Game {
       this.me.zoom = 0;
       this.me.using = false;
       this.toggleBuy(false);
-      this.me.killedBy = m.w === 'monster' ? 'It' : m.w === 'listener' ? 'The Listener' : m.w === 'fall' ? 'the fall' : m.w === 'ceiling' ? 'the ceiling' : m.w === 'corner' ? 'something' : killer && m.killer !== this.myId ? `${killer.name} (${itemName(m.w)}${m.head ? ', headshot' : ''})` : (m.w === 'bomb' ? 'the bomb' : '');
-      if (m.w === 'listener') { sfx.playGrab(); this.shake = 2.2; this.hud.center('', 'It heard you', '#ff4a3a', 3); }
+      this.me.killedBy = m.w === 'monster' ? 'It' : m.w === 'fall' ? 'the fall' : m.w === 'ceiling' ? 'the ceiling' : m.w === 'corner' ? 'something' : killer && m.killer !== this.myId ? `${killer.name} (${itemName(m.w)}${m.head ? ', headshot' : ''})` : (m.w === 'bomb' ? 'the bomb' : '');
       if (m.w === 'monster') { sfx.playGrab(); this.shake = 2.5; this.hud.center('', 'It got you', '#ff4a3a', 3); }
       if (m.w === 'fall') this.hud.center('', 'You fell into the dark', '#cfc28a', 3);
       if (m.w === 'ceiling' || m.w === 'corner') this.hud.center('', m.w === 'ceiling' ? 'Something in the ceiling took you' : 'Something took you', '#ff4a3a', 3);
@@ -1951,15 +1952,6 @@ export class Game {
         const mode = String(r.w || '').split(':');      // the host sends 'm:<mode>:<n>[:id of the body in its hand]'
         r.mode = mode[1] || 'walk'; r.modeN = Number(mode[2]) || 0; r.dragId = mode[3] || null;
         let fdt = dt;
-        if (!m.tall) {
-          // the Listener moves wrong: like a film with frames missing, a jerk every 0.05–0.14 s and now and then a
-          // longer stall. (The tall one doesn't need this: its own motors already move in jumps.)
-          m.jerkAcc = (m.jerkAcc || 0) + dt;
-          if (m.jerkAcc < (m.jerkStep || 0)) { this.monsterSounds(r, dt, speed); continue; }
-          fdt = m.jerkAcc;
-          m.jerkAcc = 0;
-          m.jerkStep = Math.random() < 0.06 ? 0.22 + Math.random() * 0.15 : 0.05 + Math.random() * 0.09;
-        }
         if (r.mode === 'freeze') fdt = 0;                // frozen: it holds the pose it was caught in
         m.root.position.set(r.rp.x, r.rp.y, r.rp.z);
         m.root.rotation.set(0, r.rp.yaw, 0);
@@ -2048,14 +2040,7 @@ export class Game {
   // the monster's footsteps, and how close it is (the lights dip and buzz when it's near)
   monsterSounds(r, dt, speed) {
     const d = Math.hypot(r.rp.x - this.me.pos.x, r.rp.z - this.me.pos.z);
-    if (r.id === 'listener') {
-      // the Listener clicks as it goes (faster when it's going for a sound), so you can hear where it is
-      r.clickT = (r.clickT ?? Math.random()) - dt;
-      if (r.alive && r.clickT <= 0 && d < 30) {
-        r.clickT = r.use ? 0.45 + Math.random() * 0.35 : 1.2 + Math.random() * 1.4;
-        sfx.playBR('clicks', { x: r.rp.x, y: r.rp.y + 2.3, z: r.rp.z }, this.occlusion(r.rp.x, r.rp.y + 2, r.rp.z), r.use ? 1.2 : 0.85);
-      }
-    } else this.monsterDist = Math.min(this.monsterDist ?? Infinity, r.alive ? d : Infinity);
+    this.monsterDist = Math.min(this.monsterDist ?? Infinity, r.alive ? d : Infinity);
     if (r.model && r.model.tall) {
       // the tall one: a clank of metal each time a foot comes down (its own step clock says when)
       if (r.model.stepHit) {
@@ -2446,7 +2431,7 @@ export class Game {
       if (target && since > 2) text = `Spectating ${target.name} — ${touch ? 'tap' : 'click'} to switch`;
       if (this.practice || this.dm) text = me.killedBy ? `Killed by ${me.killedBy} — respawning…` : 'Respawning…';
       if (this.br && this.escapeScene) text = null;     // (the ending scene says it)
-      else if (this.br && !(target && since > 2)) text = me.escaped ? 'You escaped!' : me.killedBy === 'It' ? 'It caught you' : me.killedBy === 'The Listener' ? 'The Listener heard you' : me.killedBy === 'the fall' ? 'You fell into the dark' : 'You are out';
+      else if (this.br && !(target && since > 2)) text = me.escaped ? 'You escaped!' : me.killedBy === 'It' ? 'It caught you' : me.killedBy === 'the fall' ? 'You fell into the dark' : 'You are out';
       hud.death(text);
     } else hud.death(null);
 

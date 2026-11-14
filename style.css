@@ -456,9 +456,6 @@ body.touch #hint { bottom: calc(76px + var(--sab)); }
 #practice.m-br .p-botopt { display: grid; }
 .lobby-row .br-level { display: none; margin: 0; }
 #lobby.br .lobby-row .br-level { display: grid; }
-.lobby-row .br-listener { display: none; margin: 0; }
-#lobby.br .lobby-row .br-listener { display: flex; }
-#practice.m-br .p-listener { display: flex; }
 #practice.m-br .p-map, #practice.m-br .p-nightopt, #practice.m-br #p-note { display: none; }
 #lobby.br .ffa-list { display: block; }
 #lobby.br .teams, #lobby.br #btn-shuffle, #lobby.br #map-cards, #lobby.br .night-toggle, #lobby.br .lobby-settings > .eyebrow { display: none; }
