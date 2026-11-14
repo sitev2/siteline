@@ -788,7 +788,9 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
   const panelMats = {
     on: addDark(new THREE.MeshBasicMaterial({ map: pTex, color: new THREE.Color(1.6, 1.55, 1.38) })),
     flicker: addDark(new THREE.MeshBasicMaterial({ map: pTex, color: new THREE.Color(1.4, 1.36, 1.2) })),
-    dead: addDark(new THREE.MeshBasicMaterial({ map: pTex, color: new THREE.Color(0.32, 0.31, 0.27) })),
+    // a panel that is OFF: a grey diffuser that only shows as much as the light that falls on it (so in a dark area
+    // it is as dark as the ceiling round it, not a pale glowing rectangle: owner's request) and in a flashlight beam
+    dead: addFlash(new THREE.MeshBasicMaterial({ map: pTex, color: new THREE.Color(0.5, 0.49, 0.45) })),
   };
   const m4 = new THREE.Matrix4();
   for (const st of states) {
@@ -796,6 +798,16 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     if (!list.length) continue;
     const inst = new THREE.InstancedMesh(panelGeo, panelMats[st], list.length);
     list.forEach((L, i) => { m4.makeTranslation(L.x, H - 0.006, L.z); inst.setMatrixAt(i, m4); });
+    if (st === 'dead') {
+      // each one tinted by the baked light where it hangs (the same sum as lightAt, further down)
+      const col = new THREE.Color();
+      list.forEach((L, i) => {
+        const ix = Math.max(0, Math.min(FW - 1, Math.round(L.x / CELL))), iz = Math.max(0, Math.min(FD - 1, Math.round(L.z / CELL))), k = iz * FW + ix;
+        const a = Math.min(1, (floorL[k * 3] + bounce[k * 3] * 0.35 + AMB) * EXPO * 0.8) * darkK(L.x, L.z);
+        inst.setColorAt(i, col.setRGB(a, a * 0.97, a * 0.9));
+      });
+      inst.instanceColor.needsUpdate = true;
+    }
     group.add(inst);
   }
 

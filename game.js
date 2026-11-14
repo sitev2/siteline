@@ -80,7 +80,7 @@ export class Game {
     // ---- renderer (graphics settings: graphics.js) ----
     const G = this.gfx = quality && typeof quality === 'object' ? quality : resolveGraphics(null, !!settings.touch);
     this.night = !!night;
-    const usePost = G.ao || G.bloom || G.aa === 'fxaa';
+    const usePost = G.ao || G.bloom || G.look || G.aa === 'fxaa';
     this.renderer = new THREE.WebGLRenderer({ antialias: G.aa === 'msaa' && !usePost, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.max(0.5, Math.min(3, Math.min(window.devicePixelRatio || 1, 2) * (G.renderScale || 1))));
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);   // false: the canvas keeps filling the page (style.css)
@@ -108,7 +108,7 @@ export class Game {
       this.envMap = pm.fromScene(envScene, 0.04).texture;
       pm.dispose();
     }
-    this.post = usePost ? new PostFX(this.renderer, { ao: !!G.ao, bloom: !!G.bloom, fxaa: G.aa === 'fxaa', msaa: G.aa === 'msaa' }) : null;
+    this.post = usePost ? new PostFX(this.renderer, { ao: !!G.ao, bloom: !!G.bloom, fxaa: G.aa === 'fxaa', msaa: G.aa === 'msaa', look: !!G.look }) : null;
     this.canvas = this.renderer.domElement;
     this.canvas.id = 'game-canvas';
     document.getElementById('stage').appendChild(this.canvas);

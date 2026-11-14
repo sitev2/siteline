@@ -74,7 +74,7 @@ The only folder is `server/` (the optional home game server).
   Don't add emojis to the UI; add an icon to `PATHS` instead. New game .js files must also go in the `files` list in `index.html`. Plain text marks (✓ ✕ → arrows) are fine.
 - No crouching (the owner removed it): no crouch key/button, no `duck` anywhere; everyone is always standing (`PLAYER_HEIGHT`, `EYE`).
 - `keys.js` (rebindable keys), `crosshair.js` (incl. "follow recoil": HUD moves it to the next bullet's spot), `touchlayout.js` (phone button layout), `graphics.js` (presets),
-  `post.js` (own AO / bloom / FXAA, no three.js add-ons; the scene and FXAA targets are sRGB 8-bit (`colorSpace: SRGBColorSpace`): plain
+  `post.js` (own AO / bloom / FXAA, no three.js add-ons; plus the 'look' shaders in the composite pass (owner: "add shaders to make the game look better"; graphics option `look` "Picture shaders", on from Medium up: a little sharpening, a gentle S-curve + 10 % more colour, warm highlights / cool shadows, a faint colour fringe and a soft vignette in the corners, less-than-one-step dither against banding — NOT film grain, the owner removed grain —, and one wider bloom round); the scene and FXAA targets are sRGB 8-bit (`colorSpace: SRGBColorSpace`): plain
   8-bit linear had only a few steps near black, so dark areas showed hard bands and dark yellow broke into red streaks), `anim.js` (draw + inspect poses, `poseViewModel`: first-person hands, reloads, slides, bolts, pumps), `filter.js` (chat filter)
 - Inspects (`INSPECT` / `SPECIAL` in `anim.js`): left side → right side → back, on monotone curves (`tanSoft`: never swing past a pose) plus a
   small hand sway; an inspect cut short blends out over 0.13 s (`vmInspect` in `game.js`). The Deagle spins FORWARDS round the trigger finger
@@ -159,7 +159,7 @@ The only folder is `server/` (the optional home game server).
   15 % per corner. Both broadcast `{t:'snatch', id, kind, x, z}` then a kill with weapon 'ceiling' / 'corner' (no kill feed, no
   ragdoll: the body is gone). `brfx.js` animates the arm (`makeSnatchArm` in `models.js`), the victim's body and the victim's
   own camera (fades to `#br-black`).
-  Dark areas: `plan.darkZones` (blocks of rooms with every light off — no flickering ones in there either, owner's request; `darkK` fades the light from 2 m before the edge to 4 m inside
+  Dark areas: `plan.darkZones` (blocks of rooms with every light off; the panels there are drawn OFF — owner's request: a 'dead' panel is a grey diffuser tinted per instance by the baked light where it hangs (`setColorAt`) with the flashlight hook (`addFlash`), so in the dark it is as dark as the ceiling and only shows in a beam; before, dead panels were a fixed pale grey that looked lit — no flickering ones in there either, owner's request; `darkK` fades the light from 2 m before the edge to 4 m inside
   (`FADE_OUT` / `FADE_IN`) in even-looking steps (`DARK_MIN ** smoothstep`, owner: "blend more"), down to `DARK_MIN` 2 %, nearly pitch
   black — owner asked for darker twice; people dim to 2.5 % and the haze to 1.5 % there; `keepHue()` in the
   shader keeps very dim baked light in the surface's own colour, just darker (owner: walls must not lose their colour in the dark; plain
