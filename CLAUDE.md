@@ -273,6 +273,9 @@ The only folder is `server/` (the optional home game server).
   `toView(x, y)` / `viewRect(r)`, never raw `innerWidth` / `clientX` (input.js, touchlayout.js, brfx.js notes, game.js already do).
   style.css uses body classes `vw760`, `vw700`, `vh500`, `vh600`, `land` (kept by turn.js) instead of size @media queries, and
   `calc(N * var(--vw))` instead of `Nvw` (a media query / vw sees the upright glass). The old "turn your device" pop-up is gone.
+  On iPhones (owner's screen recording): Safari's innerHeight leaves out its toolbar strip, so the turned picture uses `100lvh`
+  (`fullH()` probe) for its length; and the safe-area insets are swapped in `body.rot90` (--sal = top inset, --sar = bottom,
+  --sat = right, --sab = left), else the minimap sat under the notch/clock and the top HUD was pushed in.
 - Pause menu on phones: the tap on the pause button also arrived as a click on the dark background (which resumes), so the menu shut
   at once and Leave was unreachable; background taps are ignored for 0.5 s after it opens (`app.pauseAt`). Overlays scroll when taller
   than the screen, and the pause menu is compact (2 columns) on short screens (`body.vh500`).
