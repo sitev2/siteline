@@ -217,12 +217,8 @@ body.vh500 #pause .panel button { padding: 10px 12px; font-size: .9rem; }
 @keyframes toast { from { opacity: 0; transform: translateY(8px); } }
 
 /* phone held upright during a game: the whole page turns 90° (turn.js sets body.rot90; --W / --H = the glass size) */
-body.rot90 { position: fixed; top: 0; left: 0; right: auto; bottom: auto; width: var(--H); height: var(--W); overflow: hidden;
-  transform-origin: 0 0; transform: translateX(var(--W)) rotate(90deg);
-  /* the safe edges turn with the picture: its left edge is the glass's top (the notch / clock), its right edge the
-     glass's bottom (the home bar), its top the glass's right side and its bottom the glass's left side */
-  --sal: env(safe-area-inset-top, 0px); --sar: env(safe-area-inset-bottom, 0px);
-  --sat: env(safe-area-inset-right, 0px); --sab: env(safe-area-inset-left, 0px); }
+body.rot90 { position: fixed; top: 0; left: 0; width: var(--H); height: var(--W); overflow: hidden;
+  transform-origin: 0 0; transform: translateX(var(--W)) rotate(90deg); }
 
 /* ---------------- HUD ---------------- */
 #hud { position: fixed; inset: 0; z-index: 20; pointer-events: none; font-family: var(--display); }

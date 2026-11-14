@@ -11,19 +11,7 @@
 const body = () => document.body;
 
 export const turned = () => !!(body() && body().classList.contains('rot90'));
-// the glass's full height: Safari's innerHeight leaves out the strip its toolbar may use, which left an empty band
-// at the end of the turned picture on iPhones; 100lvh (the largest the viewport gets) covers the whole screen
-let probe = null;
-function fullH() {
-  if (!probe) {
-    probe = document.createElement('div');
-    probe.style.cssText = 'position:fixed;left:0;top:0;width:1px;height:100vh;height:100lvh;visibility:hidden;pointer-events:none';
-    document.documentElement.appendChild(probe);
-  }
-  return Math.max(innerHeight, probe.offsetHeight || 0);
-}
-let turnH = 0;      // the glass height used while turned (fullH, kept up to date by updateTurn)
-export const viewW = () => (turned() ? turnH || innerHeight : innerWidth);
+export const viewW = () => (turned() ? innerHeight : innerWidth);
 export const viewH = () => (turned() ? innerWidth : innerHeight);
 
 // the page is rotated 90° clockwise about its top-left corner and moved right by the screen width:
@@ -41,11 +29,9 @@ export function updateTurn() {
   const touch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
   const want = b.classList.contains('in-game') && touch && innerHeight > innerWidth && innerWidth <= 820;
   if (want !== turned()) b.classList.toggle('rot90', want);
-  if (want && (scrollX || scrollY)) scrollTo(0, 0);      // (iOS can leave the page nudged after turning)
-  turnH = fullH();
   const root = document.documentElement.style;
   root.setProperty('--W', `${innerWidth}px`);
-  root.setProperty('--H', `${turnH}px`);
+  root.setProperty('--H', `${innerHeight}px`);
   const w = viewW(), h = viewH();
   root.setProperty('--vw', `${w / 100}px`);
   root.setProperty('--vh', `${h / 100}px`);
