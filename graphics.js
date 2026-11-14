@@ -7,6 +7,7 @@ export const GFX_OPTIONS = [
   ['aa', 'Anti-aliasing', [['off', 'Off'], ['fxaa', 'FXAA (fast)'], ['msaa', 'MSAA (sharp)']]],
   ['ao', 'Ambient occlusion', [[false, 'Off'], [true, 'On']]],
   ['bloom', 'Bloom', [[false, 'Off'], [true, 'On']]],
+  ['look', 'Picture shaders', [[false, 'Off'], [true, 'On (sharper, richer colour, soft corners)']]],
   ['textures', 'Texture quality', [['low', 'Low'], ['medium', 'Medium'], ['high', 'High']]],
   ['viewDistance', 'View distance', [[80, 'Near'], [140, 'Medium'], [200, 'Far'], [300, 'Very far']]],
   ['modelDetail', 'Model detail', [['low', 'Low'], ['high', 'High']]],
@@ -15,10 +16,10 @@ export const GFX_OPTIONS = [
 ];
 
 export const PRESETS = {
-  low: { renderScale: 0.75, shadows: 'off', aa: 'off', ao: false, bloom: false, textures: 'low', viewDistance: 80, modelDetail: 'low', effects: 'low', fpsCap: 60 },
-  medium: { renderScale: 1, shadows: 'off', aa: 'fxaa', ao: false, bloom: false, textures: 'medium', viewDistance: 140, modelDetail: 'high', effects: 'medium', fpsCap: 60 },
-  high: { renderScale: 1, shadows: 'medium', aa: 'msaa', ao: false, bloom: true, textures: 'high', viewDistance: 200, modelDetail: 'high', effects: 'high', fpsCap: 0 },
-  ultra: { renderScale: 1.5, shadows: 'ultra', aa: 'msaa', ao: true, bloom: true, textures: 'high', viewDistance: 300, modelDetail: 'high', effects: 'high', fpsCap: 0 },
+  low: { renderScale: 0.75, shadows: 'off', aa: 'off', ao: false, bloom: false, look: false, textures: 'low', viewDistance: 80, modelDetail: 'low', effects: 'low', fpsCap: 60 },
+  medium: { renderScale: 1, shadows: 'off', aa: 'fxaa', ao: false, bloom: false, look: true, textures: 'medium', viewDistance: 140, modelDetail: 'high', effects: 'medium', fpsCap: 60 },
+  high: { renderScale: 1, shadows: 'medium', aa: 'msaa', ao: false, bloom: true, look: true, textures: 'high', viewDistance: 200, modelDetail: 'high', effects: 'high', fpsCap: 0 },
+  ultra: { renderScale: 1.5, shadows: 'ultra', aa: 'msaa', ao: true, bloom: true, look: true, textures: 'high', viewDistance: 300, modelDetail: 'high', effects: 'high', fpsCap: 0 },
 };
 
 // settings.graphics = { preset: 'auto' | 'low' | … | 'custom', custom: { …options } }

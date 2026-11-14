@@ -1,7 +1,9 @@
 // Post-processing for the higher graphics settings, written for SITELINE (no add-on files):
 //   ambient occlusion (darkens creases and corners), bloom (bright things glow),
-//   FXAA (smooths jagged edges) and a light vignette. The first-person gun is drawn
-//   afterwards, straight on top, so it stays crisp.
+//   FXAA (smooths jagged edges), and the 'look' shaders (opts.look, graphics option "Picture shaders"): a little
+//   sharpening, a film-like contrast curve with slightly richer colour, warm highlights over cool shadows, a faint
+//   colour fringe and a soft vignette towards the corners, and a hair of dither so dark gradients don't band.
+//   The first-person gun is drawn afterwards, straight on top, so it stays crisp.
 import * as THREE from 'three';
 
 const VERT = `varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }`;
@@ -54,10 +56,21 @@ const BLUR_FRAG = `
   }`;
 
 const COMPOSITE_FRAG = `
-  uniform sampler2D tColor, tAO, tBloom; uniform float useAO, bloomStrength, vignette; uniform vec2 aoTexel;
+  uniform sampler2D tColor, tAO, tBloom; uniform float useAO, bloomStrength, vignette, look, time; uniform vec2 aoTexel, texel;
   varying vec2 vUv;
+  float hash12(vec2 p) { vec3 p3 = fract(vec3(p.xyx) * 0.1031); p3 += dot(p3, p3.yzx + 33.33); return fract((p3.x + p3.y) * p3.z); }
   void main() {
     vec3 c = texture2D(tColor, vUv).rgb;
+    if (look > 0.0) {
+      // a faint colour fringe towards the corners, like a real lens (nothing in the middle of the screen)
+      vec2 q0 = vUv - 0.5; float r2 = dot(q0, q0);
+      vec2 off = q0 * r2 * 0.012 * look;
+      c.r = texture2D(tColor, vUv + off).r; c.b = texture2D(tColor, vUv - off).b;
+      // sharpen: push each pixel away from the average of its four neighbours (clamped, so edges don't ring)
+      vec3 blur = 0.25 * (texture2D(tColor, vUv + vec2(texel.x, 0.0)).rgb + texture2D(tColor, vUv - vec2(texel.x, 0.0)).rgb
+        + texture2D(tColor, vUv + vec2(0.0, texel.y)).rgb + texture2D(tColor, vUv - vec2(0.0, texel.y)).rgb);
+      c = max(vec3(0.0), c + clamp(c - blur, -0.06, 0.06) * 0.6 * look);
+    }
     if (useAO > 0.5) {
       float ao = texture2D(tAO, vUv).r * 0.4;
       ao += texture2D(tAO, vUv + vec2(aoTexel.x, 0.0)).r * 0.15;
@@ -68,7 +81,21 @@ const COMPOSITE_FRAG = `
     }
     if (bloomStrength > 0.0) c += texture2D(tBloom, vUv).rgb * bloomStrength;
     vec2 q = vUv - 0.5;
-    c *= 1.0 - vignette * dot(q, q) * 1.6;
+    if (look > 0.0) {
+      // the grade, worked out on the picture as the eye sees it (not on raw light): a gentle S-curve for contrast,
+      // a touch more colour, highlights leaning warm and shadows leaning cool
+      vec3 g = pow(max(c, 0.0), vec3(1.0 / 2.2));
+      float l = dot(g, vec3(0.299, 0.587, 0.114));
+      g = mix(g, g * g * (3.0 - 2.0 * g), 0.22 * look);
+      g = mix(vec3(dot(g, vec3(0.299, 0.587, 0.114))), g, 1.0 + 0.1 * look);
+      g += (vec3(0.012, 0.004, -0.014) * smoothstep(0.45, 1.0, l) + vec3(-0.008, 0.0, 0.012) * (1.0 - smoothstep(0.0, 0.4, l))) * look;
+      // a soft vignette that falls away faster right in the corners
+      float v = dot(q, q);
+      g *= 1.0 - vignette * (v * 1.2 + v * v * 2.2);
+      // a hair of dither (less than one step of brightness): stops dark walls breaking into bands. Not film grain.
+      g += (hash12(gl_FragCoord.xy + fract(time) * 61.0) - 0.5) / 255.0;
+      c = pow(clamp(g, 0.0, 1.0), vec3(2.2));
+    } else c *= 1.0 - vignette * dot(q, q) * 1.6;
     gl_FragColor = vec4(c, 1.0);
     #include <colorspace_fragment>
   }`;
@@ -98,7 +125,7 @@ const FXAA_FRAG = `
   }`;
 
 export class PostFX {
-  // opts: { ao, bloom, fxaa, msaa }
+  // opts: { ao, bloom, fxaa, msaa, look }
   constructor(renderer, opts) {
     this.r = renderer;
     this.o = opts;
@@ -114,6 +141,7 @@ export class PostFX {
     this.compMat = mat(COMPOSITE_FRAG, {
       tColor: { value: null }, tAO: { value: null }, tBloom: { value: null }, useAO: { value: 0 }, bloomStrength: { value: 0 },
       vignette: { value: 0.35 }, aoTexel: { value: new THREE.Vector2() },
+      look: { value: opts.look ? 1 : 0 }, time: { value: 0 }, texel: { value: new THREE.Vector2() },
     });
     this.fxaaMat = mat(FXAA_FRAG, { tColor: { value: null }, texel: { value: new THREE.Vector2() } });
     this.targets = [];
@@ -173,7 +201,7 @@ export class PostFX {
       this.brightMat.uniforms.tColor.value = this.sceneRT.texture;
       this.pass(this.brightMat, this.bloomA);
       const bu = this.blurMat.uniforms;
-      for (let i = 0; i < 2; i++) {
+      for (let i = 0; i < (o.look ? 3 : 2); i++) {         // (with the look shaders: one more, wider round, so lights glow softer)
         bu.tColor.value = this.bloomA.texture; bu.dir.value.set(4 / this.w * (i + 1), 0); this.pass(this.blurMat, this.bloomB);
         bu.tColor.value = this.bloomB.texture; bu.dir.value.set(0, 4 / this.h * (i + 1)); this.pass(this.blurMat, this.bloomA);
       }
@@ -185,6 +213,8 @@ export class PostFX {
     cu.aoTexel.value.set(2 / this.w, 2 / this.h);
     cu.tBloom.value = o.bloom ? this.bloomA.texture : null;
     cu.bloomStrength.value = o.bloom ? 0.55 : 0;
+    cu.texel.value.set(1 / this.w, 1 / this.h);
+    cu.time.value = (cu.time.value + 0.137) % 1000;
     if (o.fxaa) {
       this.pass(this.compMat, this.ldrRT);
       this.fxaaMat.uniforms.tColor.value = this.ldrRT.texture;
