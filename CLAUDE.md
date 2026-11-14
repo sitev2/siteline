@@ -141,8 +141,9 @@ The only folder is `server/` (the optional home game server).
   onto bricks were removed at the owner's request, the code for them is unused). The door frame covers the wall's cut edges (5 cm into the
   gap) and the leaves hang just inside it, so nothing clips. The world is built with every door open (so mazes/NavGrid treat doors as passable); the host then shuts the ones that start
   shut (`world.setDoor(i, open)` adds/removes '_door' spans in the gap). Players: E / hand button within ~1.9 m (`Game.doorTarget`,
-  `{t:'door', i}`); host `toggleDoor` (range 2.4 m, 0.45 s cooldown, won't shut on anyone standing in the gap) broadcasts
-  `{t:'door', i, open, swing}` (swings away from whoever moved it); door states travel in the start message (`doors`). The monster can't
+  `{t:'door', i}`); host `toggleDoor` (range 2.4 m, 0.45 s cooldown) broadcasts
+  `{t:'door', i, open, swing}` (swings away from whoever moved it); doors shut even with someone in the doorway (owner's rule):
+  `world.pushOutOfDoor` moves them out to the side they're more on (players on their own screen in game.js, the monster on the host); door states travel in the start message (`doors`). The monster can't
   open doors (owner's rule): it KICKS shut ones in (`KICK_TIME` 2 s, owner's choice, `kicking` / `kickStep` in `monster.js`, mode 'kick'; a
   `{t:'doorKick', i, swing}` boom every 0.75 s — the leaves jump, `kickDoor` in `brview.js`), then `Server.breakDoor`: the door is
   `broken`, open for good, both leaves torn off and flat on the floor (`setDoor(..., broken)`, sound 'break'); players can't shut a
@@ -203,7 +204,7 @@ The only folder is `server/` (the optional home game server).
   screech, lights going mad, a figure (the monster) standing far off that vanishes when looked at or approached; more often alone
   or in the dark. No fake teammates, and no skin-wearing any more (the owner removed the shape-shifting when the tall one came in).
   It, the main entity (owner's design brief; it REPLACED the old thin black shadow monster, which is gone): a tall stiff machine,
-  `makeTallModel` in `models.js` (`makeMonsterModel()`; `{ blind: true }` = the Listener's old-style body, `makeListenerModel`).
+  `makeTallModel` in `models.js` (`makeMonsterModel()`).
   - Looks: ~2.8 m (root scale 0.88; ceiling 2.9), all black worn metal, like an animatronic: flat bars, rams, rivets, an open rib cage
     round a motor drum, cables, arms to its knees with four flat fingers, two face plates out of line with a deep socket each, a hinged
     jaw of slats. Each joint's fixed parts are merged (`mergeStatic`) — about 100 meshes. Eyes: pale pin-points, RED once it has
@@ -212,7 +213,7 @@ The only folder is `server/` (the optional home game server).
     to its next position and stopping dead; positions change on a step clock that keeps time with its real speed. Walking = 3
     positions a step (`TALL_WALK_KEYS`, owner asked for the extra one; 2 = the first version), running = 2 with bigger strides, both
     arms out in front with the elbows a bit bent (owner). Standing it is dead still, then one part clicks. NO crawling (removed), and
-    game.js no longer drops frames for it (only the Listener keeps `jerkAcc` / `jerkStep`). Ducks through doorways (`duck`), kicks
+    game.js doesn't drop frames for it. Ducks through doorways (`duck`), kicks
     doors (mode 'kick'), peeks, and freezes mid-step when a stalked player turns round (mode 'freeze' = dt 0).
   - The stare (owner): the moment it sees someone (`MonsterBrain.spot`) it stops dead, its head snaps onto them (the host sends the
     angle to its target in the monster's `pitch` field → `lookYaw`) and it stares for `STARE` 1 s (mode 'notice': a head tilt, the jaw
@@ -232,16 +233,7 @@ The only folder is `server/` (the optional home game server).
     in the mode string (`m:<mode>:<n>:<body id>` → `dragId`; `brfx.takeBody` / `updateBodies`); `setCeiling` keeps it under 2.9 m.
     The victim sees it through the ragdoll's eyes (`caughtMe` / `caughtCamera`), then black, then the usual death view. When the last
     player is caught the host waits 6 s (not 2) before the results. Bodies are only on screens that saw the kill.
-  The Listener (owner's pick; an OPTION when the game is made: lobby `#lobby-listener` → `settings.listener`, Practice `#p-listener`):
-  a second creature, `ListenerBrain` in `monster.js` (extends MonsterBrain for walking/routes), player id `'listener'`, team 'monster',
-  name "The Listener", spawned ≥ 45 m from the players and 20 m from It. Blind: it only hears (`LISTENER`: sprinting within 22 m through
-  walls, walking within 4 m, doors / It's kicks within 18 m); rushes to the sound at 4.2 m/s (just under your sprint), stops and listens
-  2–4 s, else drifts at 1.4 m/s; stand still and it walks past you. Can't open or kick doors (doorCost Infinity). Kills on contact
-  (`Server.listenerKill`, weapon 'listener', an ordinary death: "The Listener heard you"). Looks (owner: must look different from It):
-  `makeMonsterModel({ blind: true })` builds its own body on the same joints (so `animateMonster` moves it): squat (root 1.08 × 0.88),
-  fleshy waxy-pale limbs, a lumpy hunched back, a barrel rib cage, a swollen eyeless head with a slit mouth and pores (no ears: the
-  owner had them removed), padded feet, thick fingers. Sound: dry clicks (`BRS.clicks`) every 1.2–2.6 s, faster when rushing (`monsterSounds`). The main
-  monster's effects (dread, heartbeat, darkness, screech) stay tied to id 'monster' only (`brfx.monster()`).
+  The Listener (a second, blind creature) was REMOVED at the owner's request: no option, brain, model or sounds for it any more.
   Monster peeking: now and then it picks one player (the most alone), finds a spot by an outside corner 7–16 m away where its body is
   hidden but its head leaning out is clearly visible (`findPeek`), leans out (mode `peek:±1`), and leaves 0.5 s after that player
   looks at its head (also if they come within 6 m, see its body, or after 15 s); after a few peeks it may charge them next time.
