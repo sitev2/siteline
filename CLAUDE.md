@@ -150,7 +150,9 @@ The only folder is `server/` (the optional home game server).
   broken door (toast; start message sends 2 for broken). Its routes weigh a shut door as `KICK_TIME` of running (`NavGrid.path(a, b, max, cost)`
   with `doorCost`), so it goes round when that's quicker; `straight()` stops at '_door' spans; shut doors block its sight. Opened by a player mid-kick: it stops and walks through. It hears doors within 14 m.
   `brview.js` `group.userData.setDoor` animates the leaves on hinges.
-  Snatches (owner's design): ceiling holes (`plan.holes`: a missing or pushed-aside 0.6 m ceiling tile, by difficulty) — walk under one
+  Snatches (owner's design): ceiling holes (`plan.holes`, by difficulty; drawn in `brview.js` as a tile that has just SHIFTED, owner: "nothing
+  obvious" — the ceiling's own material/baked light at that spot ×0.9, slid 8–14 cm over its neighbour 12 mm below the ceiling plane,
+  a thin black gap where it came from; the ceiling mesh has no hole, so everything hangs just below it) — walk under one
   (reach 0.63 m from its middle: 50 % more than before, owner's request) and the host `snatch(p, 'ceiling', …)` takes you, every time;
   2.5 s later it spits the victim's head back out (`brfx.updateHeads`: the hazmat hood from `makePlayerModel(...).rag.head.seg` drops,
   bounces, rolls and lies visor-up on the carpet for the rest of the game; sounds `spit`, `thud`; client only, no gore); the corner snatch (`cornerSnatch`, at most once a game, after 45 s):

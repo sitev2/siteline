@@ -500,7 +500,8 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
   const baked = (map) => addFlash(new THREE.MeshBasicMaterial({ map, vertexColors: true }));
   const surfaces = [];
   surfaces.push(mesh(fPos, fUV, fCol, fIdx, baked(carpetTexture(renderer))));
-  surfaces.push(mesh(cPos, cUV, cCol, cIdx, baked(ceilingTexture(renderer))));
+  const ceilMat = baked(ceilingTexture(renderer));
+  surfaces.push(mesh(cPos, cUV, cCol, cIdx, ceilMat));
 
   // ---------- walls, pillars, the wall above doorways, skirting boards and outlets ----------
   // bottom of the wall in each cell: 0 for a wall, the doorway height for the wall above a doorway, none for open floor
@@ -893,27 +894,37 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
 
   // ---------- holes in the ceiling: a missing tile, or one pushed aside (something up there) ----------
   const voidM = new THREE.MeshBasicMaterial({ color: '#000000', fog: false, side: THREE.DoubleSide });
-  const ceilTex = ceilingTexture(renderer);
   for (const h of plan.holes || []) {
-    const S = h.size, k = Math.min(FD - 1, Math.round(h.z / CELL)) * FW + Math.min(FW - 1, Math.round(h.x / CELL));
-    const lit = Math.max(0.05, Math.min(1.2, bounce[k * 3] * 0.62 + 0.04));
-    // a black shaft going up into the dark
-    const shaft = new THREE.Mesh(new THREE.BoxGeometry(S - 0.02, 0.9, S - 0.02), voidM);
-    shaft.position.set(h.x, H + 0.45 - 0.002, h.z);
-    group.add(shaft);
-    const gap = new THREE.Mesh(new THREE.PlaneGeometry(S - 0.01, S - 0.01), voidM);
-    gap.rotation.x = Math.PI / 2; gap.position.set(h.x, H - 0.003, h.z);
+    const S = h.size;
+    // (owner: it must look like a tile that has just shifted, nothing obvious.) The ceiling itself has no hole, so all of
+    // this hangs a few mm below it: a thin dark gap on one side, and the tile, slid that far over its neighbour.
+    const r = Math.abs((Math.sin(h.x * 12.9898 + h.z * 78.233) * 43758.5453) % 1);
+    const dir = h.dir == null ? Math.floor(r * 4) : h.dir, ux = [1, 0, -1, 0][dir], uz = [0, 1, 0, -1][dir];
+    const slide = S * (0.14 + r * 0.1);                  // 8–14 cm of gap on a 0.6 m tile
+    // the gap where the tile used to be
+    const gw = ux ? slide : S - 0.01, gd = uz ? slide : S - 0.01;
+    const gap = new THREE.Mesh(new THREE.PlaneGeometry(gw, gd), voidM);
+    gap.rotation.x = Math.PI / 2;
+    gap.position.set(h.x - ux * (S - slide) / 2, H - 0.004, h.z - uz * (S - slide) / 2);
     group.add(gap);
-    if (h.kind === 'shifted') {
-      // the tile itself, lifted and slid half off its hole, tilted up into the dark
-      const tm = new THREE.MeshBasicMaterial({ map: ceilTex.clone(), color: new THREE.Color(lit * 0.75, lit * 0.72, lit * 0.6) });
-      tm.map.repeat.set(0.5, 0.5); tm.map.needsUpdate = true;
-      const tile = new THREE.Mesh(new THREE.BoxGeometry(S - 0.02, 0.015, S - 0.02), tm);
-      const dx = [1, 0, -1, 0][h.dir] * S * 0.45, dz = [0, 1, 0, -1][h.dir] * S * 0.45;
-      tile.position.set(h.x + dx, H + 0.05, h.z + dz);
-      tile.rotation.set(dz ? Math.sign(dz) * -0.22 : 0, 0, dx ? Math.sign(dx) * 0.22 : 0);
-      group.add(tile);
+    // the tile: the ceiling's own material and baked light (a shade darker: it sits a little out of line), its texture
+    // moving with it, and a thin edge showing over the gap
+    const cx = Math.min(FW - 1, Math.max(0, Math.round(h.x / CELL))), cz = Math.min(FD - 1, Math.max(0, Math.round(h.z / CELL)));
+    const ck = (cz * FW + cx) * 3, shade = 0.9;
+    const tc = [cCol[ck] * shade, cCol[ck + 1] * shade, cCol[ck + 2] * shade];
+    const tpos = [], tuv = [], tcol = [], half = (S - 0.02) / 2, ox = ux * slide, oz = uz * slide;
+    for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
+      const x = h.x + sx * half, z = h.z + sz * half;
+      tpos.push(x + ox, H - 0.012, z + oz); tuv.push(x / 1.2, z / 1.2); tcol.push(...tc);
     }
+    const tile = mesh(tpos, tuv, tcol, [0, 1, 2, 0, 2, 3], ceilMat);     // (wound like the ceiling: seen from below)
+    group.add(tile);
+    const edgeM = new THREE.MeshBasicMaterial({ color: new THREE.Color(tc[0] * 0.5, tc[1] * 0.5, tc[2] * 0.5), side: THREE.DoubleSide });
+    // the tile's edge facing the gap (where it slid from): a 12 mm sliver of its thickness
+    const edge = new THREE.Mesh(new THREE.PlaneGeometry(S - 0.02, 0.012), edgeM);
+    edge.position.set(h.x + ox - ux * half, H - 0.006, h.z + oz - uz * half);
+    if (ux) edge.rotation.y = Math.PI / 2;
+    group.add(edge);
   }
 
   // how much light falls on a spot (0 dark … ~1.3 under a panel): for dimming the people and the monster in dark areas
