@@ -627,7 +627,8 @@ export class BackroomsFX {
 
   updateDread(dt) {
     const g = this.g, me = g.me, cam = g.camera.position, mon = this.monster();
-    const here = !!(mon && mon.alive && mon.model && mon.model.root.visible);
+    // (Level 1: a disguised shapeshifter is not felt at all: no heartbeat, no shake)
+    const here = !!(mon && mon.alive && mon.model && mon.model.root.visible && (!g.gar || mon.revealed));
     const mp = here ? mon.model.root.position : null;
     const d = here ? Math.hypot(mp.x - cam.x, mp.z - cam.z) : Infinity;
     // (the lights used to die round it; the owner asked for that darkness to go: it darkens nothing now)
@@ -799,12 +800,12 @@ export class BackroomsFX {
     this.updateHeads(dt);
     this.updateBodies(dt);
     this.updateDread(dt);
-    if (!g.paused) this.hallucinate(dt);
+    if (!g.paused && !g.gar) this.hallucinate(dt);       // (no hallucinations in Level 1)
     this.readNote();
-    this.mapStep(dt);
+    if (!g.gar) this.mapStep(dt);                        // (and no self-drawn map)
     // people (and it) are only as bright as the place you are in
     if (this.built.lightAt && this.built.dimPeople) {
-      let l = this.built.lightAt(g.camera.position.x, g.camera.position.z);
+      let l = this.built.lightAt(g.camera.position.x, g.camera.position.z, g.camera.position.y - 1.6);
       // (and the dark it brings with it)
       if (this.darkPos) { const dd = Math.hypot(this.darkPos.x - g.camera.position.x, this.darkPos.z - g.camera.position.z); l *= 1 - 0.9 * this.darkK * Math.max(0, Math.min(1, (7.5 - dd) / 4.5)); }
       const k = Math.max(0.025, Math.min(1, 0.025 + l * 1.0));

@@ -22,7 +22,7 @@
     // New .js files: add them to this list (libraries stay unversioned).
     (function () {
       var v = Date.parse(document.lastModified) || Date.now();
-      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'brfx', 'brmap', 'brview', 'buy', 'config', 'crosshair', 'filter', 'friends', 'game', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'models', 'monster', 'net', 'netlog', 'nettest', 'post', 'ragdoll', 'server', 'textures', 'touchlayout', 'weapons', 'world'];
+      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'brfx', 'brmap', 'brview', 'buy', 'config', 'crosshair', 'filter', 'friends', 'game', 'garmap', 'garprops', 'garview', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'models', 'monster', 'net', 'netlog', 'nettest', 'post', 'ragdoll', 'server', 'shifter', 'shiftmodel', 'textures', 'touchlayout', 'weapons', 'world'];
       var imports = { three: './three.module.js' };
       for (var i = 0; i < files.length; i++) imports['./' + files[i] + '.js'] = './' + files[i] + '.js?v=' + v;
       window.SITELINE_V = v;
@@ -245,6 +245,9 @@
         </label>
         <label class="field p-botopt"><span id="p-level-label">Bot difficulty</span>
           <select id="p-level"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select>
+        </label>
+        <label class="field p-stageopt hidden"><span>Level</span>
+          <select id="p-stage"><option value="0">Level 0: the yellow rooms</option><option value="1">Level 1: the garage (testing)</option></select>
         </label>
         <label class="check p-nightopt"><input type="checkbox" id="p-night"> <i data-icon="moon"></i> Night mode (dark map, flashlights)</label>
         <p class="note" id="p-note">Friends can join with the room code or invite link from the pause menu. They take a bot's place.</p>

@@ -60,6 +60,7 @@ const ROOMS = {
   village: { decay: 1.4, wet: 0.22, damp: 4000 },   // narrow stone streets
   tuscan: { decay: 1.3, wet: 0.2, damp: 4200 },
   backrooms: { decay: 0.8, wet: 0.2, damp: 2600 },   // carpet and ceiling tiles soak it up, but it goes on and on
+  garage: { decay: 2.6, wet: 0.36, damp: 4600 },     // Backrooms Level 1: bare concrete decks, everything echoes
 };
 let room = ROOMS.desert;
 export function setRoom(theme) {
@@ -678,13 +679,43 @@ const BRS = {
     click(x, sr, 0.004, 640, 3, 0.5); click(x, sr, 0.02, 1750 + Math.random() * 400, 5, 0.3);
     normalize(x, 0.95);
   }),
+  // ---- Level 1 (the garage) ----
+  // a drop of water landing
+  drip: () => buf(0.35, (x, sr) => { const f = 900 + Math.random() * 900; for (let i = 0; i < 0.12 * sr; i++) { const t = i / sr; x[i] += Math.sin(6.283 * (f + 2600 * t) * t) * Math.exp(-t * 38) * 0.8; } click(x, sr, 0, 2600, 6, 0.3); normalize(x, 0.5); }),
+  // the shapeshifter changing: stretching up tall (a rising wet creak)
+  shiftStretch: () => buf(0.8, (x, sr) => { sweepNoise(x, sr, 0, 0.6, 260, 1500, 3, 0.9, 0.2); for (let k = 0; k < 7; k++) click(x, sr, 0.05 + k * 0.07 + Math.random() * 0.03, 500 + k * 160, 5, 0.5); normalize(x, 0.7); }),
+  // folding itself flat (a falling squelch)
+  shiftFold: () => buf(0.8, (x, sr) => { sweepNoise(x, sr, 0, 0.5, 1300, 220, 2.5, 1, 0.2); thump(x, sr, 0.3, 90, 50, 0.16, 0.7); bubbles(x, sr, 0.1, 0.4, 6, 0.3); normalize(x, 0.7); }),
+  // a limb growing out (a string of wet cracks)
+  shiftLimb: () => buf(0.6, (x, sr) => { for (let k = 0; k < 9; k++) { const at = k * 0.045 + Math.random() * 0.02; click(x, sr, at, 700 + Math.random() * 1500, 7, 0.6); noiseHit(x, sr, at, 'bandpass', 1400, 3, 0.02, 0.3); } normalize(x, 0.65); }),
+  // slumping into a heap
+  shiftSlump: () => buf(0.7, (x, sr) => { thump(x, sr, 0, 80, 42, 0.22, 0.9); noiseHit(x, sr, 0.02, 'lowpass', 500, 0.8, 0.25, 0.6); bubbles(x, sr, 0.15, 0.35, 5, 0.25); normalize(x, 0.6); }),
+  // breaking out of a disguise: metal and rubber tearing, a wet roar
+  shiftBurst: () => buf(1.3, (x, sr) => {
+    for (let k = 0; k < 10; k++) noiseHit(x, sr, Math.random() * 0.3, 'highpass', 1500 + Math.random() * 3000, 0.8, 0.03 + Math.random() * 0.05, 0.5 + Math.random() * 0.5);
+    partials(x, sr, 0.02, [[240, 0.5, 0.3], [610, 0.3, 0.2], [1370, 0.2, 0.12]], 1); thump(x, sr, 0.05, 110, 45, 0.3, 1);
+    const n = x.length; for (let i = Math.floor(0.2 * sr); i < n; i++) { const t = i / sr - 0.2, e = Math.sin(Math.PI * Math.min(1, t / 1.0)); x[i] += Math.sign(Math.sin(6.283 * (95 + 60 * Math.sin(t * 9)) * t)) * (Math.random() * 0.6 + 0.4) * e * 0.35; }
+    biquad(x, 'lowpass', 3800, 0.7, sr); normalize(x, 0.95);
+  }),
+  // settling into a shape: a quiet run of clicks that slows and stops
+  shiftSettle: () => buf(1.3, (x, sr) => { let at = 0; for (let k = 0; k < 14; k++) { click(x, sr, at, 900 + Math.random() * 900, 8, 0.5 * (1 - k / 16)); at += 0.04 + k * 0.009; } sweepNoise(x, sr, 0, 0.9, 900, 300, 2, 0.3, 0.3); normalize(x, 0.45); }),
+  // a copied car ticking, like an engine cooling down
+  shiftTick: () => buf(0.25, (x, sr) => { click(x, sr, 0, 2900 + Math.random() * 1200, 10, 0.8); click(x, sr, 0.004, 5200, 14, 0.3); if (Math.random() < 0.4) click(x, sr, 0.09 + Math.random() * 0.06, 3300, 10, 0.4); normalize(x, 0.4); }),
+  // closing round someone: a long wet crush
+  shiftKill: () => buf(2.6, (x, sr) => {
+    sweepNoise(x, sr, 0, 0.5, 300, 1800, 2, 0.9, 0.2); bubbles(x, sr, 0.4, 1.5, 22, 0.35);
+    for (let k = 0; k < 16; k++) { const at = 0.5 + Math.random() * 1.6; click(x, sr, at, 400 + Math.random() * 1400, 6, 0.6); if (k % 4 === 0) thump(x, sr, at, 100, 50, 0.12, 0.7); }
+    thump(x, sr, 2.2, 70, 36, 0.3, 1); normalize(x, 0.9);
+  }),
+  // its feet, such as they are: a wet slap on concrete
+  shiftStep: () => buf(0.3, (x, sr) => { noiseHit(x, sr, 0, 'bandpass', 700 + Math.random() * 500, 1.5, 0.06, 0.9, 0.004); thump(x, sr, 0, 120, 60, 0.07, 0.7); click(x, sr, 0.02, 1800, 6, 0.2); normalize(x, 0.6); }),
   // three knocks on the other side of a wall
   knock: () => buf(1.3, (x, sr) => { for (const at of [0, 0.32, 0.64]) { thump(x, sr, at, 170, 110, 0.07, 1); noiseHit(x, sr, at, 'lowpass', 700, 0.7, 0.03, 0.5); } normalize(x, 0.7); }),
 };
 export function playBR(kind, pos = null, occ = 0, gain = 1) {
   const key = `br:${kind}#${Math.floor(Math.random() * 2)}`;
   if (!cache.has(key)) cache.set(key, BRS[kind]());
-  play(cache.get(key), { pos, gain, ref: pos ? 2.5 : 1, roll: 1.0, air: 40, occ, wet: kind === 'whisper' ? 0.15 : 0.45, important: kind === 'ceiling' || kind === 'corner' || kind === 'slam' || kind === 'servo' });
+  play(cache.get(key), { pos, gain, ref: pos ? 2.5 : 1, roll: 1.0, air: 40, occ, wet: kind === 'whisper' ? 0.15 : 0.45, important: kind === 'ceiling' || kind === 'corner' || kind === 'slam' || kind === 'servo' || kind === 'shiftBurst' || kind === 'shiftKill' });
 }
 
 // close to it: a low, distorted rumble that swells in your head (not in the world), with a sick wavering whine on
@@ -774,6 +805,7 @@ const AMB = {
   village: { wind: 0.3, windTone: 380, water: 0.35, lap: 0.6, events: ['bird', 'bell', 'bird', 'bird', 'bell', 'gust'] },
   tuscan: { wind: 0.35, windTone: 400, events: ['bird', 'bird', 'bell', 'gust', 'bird'] },
   backrooms: { buzz: 1, events: ['thud', 'creak', 'thud', 'clank'] },    // the endless fluorescent buzz
+  garage: { hum: 1.3, buzz: 0.3, events: ['thud', 'creak', 'clank', 'hiss'] },      // a low electrical hum, the sodium lamps' buzz
 };
 function ambienceBed(a, night) {
   const secs = 10;

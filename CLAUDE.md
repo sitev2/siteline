@@ -259,6 +259,51 @@ The only folder is `server/` (the optional home game server).
   no clue; stops to listen now and then). Hears sprinting (> 3.5 m/s) within `lv.hear` and walking within `lv.hearWalk`; catches on contact (`monsterKill`). The models in
   `models.js` are OUR OWN designs (the owner once asked for a known character from someone else's Backrooms videos; we declined to copy it).
   Sounds in `audio.js` (fluorescent buzz bed, clank/servo/slam, screech/grab). Account stats are not reported for this mode.
+- Backrooms online needs 2–4 players (owner's rule): the lobby's Start is off with fewer and says so, and `Server.startMatch` refuses too.
+  Practice can still be played alone; Level 0's solo rules (`brSolo`) stay for solo Practice and for the last one alive. The HUD has no
+  timer and no alive counter in the Backrooms (the top bar is hidden; only the task list shows).
+- **Backrooms Level 1: the garage (UNFINISHED, test account only).** `LEVEL1_OPEN = false` in `main.js`: only `LEVEL1_TESTERS` (`test123`)
+  see a "Level" choice in Practice → The Backrooms (`#p-stage` → `cfg.stage: 1` → `Server.startGarage()`). Nobody else can reach it.
+  DONE: the map, the 3D scene, the shapeshifter. STILL TO DO (owner's brief, stages 2, 5, 7, 8 — see the list at the end of this entry).
+  - `garmap.js` — ONE fixed layout (`resolveMap('garage', difficulty)`, theme `garage`, `world.def.gar` = the plan): 64 × 52 m, two floors
+    (lower "P2" y 0, upper "P1" y `GAR.FL` 3.4; 3 m clear), about half Level 0's area. Rows of 0.5 × 1 m pillars, parking bays, two car
+    ramps (`plan.ramps`, collision = 11 cm steps, drawn smooth), two stairwells, 7 side rooms (`plan.rooms`: attendant booths / storerooms,
+    each with windows and a door; NEVER call them "safe rooms"), puddles on the lower floor (`b.water`), and the places for the order:
+    `plan.fuse` (lower, north wall), `plan.crank` + `plan.shutter` (a door with `lock: 'shutter'`) + `plan.lift` (upper, north-west),
+    `plan.start` (upper, south-east), `plan.log`, `plan.batteries`, plus cars / cones / drain pipes and the empty spots a fake one could be.
+    Doors have a floor now: `door.y` (`World.setDoor`, `pushOutOfDoor`, the host's reach check and `Game.doorTarget` all use it).
+    `node check_gar.mjs` (add `map` to print both floors): start, fuse box, crank, lift, every side room, battery and empty bay can be
+    walked to; ramps alone and stairs alone both join the floors; the lift is shut off while the shutter is down.
+  - `garview.js` (+ `garprops.js`: car / cone / pipe shapes) — baked lighting like `brview.js`, per floor. Orange sodium lamps are baked
+    into the vertex colours (always on); the white tubes' light is a separate attribute (`aTube`, one number per flicker group) switched
+    by the `uTube` uniform, so tubes can be off / on / flickering with their light on the walls (`userData.setPower(on)`: ON for now,
+    stage 7's fuse box should start it OFF). No fog, no dark zones. Puddles: the floor is cut away and an upside-down copy of the ceiling,
+    lamps, pillars and nearby cars lies under dark water (a cheap true reflection). Also `setShutter(0…1)`, `setBattery(i, on)`,
+    `setDoor`, `kickDoor`, `lightAt(x, z, y)`, `propLight` / `litGeo` / `propMat` (so a disguise is lit exactly like a real prop), drips.
+  - `shifter.js` — the shapeshifter's brain on the host (`ShifterBrain`; Level 0 keeps `monster.js`). It hides as a prop (a car in an
+    empty bay — solid while it is one: `World.setBlock` / `{t:'block'}` —, a stack of cones, a drain pipe on a pillar) and breaks out
+    when someone on its floor comes within `GAR_LEVELS.spring` or stays near with their back turned for a second; with 2+ players it
+    can walk about as a copy of one of them (never in view of someone who can also see the real one, nor of the real one). Then it
+    chases at Level 0's speeds (`BR_LEVELS`), across floors by the ramps and stairs. Side rooms: out of bounds (route cost ∞) unless it
+    is chasing; then a shut door is forced in 1.5 s (`Server.forceDoor`). It hears running, wading and doors (and `hearNoise` for the
+    crank later). Its shape travels in its weapon field: `s:car:<bay>:<colour>`, `s:cones:n`, `s:pipe:0`, `s:copy:<id>:<walk|still>`,
+    `s:true:<tall|lope|low|wide|lump>:<keepsake>`, `s:burst:…`, `s:settle:…`, `s:force:0`, `s:kill:<id>`. Catch: kill weapon `shifter`
+    (`{ eng: 1 }`): it closes round the victim; their screen goes black, then the usual death view. No snatches or hallucinations there.
+    `node check_shifter.mjs [easy|normal|hard] [minutes]` plays it fast with two pretend players and checks all of that.
+  - `shiftmodel.js` — how it looks (OUR OWN design): no shape of its own, a heap of dark wet lumps that never stops rearranging, limbs
+    growing and pulling in, pale eyes wandering over it, a keepsake of its last disguise stuck in it; each change has a synthesised
+    sound (`shift*` in `audio.js` `BRS`). Giveaways scale with `GAR_LEVELS.tell` (easy 1 … hard 0.3): disguises breathe slightly and tick
+    quietly, a fake car has no reflection in the puddles, a copied player walks a little wrong, twitches and has no flashlight. A
+    disguised one is not "felt" (no heartbeat / shake): only once it shows itself (`r.revealed` in `Game.updateShifter`).
+  - STILL TO DO for Level 1 (plain jobs, the hooks are in place):
+    1. Stage 2: unlock + level flow. Save "beat Level 0" in localStorage and on the account (new column / RPC in `supabase.sql`, tell
+       the owner to re-run it); a locked Level 1 choice in the lobby and Practice for those who haven't; escaping Level 0 runs straight
+       on into `startGarage()` with everyone alive again.
+    2. Stage 5: the flashlight battery (drains while on in Level 1 only, HUD bar, E picks up a `plan.batteries` item, host decides).
+    3. Stage 7: the order in `Server.garTick` — fuse box (`setPower`), hold E at the crank (`setShutter`, the monster hears it:
+       `hearNoise`, time `GAR_LEVELS.crank`), the lift = escape + ending scene; tick the three tasks in `Game.updateHud`; the one
+       explorer log at `plan.log`.
+    4. Stage 4 polish (sparks, more signs) and stage 8 (full phone / PC test, then set `LEVEL1_OPEN`).
 - `check_map.mjs` — `node check_map.mjs outpost` / `node check_map.mjs quarry large` checks every area and spawn is reachable
 
 - Rejoin: the last room joined as a guest is kept in localStorage for 30 min (`siteline-lastroom`); the menu shows

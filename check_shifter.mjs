@@ -1,13 +1,13 @@
 // Plays Level 1 (the garage) fast with no graphics: two pretend players walk about (one of them into a side room),
 // and it prints what the shapeshifter does. Checks: it hides as props, copies a player (2+ players), chases between
 // the floors, never goes into a side room unless it is chasing, and catches people.
-//   node check_shifter.mjs [easy|normal|hard] [minutes = 20]
+//   node check_shifter.mjs [easy|normal|hard] [minutes = 60]
 let simNow = 0;
 globalThis.performance = { now: () => simNow };
 globalThis.setInterval = () => 0;
 const { Server } = await import('./server.js');
 const { sideRoomAt, GAR } = await import('./garmap.js');
-const [level = 'normal', mins = '20'] = process.argv.slice(2);
+const [level = 'normal', mins = '60'] = process.argv.slice(2);
 const msgs = [];
 const S = new Server({ send: (id, m) => { if (m.t !== 'snap' && m.t !== 'ping') msgs.push(m); }, practice: false, ownerId: 'a', localId: null });
 S.addPlayer('a', 'Ann'); S.addPlayer('b', 'Ben');

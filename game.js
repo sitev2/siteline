@@ -23,6 +23,8 @@ import { BuyMenu } from './buy.js';
 import { icon } from './icons.js';
 import { BackroomsFX } from './brfx.js';
 import { BR, wallFace } from './brmap.js';
+import { GAR_LEVELS, garLevel } from './garmap.js';
+import { makeShifterModel, animateShifter } from './shiftmodel.js';
 
 const BOMB_STATES = ['none', 'carried', 'dropped', 'planted', 'defused', 'exploded'];
 const INTERP_DELAY = 110; // ms
@@ -61,7 +63,7 @@ const d0 = (esc) => ({ x: esc.door.x + esc.door.nx * 0.15, z: esc.door.z + esc.d
 const smoothstep = t => t * t * (3 - 2 * t);
 
 export class Game {
-  constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night, doors, notes, key }) {
+  constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night, doors, notes, key, block }) {
     this.transport = transport;
     this.myId = myId;
     this.practice = practice;
@@ -72,6 +74,8 @@ export class Game {
     this.dm = mode === 'dm';   // deathmatch: free-for-all, guns free, quick respawns
     this.br = mode === 'br';   // the Backrooms: co-op escape from a random maze, no guns, a monster
     this.world = new World(resolveMap(map, variant));
+    this.gar = this.br && this.world.def.theme === 'garage';   // Backrooms Level 1: the garage and its shapeshifter
+    if (this.gar && block) this.world.setBlock(block);         // (it is parked as a car right now)
     this.hud = new Hud();
     this.running = true;
     this.paused = false;
@@ -196,7 +200,7 @@ export class Game {
     this.blast = null;
     this.remotes = new Map();
     this.ragdolls = new Ragdolls(this.scene, this.world);
-    if (this.br) this.ragdolls.setCeiling(BR.ceiling);       // (bodies swung about by the tall one stay under it)
+    if (this.br && !this.gar) this.ragdolls.setCeiling(BR.ceiling);       // (bodies swung about by the tall one stay under it)
     this.drops = new Map();     // id → { kind, w, model, ... }
     this.buyOpen = false;
     this.weaponKills = {};      // kills per gun this match (for account stats)
@@ -241,8 +245,13 @@ export class Game {
     this.me.yaw = s && Number.isFinite(s.yaw) ? s.yaw : 0;
     if (this.dm) this.hud.center('Deathmatch', `Everyone for themselves — first to ${RULES.dm.killLimit} kills`, TEAM_COLORS.ffa.css, 4);
     document.body.classList.toggle('br-mode', this.br);
+    if (this.gar) {
+      const ud = this.builtMap.group.userData;
+      ud.onDrip = (x, y, z) => { sfx.playBR('drip', { x, y: y + 0.05, z }, this.occlusion(x, y + 0.3, z), 0.7); if (y < 0.1) this.addRipple(x, z, 0.35, 0.7); };
+    }
     if (this.br) {
-      this.hud.center('The Backrooms', 'Heavy door, key, locked door, pits, levers, exit. Walking is quiet: it hears you sprint.', '#e8dc8a', 7);
+      if (this.gar) this.hud.center('Level 1', 'The garage. Not everything parked here is a car.', '#e8b46a', 7);
+      else this.hud.center('The Backrooms', 'Heavy door, key, locked door, pits, levers, exit. Walking is quiet: it hears you sprint.', '#e8dc8a', 7);
       // the jump button becomes a hold-to-sprint button (no jumping in here)
       const jb = document.getElementById('btn-jump');
       jb.innerHTML = icon('run'); jb.setAttribute('aria-label', 'Sprint');
@@ -331,7 +340,7 @@ export class Game {
       rem.bot = !!r.bot;
       if (rem.xhCode !== r.xh) { rem.xhCode = r.xh; rem.xh = r.xh ? parseCrosshairCode(r.xh) : null; }
       if (!rem.model && r.team === 'monster') {
-        rem.model = makeMonsterModel();
+        rem.model = this.gar ? makeShifterModel(this.builtMap.group.userData) : makeMonsterModel();
         rem.model.root.visible = false;
         this.scene.add(rem.model.root);
       }
@@ -445,11 +454,15 @@ export class Game {
       case 'spotted':
         // the monster has seen you
         this.shake = Math.min(1.2, this.shake + 0.8);
-        for (const r of this.remotes.values()) if (r.id === 'monster') sfx.playScreech({ x: r.rp.x, y: r.rp.y + 2.4, z: r.rp.z }, this.occlusion(r.rp.x, r.rp.y + 2, r.rp.z));
+        if (!this.gar) for (const r of this.remotes.values()) if (r.id === 'monster') sfx.playScreech({ x: r.rp.x, y: r.rp.y + 2.4, z: r.rp.z }, this.occlusion(r.rp.x, r.rp.y + 2, r.rp.z));
         this.hud.center('', 'It has seen you — RUN', '#ff6b4a', 2);
         return;
       case 'snatch': case 'note': case 'lure': case 'dropBody': case 'hangBody':
         if (this.fx) this.fx.onMessage(m);
+        return;
+      case 'block':
+        // Level 1: the shapeshifter has parked itself as a car (solid), or has just stopped being one
+        this.world.setBlock(m.r || null);
         return;
       case 'door': {
         const d = this.world.doors[m.i];
@@ -459,7 +472,7 @@ export class Game {
         // shut on me while I stood in the doorway: I'm pushed out to the side I was more on
         if (!m.open && this.me.alive && this.world.pushOutOfDoor(m.i, this.me.pos)) { this.me.vel.x = this.me.vel.z = 0; }
         if (this.setDoorView) this.setDoorView(m.i, m.open, m.swing, false, !!m.broken);
-        sfx.playDoor({ x: d.cx, y: 1.2, z: d.cz }, m.broken ? 'break' : m.open ? 'open' : 'shut', this.occlusion(d.cx, 1.2, d.cz));
+        sfx.playDoor({ x: d.cx, y: (d.y || 0) + 1.2, z: d.cz }, m.broken || m.forced ? 'break' : m.open ? 'open' : 'shut', this.occlusion(d.cx, (d.y || 0) + 1.2, d.cz));
         if (m.broken && Math.hypot(d.cx - this.me.pos.x, d.cz - this.me.pos.z) < 8) this.shake = Math.min(1.5, this.shake + 0.9);
         return;
       }
@@ -708,16 +721,19 @@ export class Game {
       this.me.zoom = 0;
       this.me.using = false;
       this.toggleBuy(false);
-      this.me.killedBy = m.w === 'monster' ? 'It' : m.w === 'fall' ? 'the fall' : m.w === 'ceiling' ? 'the ceiling' : m.w === 'corner' ? 'something' : killer && m.killer !== this.myId ? `${killer.name} (${itemName(m.w)}${m.head ? ', headshot' : ''})` : (m.w === 'bomb' ? 'the bomb' : '');
+      this.me.killedBy = m.w === 'monster' || m.w === 'shifter' ? 'It' : m.w === 'fall' ? 'the fall' : m.w === 'ceiling' ? 'the ceiling' : m.w === 'corner' ? 'something' : killer && m.killer !== this.myId ? `${killer.name} (${itemName(m.w)}${m.head ? ', headshot' : ''})` : (m.w === 'bomb' ? 'the bomb' : '');
       if (m.w === 'monster') { sfx.playGrab(); this.shake = 2.5; this.hud.center('', 'It got you', '#ff4a3a', 3); }
       if (m.w === 'fall') this.hud.center('', 'You fell into the dark', '#cfc28a', 3);
       if (m.w === 'ceiling' || m.w === 'corner') this.hud.center('', m.w === 'ceiling' ? 'Something in the ceiling took you' : 'Something took you', '#ff4a3a', 3);
-      if (m.w !== 'fall' && m.w !== 'ceiling' && m.w !== 'corner' && !m.fate) this.spawnRagdoll(this.myId, m);
+      // Level 1: it closes round you. You watch it come down over you, then nothing (updateCamera).
+      if (m.w === 'shifter') { this.shake = 2.5; this.engulfMe = { t0: performance.now() }; this.hud.center('', 'It got you', '#ff4a3a', 3); }
+      if (m.w !== 'fall' && m.w !== 'ceiling' && m.w !== 'corner' && m.w !== 'shifter' && !m.fate) this.spawnRagdoll(this.myId, m);
     } else {
       const r = this.remotes.get(m.victim);
       if (r) {
         r.alive = false; r.deadT = performance.now();
-        if (r.model && r.buf.length && m.w !== 'fall' && m.w !== 'ceiling' && m.w !== 'corner' && !m.fate && !r.model.monster) this.spawnRagdoll(r.id, m);
+        if (m.w === 'shifter') r.engulf = this.clock;        // (they stay standing a moment while it closes round them)
+        if (r.model && r.buf.length && m.w !== 'fall' && m.w !== 'ceiling' && m.w !== 'corner' && m.w !== 'shifter' && !m.fate && !r.model.monster) this.spawnRagdoll(r.id, m);
       }
     }
     // caught by the tall one: the body is a ragdoll in its hand (slammed, then dragged off, hung up or dropped)
@@ -1429,7 +1445,7 @@ export class Game {
       // N / the note button: write or draw a note; nothing else happens while the note is open
       if (inp.consume('note') && this.fx) this.fx.openEditor();
       // M / the map button: the map you've drawn by walking (open or shut)
-      if (inp.consume('map') && this.fx) this.fx.toggleMap();
+      if (inp.consume('map') && this.fx && !this.gar) this.fx.toggleMap();      // (no self-drawn map in Level 1)
       if (this.fx && this.fx.editing) { inp.consume('use'); inp.consume('inspect'); if (inp.consume('escape')) this.fx.closeEditor(); return; }
       // F (the inspect key) is the flashlight in here, as well as L
       if (inp.consume('inspect')) this.toggleFlashlight();
@@ -1500,7 +1516,7 @@ export class Game {
     const gait = inp.walk ? WALK : 1;
     const wading = me.pos.y < 0.3 && this.world.waterAt(me.pos.x, me.pos.z) > 0;   // knee-deep canal water
     // the Backrooms: you walk (quietly) unless you hold Shift / the run button to sprint
-    const maxSpeed = this.br ? (this.sprinting() ? BR.sprint : BR.walk)
+    const maxSpeed = this.br ? (this.sprinting() ? BR.sprint : BR.walk) * (wading ? 0.8 : 1)      // (Level 1's puddles slow you a little)
       : runSpeed(w, me.zoom > 0) * gait * (1 - 0.45 * me.tag) * (1 - me.landSlow) * (wading ? WADE : 1);
     const wish = maxSpeed * amount;
     const v = me.vel;
@@ -1947,6 +1963,13 @@ export class Game {
       // the dead are shown as ragdolls instead
       m.root.visible = !hidden && r.alive;
       if (!m.monster) m.root.position.set(r.rp.x, r.rp.y, r.rp.z);
+      // Level 1: caught by the shapeshifter, they stand there shrinking for a moment as it closes round them
+      if (!m.monster && r.engulf != null) {
+        const k = (this.clock - r.engulf) / 1.3;
+        if (k < 1 && !r.alive) { m.root.visible = !hidden; m.root.scale.set(1 - k * 0.45, 1 - k * 0.25, 1 - k * 0.45); m.root.rotation.set(0, r.rp.yaw + Math.sin(k * 40) * 0.1, 0); continue; }
+        r.engulf = null; m.root.scale.set(1, 1, 1);
+      }
+      if (m.shifter) { this.updateShifter(r, dt); continue; }
       if (m.monster) {
         m.root.visible = r.alive;
         const mode = String(r.w || '').split(':');      // the host sends 'm:<mode>:<n>[:id of the body in its hand]'
@@ -2004,6 +2027,30 @@ export class Game {
     }
   }
 
+  // Level 1's shapeshifter: the host sends what it is right now ('s:car:12:3', 's:true:tall:suit' …) and where
+  updateShifter(r, dt) {
+    const m = r.model, parts = String(r.w || 's:true:lump:none').split(':'), form = parts[1];
+    m.root.visible = r.alive;
+    m.root.position.set(r.rp.x, r.rp.y, r.rp.z);
+    m.root.rotation.set(0, r.rp.yaw, 0);
+    r.mode = form;
+    // (only when it shows itself do you feel it near: a disguise gives nothing away but its own small tells)
+    r.revealed = form === 'true' || form === 'burst' || form === 'kill' || form === 'force';
+    const tell = GAR_LEVELS[garLevel(this.world.def.level)].tell;
+    const dark = this.fx && this.builtMap.group.userData.lightAt ? Math.max(0, 1 - this.builtMap.group.userData.lightAt(r.rp.x, r.rp.z, r.rp.y) * 1.4) : 0.5;
+    animateShifter(m, dt, { parts, speed: r.speed, pos: r.rp, tell, eye: 0.35 + dark * 0.65, nameOf: id => (id === this.myId ? this.settings.name : (this.remotes.get(id) || {}).name || '') });
+    const d = Math.hypot(r.rp.x - this.me.pos.x, r.rp.z - this.me.pos.z) + Math.abs(r.rp.y - this.me.pos.y) * 2;
+    for (const e of m.events) if (d < 40) sfx.playBR(e.kind, { x: r.rp.x, y: r.rp.y + 1, z: r.rp.z }, this.occlusion(r.rp.x, r.rp.y + 1.2, r.rp.z), e.gain);
+    m.events.length = 0;
+    if (r.revealed && r.alive) {
+      this.monsterDist = Math.min(this.monsterDist ?? Infinity, d);
+      if (form === 'true' && r.speed > 0.6) {
+        r.stepTimer -= dt;
+        if (r.stepTimer <= 0) { r.stepTimer = r.use ? 0.21 : 0.42; if (d < 34) sfx.playBR('shiftStep', { x: r.rp.x, y: r.rp.y + 0.05, z: r.rp.z }, this.occlusion(r.rp.x, r.rp.y + 0.5, r.rp.z), r.use ? 1.2 : 0.7); }
+      }
+    }
+  }
+
   // the door you could open or shut right now: close by and in front of you (or right next to you), or -1
   // what E / the hand button would do where you stand: climb up for the red key, press a switch, or a door
   useTarget() {
@@ -2027,6 +2074,7 @@ export class Game {
     ds.forEach((d, i) => {
       if (d.broken) return;                    // kicked in: nothing left to shut
       if (d.lock && d.open) return;            // a team door, once open, stays open
+      if (d.lock === 'shutter' || Math.abs((d.y || 0) - me.pos.y) > 1.5) return;      // (Level 1: the shutter is wound by its crank; doors on the other floor)
       const dx = d.cx - me.pos.x, dz = d.cz - me.pos.z, dist = Math.hypot(dx, dz);
       if (dist > 1.9) return;
       const facing = (dx * fx + dz * fz) / (dist || 1);
@@ -2107,6 +2155,24 @@ export class Game {
         y = me.pos.y + 0.5 + Math.max(0, 1.1 - since * 1.5);
         pitch = me.pitch * 0.5 - Math.min(0.4, since * 0.3);
         yaw = me.yaw;
+      }
+    }
+    if (this.gar) {
+      // the ramps are small steps underfoot: the camera glides over them
+      if (me.alive) { this.feetY = this.feetY == null || Math.abs(me.pos.y - this.feetY) > 0.6 ? me.pos.y : this.feetY + (me.pos.y - this.feetY) * Math.min(1, dt * 14); y = this.feetY + me.eyeOff; }
+      else this.feetY = null;
+      // caught by the shapeshifter: you see it come down over you, and the dark closes in
+      const eg = this.engulfMe;
+      if (eg) {
+        const T = (performance.now() - eg.t0) / 1000, mon = this.remotes.get('monster'), black = document.getElementById('br-black');
+        black.classList.remove('hidden');
+        black.style.opacity = String(T < 0.7 ? 0 : T < 1.5 ? (T - 0.7) / 0.8 : T < 3 ? 1 : Math.max(0, 1 - (T - 3) / 0.5));
+        if (T > 3.5) { this.engulfMe = null; black.classList.add('hidden'); me.deathTime = performance.now() - 2000; }
+        else if (mon && mon.model) {
+          const hp = mon.model.head.getWorldPosition(new THREE.Vector3());
+          x = me.pos.x; z = me.pos.z; y = me.pos.y + EYE - Math.min(0.5, T * 0.3);
+          yaw = Math.atan2(-(hp.x - x), -(hp.z - z)); pitch = Math.atan2(hp.y - y, Math.hypot(hp.x - x, hp.z - z) + 0.3); spec = null;
+        }
       }
     }
     if (this.shake > 0) {
@@ -2291,7 +2357,10 @@ export class Game {
     const alive = { atk: 0, def: 0 };
     for (const r of this.remotes.values()) if (r.alive && !r.dummy) alive[r.team]++;
     if (me.alive) alive[me.team]++;
-    if (this.br) {
+    if (this.gar) {
+      // Level 1's three steps (stage 7 will tick them off)
+      hud.setBackrooms([{ text: 'Fix the power', done: false }, { text: 'Crank the shutter', done: false }, { text: 'Take the lift', done: false }]);
+    } else if (this.br) {
       // the task list (owner's design: everything in one order); finished tasks are crossed out
       const gate = (l) => (this.world.doors || []).find(d => d.lock === l);
       const hv = gate('heavy'), kd = gate('red'), ex = gate('twin');
@@ -2397,6 +2466,7 @@ export class Game {
       else if (door && !door.lock) hint = `${press} to ${door.open ? 'shut' : 'open'} the door`;
       else if (me.alive && me.key && (this.world.doors || []).some(d => d.lock === 'red' && !d.open)) hint = 'You have the key: find the locked door';
       else if (me.alive && this.clock < (this.brHintUntil || 0)) hint = touch ? 'Hold [[run]] to sprint, but it hears you' : `Hold ${this.key('walk')} to sprint, but it hears you`;
+      else if (me.alive && this.gar) hint = '';
       else if (me.alive && this.clock < (this.brHintUntil || 0) + 9) hint = touch ? 'Tap [[note]] to leave a note for the others' : `Press ${this.key('note')} to leave a note for the others`;
       else if (me.alive && this.clock < (this.brHintUntil || 0) + 16 && this.fx && this.fx.dim < 0.3) hint = touch ? 'Dark in here: tap [[light]] for your flashlight' : `Dark in here: press ${this.key('inspect')} for your flashlight`;
       else if (me.alive && this.world.exit && Math.hypot(this.world.exit.x - me.pos.x, this.world.exit.z - me.pos.z) < 6 && (me.pos.x - this.world.exit.x) * this.world.exit.nx + (me.pos.z - this.world.exit.z) * this.world.exit.nz > 0) hint = 'The exit! Go through the door';
@@ -2415,7 +2485,7 @@ export class Game {
     const lightBtn = document.getElementById('btn-light');
     lightBtn.classList.toggle('hidden', !this.night && !this.br);
     document.getElementById('btn-note').classList.toggle('hidden', !this.br || !me.alive);
-    document.getElementById('btn-map').classList.toggle('hidden', !this.br || !me.alive);
+    document.getElementById('btn-map').classList.toggle('hidden', !this.br || this.gar || !me.alive);
     document.getElementById('btn-map').classList.toggle('on', !!(this.fx && this.fx.mapOpen));
     lightBtn.classList.toggle('on', !!me.light);
     document.getElementById('btn-drop').classList.toggle('hidden', !me.alive || this.dm || me.weapon === me.melee || (!!WEAPONS[me.weapon] && !(me.inv.primary && me.inv.secondary)));

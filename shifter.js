@@ -161,7 +161,7 @@ export class ShifterBrain {
   hearNoise(x, z, range, y = this.p.y) {
     const p = this.p;
     if (this.hunting() || this.disguised() || this.state === 'burst' || this.state === 'settle' || this.catching) return;
-    if (Math.hypot(x - p.x, z - p.z) + Math.abs(y - p.y) * 2 > range) return;
+    if ((this.now || 0) < (this.deafUntil || 0) || Math.hypot(x - p.x, z - p.z) + Math.abs(y - p.y) * 2 > range) return;
     if (sideRoomAt(this.plan, x, y, z) >= 0) return;                   // (it doesn't go looking in side rooms)
     this.last = { x, y, z, vx: 0, vz: 0, t: this.now || 0, id: null };
     this.lastClue = this.now || 0;
@@ -208,7 +208,7 @@ export class ShifterBrain {
         if (i >= 0) { gx = this.nav.x[i]; gz = this.nav.z[i]; }
         this.state = 'pursue'; this.goal = { x: gx, y: L.y, z: gz }; this.target = null; this.path = null;
       }
-    } else if (heard && this.state !== 'toProp' && this.state !== 'toCopy') {
+    } else if (heard && now >= (this.deafUntil || 0) && this.state !== 'toProp' && this.state !== 'toCopy') {
       clue(heard);
       if (sideRoomAt(this.plan, heard.x, heard.y, heard.z) < 0 && (this.state !== 'search' || Math.hypot(heard.x - (this.goal ? this.goal.x : 1e9), heard.z - (this.goal ? this.goal.z : 1e9)) > 3)) {
         this.state = 'search'; this.searchPts = []; this.pauseUntil = 0; this.path = null;
@@ -217,6 +217,9 @@ export class ShifterBrain {
     }
     if (this.state === 'chase' && this.target && (!this.target.alive || this.target.escaped)) this.toRoam(now);
     if (this.state === 'search' && now > (this.searchUntil || 0) + 8 && !this.searchPts.length && !this.goal) this.toRoam(now);
+    // it never searches one place for ever
+    if (this.state !== 'search') this.searchSince = now;
+    else if (now - this.searchSince > 40) { this.deafUntil = now + 6; this.toRoam(now); }
     if (this.state === 'roam' && !this.goal && now >= this.pauseUntil) this.decide(now);
   }
 
@@ -324,11 +327,12 @@ export class ShifterBrain {
         .filter(o => o.d > 9 && o.d < 32).sort(() => Math.random() - 0.5).slice(0, 14);
       const o = spots.find(c => !this.watched(c.s.x, c.s.y, c.s.z)) || spots[0];
       if (o) { this.state = 'toProp'; this.propGoal = o.s; const g = o.s.stand || o.s; this.goal = { x: g.x, y: o.s.y, z: g.z }; this.path = null; return; }
-    } else if (hs.length >= 2 && roll < this.gl.ambush + 0.22) {
+    } else if (hs.length >= 2 && roll < this.gl.ambush + 0.3) {
       // a copy of A, to be met by B: A must be well away from B
       const B = hs[Math.floor(Math.random() * hs.length)];
-      const A = hs.filter(q => q !== B && Math.hypot(q.x - B.x, q.z - B.z) + Math.abs(q.y - B.y) * 4 > 14 && !this.seenBy(B, q.x, q.y + 1.2, q.z))[0];
-      const i = A ? this.nav.randomNode((x, y, z, j) => this.roomOf[j] < 0 && Math.abs(y - B.y) < 0.3 && Math.hypot(x - B.x, z - B.z) > 13 && Math.hypot(x - B.x, z - B.z) < 24 && !this.watched(x, y, z), 160) : -1;
+      const A = hs.filter(q => q !== B && Math.hypot(q.x - B.x, q.z - B.z) + Math.abs(q.y - B.y) * 4 > 10 && !this.seenBy(B, q.x, q.y + 1.2, q.z))[0];
+      // somewhere nobody is looking (often the other floor): it takes the shape there, then walks to where B is
+      const i = A ? this.nav.randomNode((x, y, z, j) => this.roomOf[j] < 0 && Math.hypot(x - B.x, z - B.z) + Math.abs(y - B.y) * 4 > 12 && Math.hypot(x - B.x, z - B.z) < 45 && !this.watched(x, y, z), 200) : -1;
       if (A && i >= 0 && this.roomOf[i] < 0) {
         this.state = 'toCopy'; this.copyOf = A.id; this.copyFor = B.id;
         this.goal = { x: this.nav.x[i], y: this.nav.y[i], z: this.nav.z[i] }; this.path = null;
@@ -367,9 +371,11 @@ export class ShifterBrain {
     // wandering, or standing still: now and then a few steps towards somebody
     if (!this.goal && now >= this.standUntil) {
       const B = this.s.players.get(this.copyFor), t = B && B.alive ? B : hs.find(q => q !== A);
-      const i = t ? this.nav.randomNode((x, y, z, j) => this.roomOf[j] < 0 && Math.abs(y - p.y) < 0.3 && Math.hypot(x - p.x, z - p.z) < 9 && Math.hypot(x - p.x, z - p.z) > 3
-        && Math.hypot(x - t.x, z - t.z) < Math.hypot(p.x - t.x, p.z - t.z) + 2, 80) : -1;
-      if (i >= 0 && this.roomOf[i] < 0 && Math.hypot(this.nav.x[i] - p.x, this.nav.z[i] - p.z) < 10) { this.goal = { x: this.nav.x[i], y: this.nav.y[i], z: this.nav.z[i] }; this.path = null; }
+      // (a few metres at a time on its own floor; from another floor, to somewhere near them)
+      const far = t && (Math.abs(t.y - p.y) > 1 || Math.hypot(t.x - p.x, t.z - p.z) > 20);
+      const i = !t ? -1 : far ? this.nav.randomNode((x, y, z, j) => this.roomOf[j] < 0 && Math.abs(y - t.y) < 0.3 && Math.hypot(x - t.x, z - t.z) > 7 && Math.hypot(x - t.x, z - t.z) < 14, 120)
+        : this.nav.randomNode((x, y, z, j) => this.roomOf[j] < 0 && Math.abs(y - p.y) < 0.3 && Math.hypot(x - p.x, z - p.z) < 9 && Math.hypot(x - p.x, z - p.z) > 3 && Math.hypot(x - t.x, z - t.z) < Math.hypot(p.x - t.x, p.z - t.z) + 2, 80);
+      if (i >= 0 && this.roomOf[i] < 0 && (far || Math.hypot(this.nav.x[i] - p.x, this.nav.z[i] - p.z) < 10)) { this.goal = { x: this.nav.x[i], y: this.nav.y[i], z: this.nav.z[i] }; this.path = null; }
       else this.standUntil = now + 2;
     }
     return true;
@@ -391,7 +397,7 @@ export class ShifterBrain {
       this.form = { kind: s.kind, a: s.a, b: s.b || 0 };
     } else if (this.state === 'toCopy') {
       const A = this.s.players.get(this.copyOf);
-      if (!A || !A.alive || A.escaped || this.watched(p.x, p.y, p.z)) { this.toRoam(now); return; }
+      if (!A || !A.alive || A.escaped || this.watched(p.x, p.y, p.z, 28)) { this.toRoam(now); return; }
       this.state = 'settle'; this.settleTo = { kind: 'copy', a: A.id }; this.shiftUntil = now + SHIFTER.settle;
       this.form = { kind: 'copy', a: A.id };
     } else if (this.state === 'copy') { this.goal = null; this.standUntil = now + 3 + Math.random() * 7; }
@@ -496,7 +502,9 @@ export class ShifterBrain {
       this.repathAt = now + (this.state === 'chase' ? 0.5 : this.state === 'pursue' ? 1 : 4);
       if (!this.path) {
         // no way there (a side room it may not go into, the lift behind its shutter): give that up
-        if (this.state === 'chase') { this.state = 'search'; this.searchPts = []; this.target = null; }
+        // (and stop listening for a few seconds, or the same footsteps would call it straight back)
+        this.deafUntil = now + 6;
+        if (this.state !== 'copy') this.toRoam(now);
         this.goal = null; return null;
       }
     }
