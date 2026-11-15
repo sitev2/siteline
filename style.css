@@ -252,6 +252,14 @@ body:not(.is-host) .host-only { display: none !important; }
 #br-tasks { display: none; top: 50%; transform: translateY(-50%); left: calc(max(16px, 1.3vw) + var(--sal)); max-width: 50vw;
   font-size: max(10px, 1.75vh); pointer-events: none; text-shadow: 0 .07em .14em rgba(0,0,0,.9), 0 0 .55em rgba(0,0,0,.55); }
 body.br-mode #br-tasks { display: block; }
+/* Level 1: the flashlight's battery, under the tasks */
+#br-batt { display: flex; align-items: center; gap: .5em; margin-top: .9em; color: rgba(255,255,255,.85); }
+#br-batt.hidden { display: none; }
+#br-batt svg { width: 1.5em; height: 1.5em; }
+#br-batt .bb { width: 6.5em; height: .5em; border: 1px solid rgba(255,255,255,.55); border-radius: .2em; overflow: hidden; }
+#br-batt-fill { display: block; height: 100%; width: 100%; background: #e8dc8a; }
+#br-batt.low #br-batt-fill { background: #ff6b4a; }
+#br-batt.on .bb { box-shadow: 0 0 .5em rgba(232,220,138,.5); }
 body.br-mode #topbar { display: none !important; }
 .br-tasks-title { font: 600 .73em var(--body); letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.75); margin-bottom: .55em; }
 #br-task-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .35em; }
@@ -481,6 +489,7 @@ body.touch #hint { bottom: calc(76px + var(--sab)); }
 #practice.m-br .p-botopt { display: grid; }
 .lobby-row .br-level { display: none; margin: 0; }
 #lobby.br .lobby-row .br-level { display: grid; }
+#lobby.br .lobby-row .br-level.hidden { display: none; }
 #practice.m-br .p-map, #practice.m-br .p-nightopt, #practice.m-br #p-note { display: none; }
 #lobby.br .ffa-list { display: block; }
 #lobby.br .teams, #lobby.br #btn-shuffle, #lobby.br #map-cards, #lobby.br .night-toggle, #lobby.br .lobby-settings > .eyebrow { display: none; }

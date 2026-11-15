@@ -262,9 +262,9 @@ The only folder is `server/` (the optional home game server).
 - Backrooms online needs 2–4 players (owner's rule): the lobby's Start is off with fewer and says so, and `Server.startMatch` refuses too.
   Practice can still be played alone; Level 0's solo rules (`brSolo`) stay for solo Practice and for the last one alive. The HUD has no
   timer and no alive counter in the Backrooms (the top bar is hidden; only the task list shows).
-- **Backrooms Level 1: the garage (UNFINISHED, test account only).** `LEVEL1_OPEN = false` in `main.js`: only `LEVEL1_TESTERS` (`test123`)
-  see a "Level" choice in Practice → The Backrooms (`#p-stage` → `cfg.stage: 1` → `Server.startGarage()`). Nobody else can reach it.
-  DONE: the map, the 3D scene, the shapeshifter, the order and the ending. STILL TO DO (owner's brief, stages 2, 5, 8 — see the list at the end of this entry).
+- **Backrooms Level 1: the garage (test account only).** `LEVEL1_OPEN = false` in `main.js`: only `LEVEL1_TESTERS` (`test123`)
+  get a "Level" choice (Practice and lobby) and the run-on from Level 0's exit. Nobody else can reach it (`Server.startGarage()`).
+  DONE: everything in the owner's brief except stage 8 (the final real-device test and hand-over).
   - `garmap.js` — ONE fixed layout (`resolveMap('garage', difficulty)`, theme `garage`, `world.def.gar` = the plan): 64 × 52 m, two floors
     (lower "P2" y 0, upper "P1" y `GAR.FL` 3.4; 3 m clear), about half Level 0's area. Rows of 0.5 × 1 m pillars, parking bays, two car
     ramps (`plan.ramps`, collision = 11 cm steps, drawn smooth), two stairwells, 7 side rooms (`plan.rooms`: attendant booths / storerooms,
@@ -305,12 +305,21 @@ The only folder is `server/` (the optional home game server).
     turn round, the lift's own doors shut (`setLiftDoors`), it rides up, then the white "You got out." screen (`escapeScene.lift`,
     `delay`); the host waits 9.5 s before the results. The task list ticks the three steps. ONE explorer log (`LOGS[12]` in `brfx.js`)
     on the wall by the start. `node check_gar_order.mjs` plays the order with no graphics.
-  - STILL TO DO for Level 1 (plain jobs, the hooks are in place):
-    1. Stage 2: unlock + level flow. Save "beat Level 0" in localStorage and on the account (new column / RPC in `supabase.sql`, tell
-       the owner to re-run it); a locked Level 1 choice in the lobby and Practice for those who haven't; escaping Level 0 runs straight
-       on into `startGarage()` with everyone alive again.
-    2. Stage 5: the flashlight battery (drains while on in Level 1 only, HUD bar, E picks up a `plan.batteries` item, host decides).
-    3. Stage 4 polish (sparks, more signs) and stage 8 (full phone / PC test, then set `LEVEL1_OPEN`).
+  - Unlock and level flow. Escaping Level 0 yourself unlocks Level 1: `Game` calls `onEscape(0)` → `unlockLevel1()` in `main.js` saves
+    it on the device (localStorage `siteline-br-level`) and, logged in, on the account (`profiles.br_level`, only through the RPC
+    `unlock_br_level` in `supabase.sql`; `syncUnlock()` on login copies it both ways; guests only have the device). Choosing Level 1:
+    `#p-stage` (Practice) and `#lobby-stage` (lobby; the host's choice, `settings.stage`), shown only where Level 1 is allowed
+    (`level1Allowed()`: `LEVEL1_OPEN` or the tester account) and locked ("escape Level 0 first") until the chooser has it unlocked. The
+    host's game tells the room whether Level 1 may be played (`{t:'settings', l1}` → `settings.l1`; Practice: `cfg.l1`). With that set,
+    escaping Level 0 carries straight on as one run: `Server.brCheck` → `startGarage(true)` 7 s later instead of the results (same
+    players and room, the clock keeps going, everyone alive again, also those who died in Level 0). Stats are never reported.
+  - The flashlight battery (Level 1 only; Level 0's flashlight is unchanged): `Game.batt` 1 → 0 over 150 s while the light is on; under
+    12 % the light stutters (`flashK`, also on the baked walls), at 0 it goes out and won't switch on. HUD bar `#br-batt` under the
+    task list (icon `battery`). Batteries (`plan.batteries`) are shared world items: E / the hand button within reach when yours is
+    under 90 % → `{t:'batt', i}` → the host gives each one once (`garBattery`, `garSt.batts`, sent to late joiners) → `{t:'batt', i, id}`:
+    it vanishes for everyone and the taker's battery is full. Flickering tubes throw sparks and zap (`onSpark`).
+  - STILL TO DO for Level 1: stage 8 only — a full test on a real phone and PC with real players (two-player run from Level 0's exit to
+    the lift), then set `LEVEL1_OPEN = true` when the owner wants it public.
 - `check_map.mjs` — `node check_map.mjs outpost` / `node check_map.mjs quarry large` checks every area and spawn is reachable
 
 - Rejoin: the last room joined as a guest is kept in localStorage for 30 min (`siteline-lastroom`); the menu shows

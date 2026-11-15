@@ -690,6 +690,22 @@ export function buildGarageScene(world, renderer, gfx = {}) {
   // the power: off = only the orange emergency lamps; on = the white tubes too (stage 7's fuse box will call this)
   group.userData.setPower = (on) => { power = on ? 1 : 0; if (group.userData.liftLamp) group.userData.liftLamp.material.color.set(on ? '#3cff6a' : '#2a0d0a'); };
 
+  // ---------- sparks from the flickering tubes ----------
+  const SP = 120, sGeo = new THREE.BufferGeometry(), sPos = new Float32Array(SP * 3).fill(-99), sVel = new Float32Array(SP * 3), sLife = new Float32Array(SP), sFloor = new Float32Array(SP);
+  sGeo.setAttribute('position', new THREE.BufferAttribute(sPos, 3));
+  {
+    const [dc, dx] = canvas(32), dg = dx.createRadialGradient(16, 16, 0, 16, 16, 16);
+    dg.addColorStop(0, 'rgba(255,255,255,1)'); dg.addColorStop(0.35, 'rgba(200,225,255,0.9)'); dg.addColorStop(1, 'rgba(120,170,255,0)');
+    dx.fillStyle = dg; dx.fillRect(0, 0, 32, 32);
+    const pts = new THREE.Points(sGeo, new THREE.PointsMaterial({ map: new THREE.CanvasTexture(dc), color: new THREE.Color(2, 2.2, 2.6), size: 0.045, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    pts.frustumCulled = false; group.add(pts);
+  }
+  let sNext = 0;
+  const emit = (L, n) => { for (let i = 0; i < n; i++) { const j = sNext++ % SP; sPos[j * 3] = L.x + (Math.random() - 0.5) * 1.1; sPos[j * 3 + 1] = L.y - 0.04; sPos[j * 3 + 2] = L.z; sVel[j * 3] = (Math.random() - 0.5) * 2; sVel[j * 3 + 1] = -Math.random() * 1.2; sVel[j * 3 + 2] = (Math.random() - 0.5) * 2; sLife[j] = 0.5 + Math.random() * 0.6; sFloor[j] = floorY(L.f); } };
+  const flickTubes = [1, 2].map(g => lights.filter(L => L.kind === 'tube' && L.grp === g));
+  const wasOn = [1, 1, 1];
+  group.userData.onSpark = null;            // game code: the zap
+
   // ---------- runtime ----------
   let t = 0;
   group.userData.update = (dt, dread = 0, cam = null) => {
@@ -707,6 +723,24 @@ export function buildGarageScene(world, renderer, gfx = {}) {
     flick[1] = (s1 > -1.2 ? 1 : 0.06) * (0.9 + 0.1 * Math.sin(t * 90));
     flick[2] = (s2 > -1.0 ? 1 : 0.06) * (0.9 + 0.1 * Math.sin(t * 83));
     TUBE.uTube.value.set(power * flick[0], power * flick[1], power * flick[2]);
+    // as a tube stutters back on it throws sparks and zaps (the ones near you)
+    for (const g of [1, 2]) {
+      const on = power * flick[g] > 0.5 ? 1 : 0;
+      if (on && !wasOn[g] && cam) for (const L of flickTubes[g - 1]) {
+        const d = Math.hypot(L.x - cam.x, L.z - cam.z) + Math.abs(L.y - cam.y) * 3;
+        if (d > 24 || Math.random() < 0.45) continue;
+        emit(L, 5 + Math.floor(Math.random() * 7));
+        if (group.userData.onSpark && d < 16) group.userData.onSpark(L.x, L.y, L.z);
+      }
+      wasOn[g] = on;
+    }
+    for (let j = 0; j < SP; j++) {
+      if (sLife[j] <= 0) { sPos[j * 3 + 1] = -99; continue; }
+      sLife[j] -= dt; sVel[j * 3 + 1] -= 9 * dt;
+      sPos[j * 3] += sVel[j * 3] * dt; sPos[j * 3 + 1] += sVel[j * 3 + 1] * dt; sPos[j * 3 + 2] += sVel[j * 3 + 2] * dt;
+      if (sPos[j * 3 + 1] < sFloor[j] + 0.01) { sPos[j * 3 + 1] = sFloor[j] + 0.01; sVel[j * 3 + 1] *= -0.3; sVel[j * 3] *= 0.5; sVel[j * 3 + 2] *= 0.5; }
+    }
+    sGeo.attributes.position.needsUpdate = true;
     for (let g = 0; g < 3; g++) { const k = power * flick[g]; tubeMats[g].color.setRGB(0.18 + 1.55 * k, 0.19 + 1.7 * k, 0.2 + 1.8 * k); }
     // drips
     for (let i = 0; i < DR; i++) {

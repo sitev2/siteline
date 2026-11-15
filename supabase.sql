@@ -381,6 +381,23 @@ begin
   end loop;
 end $$;
 
+-- ---------- the Backrooms: which level a player has unlocked ----------
+-- 0 = only Level 0; 1 = has escaped Level 0, so Level 1 is unlocked. It follows the player to other devices.
+-- It can only go up, and only through unlock_br_level() (players can't write the column themselves).
+alter table public.profiles add column if not exists br_level integer not null default 0;
+
+create or replace function public.unlock_br_level(p_level integer) returns integer
+language plpgsql security definer set search_path = public as $$
+declare v integer;
+begin
+  if auth.uid() is null then raise exception 'not logged in'; end if;
+  update public.profiles set br_level = greatest(br_level, least(greatest(coalesce(p_level, 0), 0), 1))
+    where id = auth.uid() returning br_level into v;
+  return coalesce(v, 0);
+end $$;
+revoke all on function public.unlock_br_level(integer) from public, anon;
+grant execute on function public.unlock_br_level(integer) to authenticated;
+
 -- ---------- admin view (read-only) ----------
 -- Admins can see game-wide numbers and every player's stats and online status, to check for
 -- problems. They can NOT see emails, passwords or what anyone wrote in chat, and they can't change anything.

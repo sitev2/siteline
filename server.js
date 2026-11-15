@@ -254,6 +254,9 @@ export class Server {
       case 'fuse':
         if (this.phase === 'br' && this.gar && p.alive && !p.escaped) this.garFuse(p);
         return;
+      case 'batt':
+        if (this.phase === 'br' && this.gar && p.alive && !p.escaped && Number.isInteger(msg.i)) this.garBattery(p, msg.i);
+        return;
       case 'crank':
         // (sent several times a second while E / the hand button is held at the crank)
         if (this.phase === 'br' && this.gar && p.alive && !p.escaped) p.crankAt = performance.now();
@@ -278,6 +281,10 @@ export class Server {
         if (msg.mode === 'wingman' || msg.mode === 'dm' || msg.mode === 'br') this.settings.mode = msg.mode;
         if (typeof msg.night === 'boolean') this.settings.night = msg.night;
         if (BR_LEVELS[msg.level]) this.settings.level = msg.level;
+        // the Backrooms level to start at (0 or 1), and whether this host may play Level 1 at all (their game
+        // says so: while Level 1 is being tested, only the test account's does)
+        if (typeof msg.l1 === 'boolean') { this.settings.l1 = msg.l1; if (!msg.l1) this.settings.stage = 0; }
+        if (msg.stage === 0 || (msg.stage === 1 && this.settings.l1)) this.settings.stage = msg.stage;
         if (MAPS[msg.map]) this.settings.map = msg.map;
         this.broadcastRoster();
         return;
@@ -770,7 +777,7 @@ export class Server {
       doors: this.br && this.world ? this.world.doors.map(d => (d.broken ? 2 : d.open ? 1 : 0)) : undefined,     // 2 = kicked in
       notes: this.br ? this.notes : undefined,
       key: this.br && this.brKey ? (this.brKey.holder ? 1 : 0) : undefined,      // the red key isn't on its shelf
-      gar: this.gar && this.garSt ? { power: this.garSt.power, crank: r2(this.garSt.crank) } : undefined,      // Level 1's order so far
+      gar: this.gar && this.garSt ? { power: this.garSt.power, crank: r2(this.garSt.crank), batts: this.garSt.batts } : undefined,      // Level 1's order so far
       block: this.gar && this.world ? this.world.block : undefined,              // Level 1: where the shapeshifter is parked as a car
     };
   }
@@ -1022,7 +1029,8 @@ export class Server {
   // ---------- Level 1 of the Backrooms: the garage (garmap.js) and its shapeshifter (shifter.js) ----------
   // (So far: the map, the doors and the monster. Still to come: the battery, the three steps of the order —
   // fuse box, crank, lift — and running on into it from Level 0's exit. See CLAUDE.md.)
-  startGarage() {
+  // carry: straight on from Level 0's exit, as one run (the clock keeps going, everyone is alive again)
+  startGarage(carry = false) {
     if (!this.humans().length) return;
     for (const id of [...this.bots.keys()]) { this.bots.delete(id); this.players.delete(id); }
     const fresh = !this.br;
@@ -1031,7 +1039,7 @@ export class Server {
     this.variant = brLevel(this.settings.level);
     this.world = new World(resolveMap('garage', this.variant));
     this.round = (this.round || 0) + 1;
-    this.timer = 0;
+    if (!carry) this.timer = 0;
     this.bomb = this.freshBomb();
     this.drops.clear();
     for (const p of this.humans()) { if (fresh) p.lobbyTeam = p.team; this.brPrepare(p); p.kills = 0; p.deaths = 0; }
@@ -1049,7 +1057,7 @@ export class Server {
     this.notes = []; this.noteSeq = 0;
     this.keySpot = null; this.switchSpots = []; this.brKey = { holder: null }; this.switchDown = {}; this.switchAt = []; this.boost = null;
     // the order (owner's design): 1 the fuse box turns the power on, 2 someone winds the shutter up, 3 the lift
-    this.garSt = { power: false, crank: 0, at: performance.now(), sentAt: 0, heardAt: 0, toldAt: 0 };
+    this.garSt = { power: false, crank: 0, at: performance.now(), sentAt: 0, heardAt: 0, toldAt: 0, batts: [] };      // batts: the batteries already taken
     this.phase = 'br';
     this.broadcast(this.startMsg());
     this.broadcastRoster();
@@ -1070,6 +1078,14 @@ export class Server {
     this.doorAt[i] = performance.now() + 2500;
     const s = Math.sign((m.x - d.cx) * d.nx + (m.z - d.cz) * d.nz) || 1;
     this.broadcast({ t: 'door', i, open: true, forced: true, swing: -s, by: m.id });
+  }
+
+  // a battery lying in the garage: the first to ask within reach gets it (and a full flashlight)
+  garBattery(p, i) {
+    const b = this.world.def.gar.batteries[i], st = this.garSt;
+    if (!b || st.batts.includes(i) || Math.hypot(p.x - b.x, p.z - b.z) > 2.4 || Math.abs(p.y - b.y) > 1.5) return;
+    st.batts.push(i);
+    this.broadcast({ t: 'batt', i, id: p.id });
   }
 
   // step 1: the fuse box (any one player)
@@ -1398,6 +1414,12 @@ export class Server {
     const out = hs.filter(p => p.escaped).length;
     // (when the last one out has just escaped, give their ending scene time to play: ~7 s; when the last one
     // inside has just been caught by the tall one, let them see what it does to them: ~6 s)
+    // Level 0 escaped, and this host may play Level 1: the run carries straight on into the garage, everyone alive
+    // again (also those who died in Level 0), once the last one's ending scene has played
+    if (out && !this.gar && (this.botCfg ? this.botCfg.l1 : this.settings.l1)) {
+      this.later(7, () => { if (this.phase === 'br' && !this.gar && this.humans().length) this.startGarage(true); });
+      return;
+    }
     this.later(out ? (this.gar ? 9.5 : 7) : this.brCaught ? 6 : 2, () => { if (this.phase === 'br') this.matchOver(out ? 'escaped' : 'lost', out === hs.length ? 'all' : out ? 'some' : 'none'); });
   }
 
@@ -1425,7 +1447,7 @@ export class Server {
       // online the Backrooms takes 2 to 4 players (alone it is played from Practice: startBotGame)
       const n = this.humans().length;
       if (n < 2 || n > 4) { this.send(this.ownerId, { t: 'toast', text: n < 2 ? 'The Backrooms needs at least 2 players online. Alone, play it from Practice.' : 'The Backrooms takes 4 players at most.' }); return; }
-      return this.startBackrooms();
+      return this.settings.stage === 1 && this.settings.l1 ? this.startGarage() : this.startBackrooms();
     }
     if (this.settings.mode === 'dm' && !this.practice) return this.startDeathmatch();
     this.dm = false;
