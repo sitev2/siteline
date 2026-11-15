@@ -246,6 +246,24 @@ body:not(.is-host) .host-only { display: none !important; }
 #round-no { font-size: .66rem; letter-spacing: .14em; color: var(--muted); text-transform: uppercase; }
 
 #radar-wrap { top: calc(10px + var(--sat)); left: calc(10px + var(--sal)); }
+/* the Backrooms task list (top left, where the map sits in other modes) */
+/* just text, no box (owner's request): a soft shadow keeps it readable on the bright walls */
+#br-tasks { display: none; top: calc(14px + var(--sat)); left: calc(16px + var(--sal)); max-width: min(320px, 50vw);
+  pointer-events: none; text-shadow: 0 1px 2px rgba(0,0,0,.9), 0 0 8px rgba(0,0,0,.55); }
+body.br-mode #br-tasks { display: block; }
+body.br-mode #topbar { display: none !important; }
+.br-tasks-title { font: 600 .66rem var(--body); letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.75); margin-bottom: 6px; }
+#br-task-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 5px; }
+#br-task-list li { display: flex; gap: 8px; align-items: baseline; font: 600 .9rem var(--body); color: rgba(255,255,255,.62); line-height: 1.25; }
+#br-task-list li .n { flex: none; width: 1.1em; text-align: right; font-variant-numeric: tabular-nums; }
+#br-task-list li.done { color: rgba(255,255,255,.55); }
+#br-task-list li.done .t { text-decoration: line-through; text-decoration-thickness: 2px; text-decoration-color: rgba(255,255,255,.9); }
+#br-task-list li.now { color: #fff; }
+#br-task-list li.now .n { color: #e8dc8a; }
+@media (max-width: 700px), (max-height: 500px) {
+  #br-task-list { gap: 3px; }
+  #br-task-list li { font-size: .78rem; }
+}
 #radar { width: 160px; height: 160px; border-radius: 12px; background: rgba(10,11,13,.55); border: 1px solid rgba(255,255,255,.12); display: block; }
 #team-label { font-size: .75rem; letter-spacing: .1em; text-transform: uppercase; margin-top: 6px; text-shadow: 0 1px 3px #000; }
 
