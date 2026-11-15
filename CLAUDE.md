@@ -182,8 +182,9 @@ The only folder is `server/` (the optional home game server).
   far end) → area 3 with the lever room (`plan.switches`: both levers in ONE room, on two walls, pulled within 2 s) → 'twin' door
   (hazard stripes) on the exit room's one way in → the exit. The exit is deep in area 3. Solo (`Server.brSolo()`: fewer than 2
   players alive inside): the heavy door opens for one, E under the shelf just takes the key, and a pulled lever stays down so one
-  player pulls one then the other. The top bar shows the step ("1/5 Open the heavy door" … "5/5 Find the exit",
-  `hud.setBackrooms(inside, out, step)`). It starts in area 1 and can't pass a shut gate: `MonsterBrain.region` / `canReach` (it
+  player pulls one then the other. Instead of the top bar (hidden in `br-mode`), a task list sits top left (`#br-tasks`,
+  owner's request): all five tasks in order, finished ones ticked and crossed out, the current one highlighted
+  (`hud.setBackrooms([{ text, done }])`, filled from the gates' `open` and `keyTaken` in `Game.updateHud`). It starts in area 1 and can't pass a shut gate: `MonsterBrain.region` / `canReach` (it
   ignores players and goals behind one, so the start area is quiet until the heavy door opens). A seed that can't be laid out sets
   `plan.bad` and `backroomsMap` tries the next (up to 40); `mazeOk` now also checks, on the real floor with every ordinary door shut
   and the gates open, that the exit, the key and the lever room can be walked to (a wall end can pinch a 1 m pit walkway shut).

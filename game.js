@@ -2292,15 +2292,17 @@ export class Game {
     for (const r of this.remotes.values()) if (r.alive && !r.dummy) alive[r.team]++;
     if (me.alive) alive[me.team]++;
     if (this.br) {
-      // how many are still inside, how many got out
-      let inside = me.alive ? 1 : 0, out = me.escaped ? 1 : 0;
-      for (const r of this.remotes.values()) if (r.team !== 'monster') { if (r.alive) inside++; if (r.escaped) out++; }
-      // what to do next (owner's design: everything in one order)
+      // the task list (owner's design: everything in one order); finished tasks are crossed out
       const gate = (l) => (this.world.doors || []).find(d => d.lock === l);
       const hv = gate('heavy'), kd = gate('red'), ex = gate('twin');
-      const step = hv && !hv.open ? '1/5  Open the heavy door' : kd && !kd.open ? (this.keyTaken ? '3/5  Find the locked door' : '2/5  Find the key')
-        : ex && !ex.open ? '4/5  Cross the pits, pull both levers' : '5/5  Find the exit';
-      hud.setBackrooms(inside, out, step);
+      const opened = (d) => !d || d.open;
+      hud.setBackrooms([
+        { text: 'Open the heavy door', done: opened(hv) },
+        { text: 'Find the key', done: this.keyTaken || opened(kd) },
+        { text: 'Open the locked door', done: opened(kd) },
+        { text: 'Cross the pits, pull both levers', done: opened(ex) },
+        { text: 'Find the exit', done: !!me.escaped },
+      ]);
     } else if (this.dm) {
       let best = null;
       for (const r of this.remotes.values()) if (!r.dummy && (!best || r.kills > best.kills)) best = r;

@@ -162,16 +162,23 @@ export class Hud {
   }
 
   // Backrooms top bar: how many are still inside, and how many have got out
-  setBackrooms(inside, out, step = 'Find the exit') {
-    this.set('tname-atk', 'INSIDE');
-    this.set('tname-def', 'OUT');
-    this.set('score-atk', String(inside));
-    this.set('score-def', String(out));
-    this.set('round-no', step);
-    this.set('alive-atk', '');
-    this.set('alive-def', '');
-    this.set('team-label', 'The Backrooms');
-    $('team-label').style.color = '#e8dc8a';
+  // The Backrooms: every task in order. tasks = [{ text, done }]; finished ones are crossed out,
+  // the first unfinished one is highlighted.
+  setBackrooms(tasks) {
+    const key = tasks.map(t => (t.done ? '1' : '0') + t.text).join('|');
+    if (this.cache.brTasks === key) return;
+    this.cache.brTasks = key;
+    const list = $('br-task-list');
+    list.textContent = '';
+    const now = tasks.findIndex(t => !t.done);
+    tasks.forEach((t, i) => {
+      const li = document.createElement('li');
+      li.className = t.done ? 'done' : i === now ? 'now' : '';
+      const n = document.createElement('span'); n.className = 'n'; n.textContent = t.done ? '✓' : `${i + 1}.`;
+      const tx = document.createElement('span'); tx.className = 't'; tx.textContent = t.text;
+      li.append(n, tx);
+      list.appendChild(li);
+    });
   }
 
   setScore(score, round, alive, myTeam, practice) {
