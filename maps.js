@@ -14,6 +14,7 @@
 //   b.site('A', x0,z0,x1,z1)             bomb site area
 
 import { backroomsMap } from './brmap.js';
+import { garageMap } from './garmap.js';
 
 const EAST = -Math.PI / 2, WEST = Math.PI / 2, NORTH = 0, SOUTH = Math.PI;
 // Wraps a builder so a block of map script can be placed with an offset
@@ -922,6 +923,8 @@ export const dmVariant = players => (players >= 4 ? 'large' : 'small');
 export function resolveMap(id, variant) {
   // the Backrooms is a new random maze every game: the variant is its seed and difficulty ("12345:hard")
   if (id === 'backrooms') return backroomsMap(variant);
+  // Level 1 of the Backrooms: the garage, one fixed layout (the variant is the difficulty)
+  if (id === 'garage') return garageMap(variant);
   const d = MAPS[id] || MAPS.outpost;
   if (!d.sizes) return d;
   const v = d.sizes[variant] ? variant : 'small';

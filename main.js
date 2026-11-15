@@ -27,6 +27,15 @@ const screens = ['menu', 'lobby', 'settings', 'practice', 'account', 'nettest', 
 // test accounts below again (friends who join their room play along; the lock is only in the page).
 const BACKROOMS_OPEN = true;
 const BACKROOMS_TESTERS = ['test123'];
+// Level 1 of the Backrooms (the garage) is still being built: only its tester account sees it, as a Level choice
+// in Practice. Set LEVEL1_OPEN to true to show it to everyone.
+const LEVEL1_OPEN = false;
+const LEVEL1_TESTERS = ['test123'];
+function level1Allowed() {
+  if (LEVEL1_OPEN) return true;
+  const p = acct.currentProfile();
+  return !!(p && LEVEL1_TESTERS.includes(String(p.username || '').toLowerCase()));
+}
 function backroomsAllowed() {
   if (BACKROOMS_OPEN) return true;
   const p = acct.loggedIn() && acct.currentProfile();
@@ -597,6 +606,11 @@ function renderPracticeMenu() {
   $('p-level').value = P.level;
   $('p-level-label').textContent = P.kind === 'br' ? 'Difficulty' : 'Bot difficulty';
   $('p-night').checked = !!P.night;
+  // Level 1 (testers only)
+  const l1 = P.kind === 'br' && level1Allowed();
+  document.querySelector('.p-stageopt').classList.toggle('hidden', !l1);
+  if (!l1) P.stage = 0;
+  $('p-stage').value = String(P.stage || 0);
 }
 
 function bindPracticeMenu() {
@@ -610,6 +624,7 @@ function bindPracticeMenu() {
   $('p-side').addEventListener('change', e => { P().side = e.target.value; save(); });
   $('p-level').addEventListener('change', e => { P().level = e.target.value; save(); });
   $('p-night').addEventListener('change', e => { P().night = e.target.checked; save(); });
+  $('p-stage').addEventListener('change', e => { P().stage = Number(e.target.value) || 0; save(); });
   $('p-start').addEventListener('click', () => {
     const p = P();
     const maps = practiceMaps(p.kind, p.kind === 'dm' ? p.dmCount : p.count);
@@ -617,6 +632,7 @@ function bindPracticeMenu() {
     const side = p.side === 'random' ? (Math.random() < 0.5 ? 'atk' : 'def') : p.side;
     practice({
       kind: p.kind, map, level: p.level, behavior: p.behavior, side, night: !!p.night,
+      stage: p.kind === 'br' && level1Allowed() ? (p.stage || 0) : 0,
       count: p.kind === 'dm' ? p.dmCount : (p.bots ? p.count : 0),
     });
   });
@@ -793,13 +809,16 @@ function renderLobby() {
   const counts = { atk: app.roster.filter(p => p.team === 'atk').length, def: app.roster.filter(p => p.team === 'def').length };
   const D = RULES.dm;
   $('match-rules').innerHTML = br
-    ? '<b>The Backrooms</b> · 1–4 players together · a new random maze every game · no guns · find the exit before it finds you'
+    ? '<b>The Backrooms</b> · 2–4 players together · a new random maze every game · no guns · find the exit before it finds you'
     : dm ? `<b>Deathmatch</b> · everyone for themselves · first to <b>${D.killLimit}</b> kills or <b>${D.timeLimit / 60}</b> minutes · ${n === 3 ? 'played on a 2v2 map with 3 players' : 'small map for 2, large for 4'}`
     : '<b>2v2</b> · first to <b>9</b> · sides swap after round <b>8</b> · 8–8 is a draw';
   let note, ready;
   if (br) {
-    ready = n >= 1 && n <= 4;
-    note = !isLeader() ? 'Waiting for the host to start…' : `${n} player${n === 1 ? '' : 's'} ready. Friends can also join after it has started.`;
+    // online it takes at least two (alone, play it from Practice)
+    ready = n >= 2 && n <= 4;
+    note = !isLeader() ? (n < 2 ? 'The Backrooms needs 2 to 4 players. Waiting for one more…' : 'Waiting for the host to start…')
+      : n < 2 ? 'The Backrooms needs 2 to 4 players online. Share the room code or invite link (to play alone, use Practice).'
+        : `${n} players ready. Friends can also join after it has started.`;
   } else if (dm) {
     ready = n >= D.minPlayers && n <= D.maxPlayers;
     note = !isLeader() ? 'Waiting for the host to start the match…'
@@ -859,8 +878,8 @@ function gameLoading(step, frac, msg = null) {
     return;
   }
   if (msg) {
-    const def = msg.map === 'backrooms' ? { name: 'The Backrooms' } : MAPS[msg.map];
-    const lv = msg.mode === 'br' && typeof msg.variant === 'string' ? msg.variant.split(':')[1] : '';
+    const def = msg.map === 'backrooms' ? { name: 'The Backrooms' } : msg.map === 'garage' ? { name: 'Level 1: The Garage' } : MAPS[msg.map];
+    const lv = msg.mode === 'br' && typeof msg.variant === 'string' ? msg.variant.split(':').pop() : '';
     $('gl-title').textContent = def ? def.name : 'Loading';
     $('gl-sub').textContent = [msg.practice ? 'Practice' : '', MODE_NAMES[msg.mode] || '', lv ? lv[0].toUpperCase() + lv.slice(1) : ''].filter(Boolean).join(' · ');
     el.dataset.mode = msg.mode || '';
@@ -874,7 +893,7 @@ function gameLoading(step, frac, msg = null) {
 }
 async function beginGame(msg) {
   const queue = app.starting = [];
-  gameLoading(msg.mode === 'br' ? 'Building the maze…' : 'Building the map…', 0.15, msg);
+  gameLoading(msg.map === 'garage' ? 'Pouring the concrete…' : msg.mode === 'br' ? 'Building the maze…' : 'Building the map…', 0.15, msg);
   await nextPaint(); await nextPaint();
   if (app.starting !== queue) return;            // left before it was ready
   try {
@@ -911,6 +930,7 @@ function startGame(msg) {
     doors: msg.doors,
     notes: msg.notes,
     key: msg.key,
+    block: msg.block,
     night: !!(msg.settings && msg.settings.night),
     settings,
     quality: resolvedQuality(),
@@ -1221,7 +1241,7 @@ function bindAccount() {
     } catch (e) { $('acct-newpass-msg').textContent = e.message || String(e); }
   });
   $('btn-acct-logout').addEventListener('click', () => acct.logOut());
-  acct.onAccountChange(() => { renderAccount(); onLogin(); hideBackrooms(); });
+  acct.onAccountChange(() => { renderAccount(); onLogin(); hideBackrooms(); if (!$('practice').classList.contains('hidden')) renderPracticeMenu(); });
   setMode('login');
 }
 
