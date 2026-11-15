@@ -247,10 +247,10 @@ body:not(.is-host) .host-only { display: none !important; }
 
 #radar-wrap { top: calc(10px + var(--sat)); left: calc(10px + var(--sal)); }
 /* the Backrooms task list (owner's requests): middle of the left edge; just text, no box (a soft shadow keeps it
-   readable on the bright walls); sized by the screen: 2.1 % of its height (15 px at 720p, 23 px at 1080p, 30 px at
-   1440p), never under 11 px so small phones stay readable. Everything inside is in em, so it all scales together. */
+   readable on the bright walls); sized by the screen: 1.75 % of its height (13 px at 720p, 19 px at 1080p, 25 px at
+   1440p), never under 10 px so small phones stay readable. Everything inside is in em, so it all scales together. */
 #br-tasks { display: none; top: 50%; transform: translateY(-50%); left: calc(max(16px, 1.3vw) + var(--sal)); max-width: 50vw;
-  font-size: max(11px, 2.1vh); pointer-events: none; text-shadow: 0 .07em .14em rgba(0,0,0,.9), 0 0 .55em rgba(0,0,0,.55); }
+  font-size: max(10px, 1.75vh); pointer-events: none; text-shadow: 0 .07em .14em rgba(0,0,0,.9), 0 0 .55em rgba(0,0,0,.55); }
 body.br-mode #br-tasks { display: block; }
 body.br-mode #topbar { display: none !important; }
 .br-tasks-title { font: 600 .73em var(--body); letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.75); margin-bottom: .55em; }
