@@ -6,6 +6,7 @@ import { MAPS, resolveMap, mapsFor, isDmMap, dmVariant } from './maps.js';
 import { RULES } from './config.js';
 import { NavGrid, BotBrain, BOT_NAMES } from './bots.js';
 import { MonsterBrain, outerCorners } from './monster.js';
+import { ShifterBrain } from './shifter.js';
 import { BR_LEVELS, brLevel, brVariant, wallFace } from './brmap.js';
 import { cleanChat, CHAT_LIMIT } from './filter.js';
 import {
@@ -243,7 +244,7 @@ export class Server {
       case 'door':
         if (this.phase === 'br' && p.alive && !p.escaped && Number.isInteger(msg.i)) {
           const d = this.world.doors[msg.i];
-          if (d && Math.hypot(d.cx - p.x, d.cz - p.z) < 2.4) { if (d.lock) this.teamDoor(msg.i, p); else this.toggleDoor(msg.i, !d.open, p); }
+          if (d && Math.hypot(d.cx - p.x, d.cz - p.z) < 2.4 && Math.abs((d.y || 0) - p.y) < 1.5) { if (d.lock === 'shutter') return; if (d.lock) this.teamDoor(msg.i, p); else this.toggleDoor(msg.i, !d.open, p); }
         }
         return;
       case 'switch':
@@ -761,6 +762,7 @@ export class Server {
       doors: this.br && this.world ? this.world.doors.map(d => (d.broken ? 2 : d.open ? 1 : 0)) : undefined,     // 2 = kicked in
       notes: this.br ? this.notes : undefined,
       key: this.br && this.brKey ? (this.brKey.holder ? 1 : 0) : undefined,      // the red key isn't on its shelf
+      block: this.gar && this.world ? this.world.block : undefined,              // Level 1: where the shapeshifter is parked as a car
     };
   }
 
@@ -838,7 +840,7 @@ export class Server {
     if (cfg.kind === 'br') {
       this.settings.mode = 'br';
       this.settings.level = brLevel(cfg.level);
-      this.startBackrooms();
+      if (cfg.stage === 1) this.startGarage(); else this.startBackrooms();
       return;
     }
     if (cfg.kind === 'dm') {
@@ -1008,6 +1010,61 @@ export class Server {
     this.humans().forEach((p, i) => this.brSpawn(p, i));
   }
 
+  // ---------- Level 1 of the Backrooms: the garage (garmap.js) and its shapeshifter (shifter.js) ----------
+  // (So far: the map, the doors and the monster. Still to come: the battery, the three steps of the order —
+  // fuse box, crank, lift — and running on into it from Level 0's exit. See CLAUDE.md.)
+  startGarage() {
+    if (!this.humans().length) return;
+    for (const id of [...this.bots.keys()]) { this.bots.delete(id); this.players.delete(id); }
+    const fresh = !this.br;
+    this.br = true; this.gar = true; this.dm = false; this.brDone = false;
+    this.settings.map = 'garage';
+    this.variant = brLevel(this.settings.level);
+    this.world = new World(resolveMap('garage', this.variant));
+    this.round = (this.round || 0) + 1;
+    this.timer = 0;
+    this.bomb = this.freshBomb();
+    this.drops.clear();
+    for (const p of this.humans()) { if (fresh) p.lobbyTeam = p.team; this.brPrepare(p); p.kills = 0; p.deaths = 0; }
+    const m = this.world.def.gar.monster;
+    const mp = {
+      id: 'monster', name: 'It', team: 'monster', x: m.x, y: m.y, z: m.z, yaw: 0, pitch: 0, w: 's:true:lump:none', hp: 100, alive: true,
+      kills: 0, deaths: 0, lastShot: 0, use: false, moved: 0, dummy: false, bot: true, ping: 0, squad: 0, money: 0,
+      inv: { primary: null, secondary: null }, armor: 0, helmet: false, kit: false, hs: 0, dmg: 0, ammo: {},
+    };
+    this.players.set(mp.id, mp);
+    this.bots.set(mp.id, new ShifterBrain(this, mp));        // (its walking grid is made with every door open)
+    this.world.doors.forEach((d, i) => this.world.setDoor(i, d.open));
+    this.doorAt = this.world.doors.map(() => 0);
+    this.corners = null; this.cornerUsed = true;
+    this.notes = []; this.noteSeq = 0;
+    this.keySpot = null; this.switchSpots = []; this.brKey = { holder: null }; this.switchDown = {}; this.switchAt = []; this.boost = null;
+    this.phase = 'br';
+    this.broadcast(this.startMsg());
+    this.broadcastRoster();
+    this.humans().forEach((p, i) => this.brSpawn(p, i));
+  }
+
+  // the shapeshifter parked as a car is solid (and gone again when it breaks out): everyone's world is told
+  setBlock(r) {
+    this.world.setBlock(r);
+    this.broadcast({ t: 'block', r: r || null });
+  }
+
+  // the shapeshifter forced a side room's door: it is open (and can't be shut again for a moment)
+  forceDoor(i, m) {
+    const d = this.world.doors[i];
+    if (!d || d.open) return;
+    this.world.setDoor(i, true);
+    this.doorAt[i] = performance.now() + 2500;
+    const s = Math.sign((m.x - d.cx) * d.nx + (m.z - d.cz) * d.nz) || 1;
+    this.broadcast({ t: 'door', i, open: true, forced: true, swing: -s, by: m.id });
+  }
+
+  garTick() {
+    // (the order's steps and the lift go here: stage 7)
+  }
+
   humans() { return [...this.players.values()].filter(p => !p.dummy && !p.bot); }
 
   // no guns, no money: just you and your torch-less hands
@@ -1021,11 +1078,13 @@ export class Server {
   brSpawn(p, i = Math.floor(Math.random() * 4)) {
     if (!this.players.has(p.id) || this.phase !== 'br') return;
     const s = this.world.spawns.atk[i % this.world.spawns.atk.length];
-    Object.assign(p, { x: s.x, y: 0, z: s.z, yaw: s.yaw, pitch: 0, hp: 100, alive: true, escaped: false, moved: 0 });
-    this.send(p.id, { t: 'spawn', x: r2(s.x), y: 0, z: r2(s.z), yaw: r2(s.yaw), rd: this.round });
+    const y = this.gar ? this.world.def.gar.start.y : 0;
+    Object.assign(p, { x: s.x, y, z: s.z, yaw: s.yaw, pitch: 0, hp: 100, alive: true, escaped: false, moved: 0 });
+    this.send(p.id, { t: 'spawn', x: r2(s.x), y, z: r2(s.z), yaw: r2(s.yaw), rd: this.round });
   }
 
   brTick() {
+    if (this.gar) return this.garTick();
     const door = this.world.exit, now = performance.now();
     this.boostTick(now);
     // where everyone has been in the last second or so (for the corner snatch)
@@ -1068,13 +1127,13 @@ export class Server {
     this.world.setDoor(i, open);
     // it shuts even with someone in the doorway (owner's rule): they're pushed out to the side they're more on.
     // Players move themselves (game.js does the same on their screen); the monster is moved here.
-    if (!open) for (const q of this.players.values()) if (q.bot && q.alive) this.world.pushOutOfDoor(i, q);
+    if (!open) for (const q of this.players.values()) if (q.bot && q.alive && !(this.gar && this.world.block)) this.world.pushOutOfDoor(i, q);
     // the door swings away from whoever moved it (a door to nowhere always opens outwards)
     const s = by ? Math.sign((by.x - d.cx) * d.nx + (by.z - d.cz) * d.nz) || 1 : 1;
     this.broadcast({ t: 'door', i, open, swing: d.kind === 'blank' ? 1 : -s, by: by ? by.id : null });
     // it hears doors
     const m = this.bots.get('monster');
-    if (m && by && !by.bot) m.hearNoise(d.cx, d.cz, 14);
+    if (m && by && !by.bot) m.hearNoise(d.cx, d.cz, 14, d.y || 0);
     return true;
   }
 
@@ -1252,6 +1311,14 @@ export class Server {
     if (!q.alive || this.phase !== 'br') return;
     q.brDeath = 'monster';
     q.hp = 0;
+    if (this.gar) {
+      // Level 1: the shapeshifter closes round them (the players' screens play it); nothing is left to drag about
+      this.brCaught = true;
+      this.kill(q, m, 'shifter', false, [m.x, m.y + 1.2, m.z], 'chest', { eng: 1 });
+      this.brCaught = false;
+      const b = this.bots.get('monster'); if (b) b.startCatch(q);
+      return;
+    }
     // what it does with them (owner's numbers; MonsterBrain.planCatch): grabbed by an arm or a leg, slammed once or
     // twice on the floor or into a wall, then 1 in 3 hung on a wall, 1 in 3 dragged about, otherwise left there.
     // The kill message carries it all, so every screen can show the body as a ragdoll in its hand.
@@ -1284,7 +1351,7 @@ export class Server {
   brEnd() {
     this.bots.delete('monster'); this.players.delete('monster');
     for (const p of this.humans()) { p.team = p.lobbyTeam === 'def' ? 'def' : 'atk'; p.escaped = false; p.w = STARTER_PISTOL[p.team]; }
-    this.br = false;
+    this.br = false; this.gar = false;
   }
 
   dmOver(reason) {
@@ -1301,7 +1368,12 @@ export class Server {
 
   startMatch() {
     if (this.phase !== 'lobby') return;
-    if (this.settings.mode === 'br' && !this.practice) return this.startBackrooms();
+    if (this.settings.mode === 'br' && !this.practice) {
+      // online the Backrooms takes 2 to 4 players (alone it is played from Practice: startBotGame)
+      const n = this.humans().length;
+      if (n < 2 || n > 4) { this.send(this.ownerId, { t: 'toast', text: n < 2 ? 'The Backrooms needs at least 2 players online. Alone, play it from Practice.' : 'The Backrooms takes 4 players at most.' }); return; }
+      return this.startBackrooms();
+    }
     if (this.settings.mode === 'dm' && !this.practice) return this.startDeathmatch();
     this.dm = false;
     this.variant = null;
