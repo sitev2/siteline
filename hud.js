@@ -161,7 +161,6 @@ export class Hud {
     $('team-label').style.color = TEAM_COLORS.ffa.css;
   }
 
-  // Backrooms top bar: how many are still inside, and how many have got out
   // The Backrooms: every task in order. tasks = [{ text, done }]; finished ones are crossed out,
   // the first unfinished one is highlighted.
   setBackrooms(tasks) {
