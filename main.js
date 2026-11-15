@@ -793,13 +793,16 @@ function renderLobby() {
   const counts = { atk: app.roster.filter(p => p.team === 'atk').length, def: app.roster.filter(p => p.team === 'def').length };
   const D = RULES.dm;
   $('match-rules').innerHTML = br
-    ? '<b>The Backrooms</b> · 1–4 players together · a new random maze every game · no guns · find the exit before it finds you'
+    ? '<b>The Backrooms</b> · 2–4 players together · a new random maze every game · no guns · find the exit before it finds you'
     : dm ? `<b>Deathmatch</b> · everyone for themselves · first to <b>${D.killLimit}</b> kills or <b>${D.timeLimit / 60}</b> minutes · ${n === 3 ? 'played on a 2v2 map with 3 players' : 'small map for 2, large for 4'}`
     : '<b>2v2</b> · first to <b>9</b> · sides swap after round <b>8</b> · 8–8 is a draw';
   let note, ready;
   if (br) {
-    ready = n >= 1 && n <= 4;
-    note = !isLeader() ? 'Waiting for the host to start…' : `${n} player${n === 1 ? '' : 's'} ready. Friends can also join after it has started.`;
+    // online it takes at least two (alone, play it from Practice)
+    ready = n >= 2 && n <= 4;
+    note = !isLeader() ? (n < 2 ? 'The Backrooms needs 2 to 4 players. Waiting for one more…' : 'Waiting for the host to start…')
+      : n < 2 ? 'The Backrooms needs 2 to 4 players online. Share the room code or invite link (to play alone, use Practice).'
+        : `${n} players ready. Friends can also join after it has started.`;
   } else if (dm) {
     ready = n >= D.minPlayers && n <= D.maxPlayers;
     note = !isLeader() ? 'Waiting for the host to start the match…'

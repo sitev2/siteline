@@ -1301,7 +1301,12 @@ export class Server {
 
   startMatch() {
     if (this.phase !== 'lobby') return;
-    if (this.settings.mode === 'br' && !this.practice) return this.startBackrooms();
+    if (this.settings.mode === 'br' && !this.practice) {
+      // online the Backrooms takes 2 to 4 players (alone it is played from Practice: startBotGame)
+      const n = this.humans().length;
+      if (n < 2 || n > 4) { this.send(this.ownerId, { t: 'toast', text: n < 2 ? 'The Backrooms needs at least 2 players online. Alone, play it from Practice.' : 'The Backrooms takes 4 players at most.' }); return; }
+      return this.startBackrooms();
+    }
     if (this.settings.mode === 'dm' && !this.practice) return this.startDeathmatch();
     this.dm = false;
     this.variant = null;
