@@ -264,7 +264,7 @@ The only folder is `server/` (the optional home game server).
   timer and no alive counter in the Backrooms (the top bar is hidden; only the task list shows).
 - **Backrooms Level 1: the garage (UNFINISHED, test account only).** `LEVEL1_OPEN = false` in `main.js`: only `LEVEL1_TESTERS` (`test123`)
   see a "Level" choice in Practice → The Backrooms (`#p-stage` → `cfg.stage: 1` → `Server.startGarage()`). Nobody else can reach it.
-  DONE: the map, the 3D scene, the shapeshifter. STILL TO DO (owner's brief, stages 2, 5, 7, 8 — see the list at the end of this entry).
+  DONE: the map, the 3D scene, the shapeshifter, the order and the ending. STILL TO DO (owner's brief, stages 2, 5, 8 — see the list at the end of this entry).
   - `garmap.js` — ONE fixed layout (`resolveMap('garage', difficulty)`, theme `garage`, `world.def.gar` = the plan): 64 × 52 m, two floors
     (lower "P2" y 0, upper "P1" y `GAR.FL` 3.4; 3 m clear), about half Level 0's area. Rows of 0.5 × 1 m pillars, parking bays, two car
     ramps (`plan.ramps`, collision = 11 cm steps, drawn smooth), two stairwells, 7 side rooms (`plan.rooms`: attendant booths / storerooms,
@@ -276,8 +276,8 @@ The only folder is `server/` (the optional home game server).
     walked to; ramps alone and stairs alone both join the floors; the lift is shut off while the shutter is down.
   - `garview.js` (+ `garprops.js`: car / cone / pipe shapes) — baked lighting like `brview.js`, per floor. Orange sodium lamps are baked
     into the vertex colours (always on); the white tubes' light is a separate attribute (`aTube`, one number per flicker group) switched
-    by the `uTube` uniform, so tubes can be off / on / flickering with their light on the walls (`userData.setPower(on)`: ON for now,
-    stage 7's fuse box should start it OFF). No fog, no dark zones. Puddles: the floor is cut away and an upside-down copy of the ceiling,
+    by the `uTube` uniform, so tubes can be off / on / flickering with their light on the walls (`userData.setPower(on)`: OFF until
+    the fuse box is used). No fog, no dark zones. Puddles: the floor is cut away and an upside-down copy of the ceiling,
     lamps, pillars and nearby cars lies under dark water (a cheap true reflection). Also `setShutter(0…1)`, `setBattery(i, on)`,
     `setDoor`, `kickDoor`, `lightAt(x, z, y)`, `propLight` / `litGeo` / `propMat` (so a disguise is lit exactly like a real prop), drips.
   - `shifter.js` — the shapeshifter's brain on the host (`ShifterBrain`; Level 0 keeps `monster.js`). It hides as a prop (a car in an
@@ -295,15 +295,22 @@ The only folder is `server/` (the optional home game server).
     sound (`shift*` in `audio.js` `BRS`). Giveaways scale with `GAR_LEVELS.tell` (easy 1 … hard 0.3): disguises breathe slightly and tick
     quietly, a fake car has no reflection in the puddles, a copied player walks a little wrong, twitches and has no flashlight. A
     disguised one is not "felt" (no heartbeat / shake): only once it shows itself (`r.revealed` in `Game.updateShifter`).
+  - The order (any one player can do each step; `Server.garSt` = `{ power, crank }`, sent to late joiners in the start message's `gar`):
+    1 the fuse box: E / hand button within reach (`{t:'fuse'}` → `garFuse` → `{t:'power'}`: the white tubes come on, the lift's lamp goes
+    green); 2 the crank: HOLD E / the hand button (`Game.useTarget` kind `crank`; the client sends `{t:'crank'}` every 150 ms of REAL time
+    while held — the game clock runs slow at low frame rates — and the host counts a press for 0.7 s). Without power its brake is on
+    (toast). It winds only while held and stays where it is left; `GAR_LEVELS.crank` 10 / 14 / 18 s in all; `{t:'crank', p}` moves the
+    shutter (`setShutter`) and clicks the ratchet; the monster is told once a second (`hearNoise`, 26 m). At 1 the shutter door opens.
+    3 the lift: with power on and the shutter up, standing in `plan.lift` = escaped (`{t:'escaped', lift: 1}`). Ending: you step in and
+    turn round, the lift's own doors shut (`setLiftDoors`), it rides up, then the white "You got out." screen (`escapeScene.lift`,
+    `delay`); the host waits 9.5 s before the results. The task list ticks the three steps. ONE explorer log (`LOGS[12]` in `brfx.js`)
+    on the wall by the start. `node check_gar_order.mjs` plays the order with no graphics.
   - STILL TO DO for Level 1 (plain jobs, the hooks are in place):
     1. Stage 2: unlock + level flow. Save "beat Level 0" in localStorage and on the account (new column / RPC in `supabase.sql`, tell
        the owner to re-run it); a locked Level 1 choice in the lobby and Practice for those who haven't; escaping Level 0 runs straight
        on into `startGarage()` with everyone alive again.
     2. Stage 5: the flashlight battery (drains while on in Level 1 only, HUD bar, E picks up a `plan.batteries` item, host decides).
-    3. Stage 7: the order in `Server.garTick` — fuse box (`setPower`), hold E at the crank (`setShutter`, the monster hears it:
-       `hearNoise`, time `GAR_LEVELS.crank`), the lift = escape + ending scene; tick the three tasks in `Game.updateHud`; the one
-       explorer log at `plan.log`.
-    4. Stage 4 polish (sparks, more signs) and stage 8 (full phone / PC test, then set `LEVEL1_OPEN`).
+    3. Stage 4 polish (sparks, more signs) and stage 8 (full phone / PC test, then set `LEVEL1_OPEN`).
 - `check_map.mjs` — `node check_map.mjs outpost` / `node check_map.mjs quarry large` checks every area and spawn is reachable
 
 - Rejoin: the last room joined as a guest is kept in localStorage for 30 min (`siteline-lastroom`); the menu shows

@@ -680,6 +680,16 @@ const BRS = {
     normalize(x, 0.95);
   }),
   // ---- Level 1 (the garage) ----
+  // the main breaker thrown: a heavy clack, then the tubes pinging on
+  power: () => buf(1.8, (x, sr) => { thump(x, sr, 0, 150, 60, 0.12, 1); click(x, sr, 0, 900, 3, 0.9); for (let k = 0; k < 9; k++) click(x, sr, 0.25 + k * 0.13 + Math.random() * 0.06, 2400 + Math.random() * 2000, 9, 0.35); for (let i = Math.floor(0.2 * sr); i < x.length; i++) { const t = i / sr; x[i] += Math.sin(6.283 * 100 * t) * 0.12 * Math.min(1, (t - 0.2) * 2) * Math.max(0, 1 - (t - 1.2) / 0.6); } normalize(x, 0.8); }),
+  // one click of the shutter's ratchet, and the slats rattling
+  ratchet: () => buf(0.3, (x, sr) => { click(x, sr, 0, 1500 + Math.random() * 500, 5, 0.9); click(x, sr, 0.012, 3400, 8, 0.4); noiseHit(x, sr, 0.02, 'bandpass', 2600, 2, 0.12, 0.35); thump(x, sr, 0, 180, 110, 0.04, 0.4); normalize(x, 0.6); }),
+  // the lift: doors rumbling shut, a clunk, the motor taking up the weight and climbing
+  liftRide: () => buf(4.5, (x, sr) => {
+    sweepNoise(x, sr, 0, 1.2, 500, 260, 1.5, 0.6, 0.6); thump(x, sr, 1.25, 110, 50, 0.2, 1); click(x, sr, 1.25, 700, 3, 0.6);
+    for (let i = Math.floor(1.5 * sr); i < x.length; i++) { const t = i / sr - 1.5, e = Math.min(1, t / 0.5) * Math.min(1, (3 - t) / 0.8), f = 48 + 30 * Math.min(1, t / 1.2); x[i] += (Math.sin(6.283 * f * t) * 0.5 + Math.sin(6.283 * f * 2.02 * t) * 0.25 + Math.sign(Math.sin(6.283 * f * 6 * t)) * 0.05) * Math.max(0, e); }
+    normalize(x, 0.85);
+  }),
   // a drop of water landing
   drip: () => buf(0.35, (x, sr) => { const f = 900 + Math.random() * 900; for (let i = 0; i < 0.12 * sr; i++) { const t = i / sr; x[i] += Math.sin(6.283 * (f + 2600 * t) * t) * Math.exp(-t * 38) * 0.8; } click(x, sr, 0, 2600, 6, 0.3); normalize(x, 0.5); }),
   // the shapeshifter changing: stretching up tall (a rising wet creak)
@@ -715,7 +725,7 @@ const BRS = {
 export function playBR(kind, pos = null, occ = 0, gain = 1) {
   const key = `br:${kind}#${Math.floor(Math.random() * 2)}`;
   if (!cache.has(key)) cache.set(key, BRS[kind]());
-  play(cache.get(key), { pos, gain, ref: pos ? 2.5 : 1, roll: 1.0, air: 40, occ, wet: kind === 'whisper' ? 0.15 : 0.45, important: kind === 'ceiling' || kind === 'corner' || kind === 'slam' || kind === 'servo' || kind === 'shiftBurst' || kind === 'shiftKill' });
+  play(cache.get(key), { pos, gain, ref: pos ? 2.5 : 1, roll: 1.0, air: 40, occ, wet: kind === 'whisper' ? 0.15 : 0.45, important: kind === 'ceiling' || kind === 'corner' || kind === 'slam' || kind === 'servo' || kind === 'shiftBurst' || kind === 'shiftKill' || kind === 'power' || kind === 'liftRide' });
 }
 
 // close to it: a low, distorted rumble that swells in your head (not in the world), with a sick wavering whine on

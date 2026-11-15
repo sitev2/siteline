@@ -7,6 +7,7 @@ import { RULES } from './config.js';
 import { NavGrid, BotBrain, BOT_NAMES } from './bots.js';
 import { MonsterBrain, outerCorners } from './monster.js';
 import { ShifterBrain } from './shifter.js';
+import { GAR_LEVELS, garLevel } from './garmap.js';
 import { BR_LEVELS, brLevel, brVariant, wallFace } from './brmap.js';
 import { cleanChat, CHAT_LIMIT } from './filter.js';
 import {
@@ -249,6 +250,13 @@ export class Server {
         return;
       case 'switch':
         if (this.phase === 'br' && p.alive && !p.escaped && Number.isInteger(msg.i)) this.pressSwitch(p, msg.i);
+        return;
+      case 'fuse':
+        if (this.phase === 'br' && this.gar && p.alive && !p.escaped) this.garFuse(p);
+        return;
+      case 'crank':
+        // (sent several times a second while E / the hand button is held at the crank)
+        if (this.phase === 'br' && this.gar && p.alive && !p.escaped) p.crankAt = performance.now();
         return;
       case 'boost':
         if (this.phase === 'br' && p.alive && !p.escaped) this.tryBoost(p);
@@ -762,6 +770,7 @@ export class Server {
       doors: this.br && this.world ? this.world.doors.map(d => (d.broken ? 2 : d.open ? 1 : 0)) : undefined,     // 2 = kicked in
       notes: this.br ? this.notes : undefined,
       key: this.br && this.brKey ? (this.brKey.holder ? 1 : 0) : undefined,      // the red key isn't on its shelf
+      gar: this.gar && this.garSt ? { power: this.garSt.power, crank: r2(this.garSt.crank) } : undefined,      // Level 1's order so far
       block: this.gar && this.world ? this.world.block : undefined,              // Level 1: where the shapeshifter is parked as a car
     };
   }
@@ -1039,6 +1048,8 @@ export class Server {
     this.corners = null; this.cornerUsed = true;
     this.notes = []; this.noteSeq = 0;
     this.keySpot = null; this.switchSpots = []; this.brKey = { holder: null }; this.switchDown = {}; this.switchAt = []; this.boost = null;
+    // the order (owner's design): 1 the fuse box turns the power on, 2 someone winds the shutter up, 3 the lift
+    this.garSt = { power: false, crank: 0, at: performance.now(), sentAt: 0, heardAt: 0, toldAt: 0 };
     this.phase = 'br';
     this.broadcast(this.startMsg());
     this.broadcastRoster();
@@ -1061,8 +1072,50 @@ export class Server {
     this.broadcast({ t: 'door', i, open: true, forced: true, swing: -s, by: m.id });
   }
 
+  // step 1: the fuse box (any one player)
+  garFuse(p) {
+    const f = this.world.def.gar.fuse, st = this.garSt;
+    if (st.power || Math.hypot(p.x - f.x, p.z - f.z) > 2.4 || Math.abs(p.y - f.y) > 1.5) return;
+    st.power = true;
+    this.broadcast({ t: 'power', id: p.id, name: p.name });
+    const m = this.bots.get('monster'); if (m) m.hearNoise(f.x, f.z, 20, f.y);      // the breaker going over is loud
+  }
+
   garTick() {
-    // (the order's steps and the lift go here: stage 7)
+    const plan = this.world.def.gar, st = this.garSt, now = performance.now();
+    const dt = Math.min(0.25, (now - st.at) / 1000);
+    st.at = now;
+    const si = this.world.doors.findIndex(d => d.lock === 'shutter'), shutter = this.world.doors[si];
+    // step 2: winding the shutter up. It only moves while someone holds the crank (it stays where it is left);
+    // without power the brake is on. The ratchet is loud: it hears it.
+    if (shutter && !shutter.open) {
+      const c = plan.crank;
+      const hands = this.humans().filter(p => p.alive && !p.escaped && now - (p.crankAt || 0) < 700 && Math.hypot(p.x - c.x, p.z - (c.z + 0.6)) < 2.2 && Math.abs(p.y - c.y) < 1.5);
+      if (hands.length && !st.power) {
+        if (now - st.toldAt > 2500) { st.toldAt = now; for (const p of hands) this.send(p.id, { t: 'toast', text: "The crank won't turn: its brake needs the power. Find the fuse box" }); }
+      } else if (hands.length) {
+        st.crank = Math.min(1, st.crank + dt / GAR_LEVELS[garLevel(this.variant)].crank);
+        if (now - st.sentAt > 150 || st.crank >= 1) { st.sentAt = now; this.broadcast({ t: 'crank', p: r2(st.crank), by: hands[0].id }); }
+        if (now - st.heardAt > 1000) { st.heardAt = now; const m = this.bots.get('monster'); if (m) m.hearNoise(c.x, c.z + 1, 26, c.y); }
+        if (st.crank >= 1) {
+          this.world.setDoor(si, true);
+          this.broadcast({ t: 'door', i: si, open: true, swing: 1, by: hands[0].id });
+          this.broadcast({ t: 'toast', text: 'The shutter is up: the lift is behind it' });
+        }
+      }
+    }
+    // step 3: the goods lift. With the power on and the shutter up, getting in is getting out.
+    if (st.power && shutter && shutter.open) {
+      const L = plan.lift;
+      for (const p of this.humans()) {
+        if (!p.alive || p.escaped || Math.abs(p.y - L.y) > 0.6) continue;
+        if (p.x > L.x0 && p.x < L.x1 && p.z > L.z0 && p.z < L.z1 - 0.4) {
+          p.escaped = true; p.alive = false; p.escapeTime = Math.round(this.timer);
+          this.broadcast({ t: 'escaped', id: p.id, name: p.name, time: p.escapeTime, lift: 1 });
+          this.brCheck();
+        }
+      }
+    }
   }
 
   humans() { return [...this.players.values()].filter(p => !p.dummy && !p.bot); }
@@ -1345,7 +1398,7 @@ export class Server {
     const out = hs.filter(p => p.escaped).length;
     // (when the last one out has just escaped, give their ending scene time to play: ~7 s; when the last one
     // inside has just been caught by the tall one, let them see what it does to them: ~6 s)
-    this.later(out ? 7 : this.brCaught ? 6 : 2, () => { if (this.phase === 'br') this.matchOver(out ? 'escaped' : 'lost', out === hs.length ? 'all' : out ? 'some' : 'none'); });
+    this.later(out ? (this.gar ? 9.5 : 7) : this.brCaught ? 6 : 2, () => { if (this.phase === 'br') this.matchOver(out ? 'escaped' : 'lost', out === hs.length ? 'all' : out ? 'some' : 'none'); });
   }
 
   brEnd() {
@@ -1576,7 +1629,7 @@ export class Server {
     const stats = [...this.players.values()].filter(p => !p.dummy && !(this.br && p.bot))
       .map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, hs: p.hs, dmg: p.dmg }));
     if (this.br) for (const s of stats) { const p = this.players.get(s.id); s.escaped = !!(p && p.escaped); s.time = p && p.escapeTime; s.how = p && p.brDeath; }
-    this.broadcast({ t: 'over', winner, reason, score: this.score, stats, mode: this.br ? 'br' : this.dm ? 'dm' : 'wingman', time: this.br ? Math.round(this.timer) : undefined });
+    this.broadcast({ t: 'over', winner, reason, score: this.score, stats, map: this.settings.map, mode: this.br ? 'br' : this.dm ? 'dm' : 'wingman', time: this.br ? Math.round(this.timer) : undefined });
   }
 
   toLobby() {

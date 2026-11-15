@@ -638,6 +638,24 @@ export function buildGarageScene(world, renderer, gfx = {}) {
     }
   }
 
+  // ---------- the goods lift: its own two doors (they shut for the ride: the ending), a call lamp that comes on with the power ----------
+  const liftDoors = [];
+  {
+    const S = plan.shutter, y = S.y, w = (S.x1 - S.x0) / 2, tint = tintAt(3, y, 4);
+    const dm = addFlash(new THREE.MeshBasicMaterial({ color: new THREE.Color('#6d7378').multiply(tint) }));
+    for (const s of [-1, 1]) { const d = new THREE.Mesh(new THREE.BoxGeometry(w, S.h, 0.05), dm); d.position.set((S.x0 + S.x1) / 2 + s * w * 1.5, y + S.h / 2, S.z0 - 0.06); d.userData = { s, w, mid: (S.x0 + S.x1) / 2 }; group.add(d); liftDoors.push(d); }
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.12, 0.03), new THREE.MeshBasicMaterial({ color: '#2a0d0a' })); lamp.position.set(S.x1 + 0.25, y + 1.4, S.z1 + 0.012); group.add(lamp);
+    group.userData.liftLamp = lamp;
+    const floorM = new THREE.Mesh(new THREE.PlaneGeometry(plan.lift.x1 - plan.lift.x0, plan.lift.z1 - plan.lift.z0).rotateX(-Math.PI / 2), addFlash(new THREE.MeshBasicMaterial({ color: new THREE.Color('#3b4046').multiply(tint) })));
+    floorM.position.set((plan.lift.x0 + plan.lift.x1) / 2, y + 0.008, (plan.lift.z0 + plan.lift.z1) / 2); group.add(floorM);
+  }
+  // k: 0 open (drawn back into the door posts, out of sight) … 1 shut (each door grows from its own side to the middle)
+  group.userData.setLiftDoors = (k) => {
+    k = Math.max(0, Math.min(1, k));
+    for (const d of liftDoors) { const u = d.userData; d.visible = k > 0.01; d.scale.x = Math.max(0.01, k); d.position.x = u.mid + u.s * u.w * (1 - k / 2); }
+  };
+  group.userData.setLiftDoors(0);
+
   // ---------- batteries lying about (stage 5 makes them work): shown until someone takes one ----------
   const batt = plan.batteries.map((b) => {
     const tint = tintAt(b.x, b.y, b.z);
@@ -670,7 +688,7 @@ export function buildGarageScene(world, renderer, gfx = {}) {
   group.add(hemi, topL);
   group.userData.dimPeople = (k) => { hemi.intensity = 1.5 * k; topL.intensity = 0.8 * k; };
   // the power: off = only the orange emergency lamps; on = the white tubes too (stage 7's fuse box will call this)
-  group.userData.setPower = (on) => { power = on ? 1 : 0; };
+  group.userData.setPower = (on) => { power = on ? 1 : 0; if (group.userData.liftLamp) group.userData.liftLamp.material.color.set(on ? '#3cff6a' : '#2a0d0a'); };
 
   // ---------- runtime ----------
   let t = 0;

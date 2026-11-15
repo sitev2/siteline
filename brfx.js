@@ -26,12 +26,13 @@ export function paintNote(canvas, note, drawing) {
   if (log) { g.save(); g.scale(S / 256, S / 256); log.draw(g); g.restore(); }
   if (note.text) {
     g.fillStyle = '#1f2a44';
-    g.font = `${Math.round(S / (log ? 13 : 10))}px "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive`;
+    g.font = `${Math.round(S / (note.log === 12 ? 15.5 : log ? 13 : 10))}px "Segoe Print", "Bradley Hand", "Comic Sans MS", cursive`;
     const words = note.text.split(' '), lines = [];
     let line = '';
     for (const w of words) { const t = line ? `${line} ${w}` : w; if (g.measureText(t).width > S - 24 && line) { lines.push(line); line = w; } else line = t; }
     if (line) lines.push(line);
-    if (log) lines.slice(0, 4).forEach((l, i) => g.fillText(l, 12, S / 13 + 10 + i * (S / 11)));
+    if (note.log === 12) lines.slice(0, 8).forEach((l, i) => g.fillText(l, 12, 26 + i * (S / 12.5)));
+    else if (log) lines.slice(0, 4).forEach((l, i) => g.fillText(l, 12, S / 13 + 10 + i * (S / 11)));
     else lines.slice(0, 7).forEach((l, i) => g.fillText(l, 12, S / 10 + 8 + i * (S / 9)));
   }
   if (note.wall) {
@@ -127,6 +128,14 @@ export const LOGS = [
     g.save(); g.strokeStyle = 'rgba(35,35,48,0.6)'; g.setLineDash([4, 6]); line(g, 70, 184, 186, 184); g.restore();
     g.font = '24px "Segoe Print", "Comic Sans MS", cursive'; g.fillStyle = 'rgba(35,35,48,0.9)'; g.fillText('1 2 3', 98, 176);
     stick(g, 53, 252, 0.7); stick(g, 203, 252, 0.7);
+  } },
+  // 12: Level 1's one log (the garage), taped up by the start
+  { text: "Car park, two floors. Power: fuse box, north wall, downstairs. Then wind the shutter up by hand: the lift is behind it. Count the cars. One was not here before.", draw(g) {
+    pen(g, 2.2); const car = (x, y) => { g.strokeRect(x, y, 44, 14); line(g, x + 8, y, x + 13, y - 10, x + 31, y - 10, x + 36, y); g.beginPath(); g.arc(x + 10, y + 15, 4, 0, 7); g.stroke(); g.beginPath(); g.arc(x + 34, y + 15, 4, 0, 7); g.stroke(); };
+    car(30, 214); car(92, 214); car(154, 214);
+    g.fillStyle = '#f3efe2'; g.fillRect(170, 218, 3, 3); g.fillRect(180, 218, 3, 3);
+    g.fillStyle = 'rgba(35,35,48,0.9)'; g.fillRect(170, 219, 3, 2); g.fillRect(180, 219, 3, 2);
+    g.font = '30px "Segoe Print", "Comic Sans MS", cursive'; g.fillStyle = 'rgba(170,30,30,0.85)'; g.fillText('?', 204, 212);
   } },
 ];
 

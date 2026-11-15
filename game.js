@@ -21,7 +21,7 @@ import { Input } from './input.js';
 import { Hud, TEAM_NAMES } from './hud.js';
 import { BuyMenu } from './buy.js';
 import { icon } from './icons.js';
-import { BackroomsFX } from './brfx.js';
+import { BackroomsFX, LOGS } from './brfx.js';
 import { BR, wallFace } from './brmap.js';
 import { GAR_LEVELS, garLevel } from './garmap.js';
 import { makeShifterModel, animateShifter } from './shiftmodel.js';
@@ -63,7 +63,7 @@ const d0 = (esc) => ({ x: esc.door.x + esc.door.nx * 0.15, z: esc.door.z + esc.d
 const smoothstep = t => t * t * (3 - 2 * t);
 
 export class Game {
-  constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night, doors, notes, key, block }) {
+  constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night, doors, notes, key, block, gar }) {
     this.transport = transport;
     this.myId = myId;
     this.practice = practice;
@@ -247,6 +247,14 @@ export class Game {
     document.body.classList.toggle('br-mode', this.br);
     if (this.gar) {
       const ud = this.builtMap.group.userData;
+      // the order so far (a late joiner gets it in the start message): power, how far the shutter is wound
+      this.garSt = { power: !!(gar && gar.power), crank: (gar && gar.crank) || 0 };
+      ud.setPower(this.garSt.power);
+      const sh = this.world.doors.find(d => d.lock === 'shutter');
+      ud.setShutter(sh && sh.open ? 1 : this.garSt.crank);
+      // the one explorer log, by the start
+      const L = this.world.def.gar.log;
+      this.fx.addNote({ id: -1, wall: true, log: 12, x: L.x + L.nx * 0.012, y: L.y, z: L.z + L.nz * 0.012, nx: L.nx, nz: L.nz, text: LOGS[12].text, name: 'attendant, nights', size: 0.46 });
       ud.onDrip = (x, y, z) => { sfx.playBR('drip', { x, y: y + 0.05, z }, this.occlusion(x, y + 0.3, z), 0.7); if (y < 0.1) this.addRipple(x, z, 0.35, 0.7); };
     }
     if (this.br) {
@@ -460,6 +468,24 @@ export class Game {
       case 'snatch': case 'note': case 'lure': case 'dropBody': case 'hangBody':
         if (this.fx) this.fx.onMessage(m);
         return;
+      case 'power': {
+        // Level 1, step 1: someone threw the breaker; the white tubes come on
+        if (!this.gar) return;
+        this.garSt.power = true;
+        this.builtMap.group.userData.setPower(true);
+        const f = this.world.def.gar.fuse;
+        sfx.playBR('power', { x: f.x, y: f.y + 1.3, z: f.z }, 0, 1.6);
+        this.hud.center('', m.id === this.myId ? 'The power is back. Now the shutter: upstairs, north-west' : `${m.name} turned the power back on`, '#cfe6ff', 4);
+        return;
+      }
+      case 'crank': {
+        if (!this.gar) return;
+        const was = this.garSt.crank, c = this.world.def.gar.crank;
+        this.garSt.crank = m.p; this.garSt.crankBy = m.by; this.garSt.crankAt = this.clock;
+        this.builtMap.group.userData.setShutter(m.p);
+        if (Math.floor(m.p * 28) !== Math.floor(was * 28)) sfx.playBR('ratchet', { x: c.x, y: c.y + 1.1, z: c.z + 0.3 }, this.occlusion(c.x, c.y + 1.2, c.z + 0.5), 1.1);
+        return;
+      }
       case 'block':
         // Level 1: the shapeshifter has parked itself as a car (solid), or has just stopped being one
         this.world.setBlock(m.r || null);
@@ -522,7 +548,13 @@ export class Game {
           sfx.playEscape();
           // the ending: you walk up to the door and into the white, then your time (updateCamera plays it)
           const ex = this.world.exit;
-          if (ex) {
+          if (m.lift && this.gar) {
+            // Level 1's ending: you step into the lift and turn round, its doors shut, it rides up, then the white
+            const L = this.world.def.gar.lift;
+            this.escapeScene = { t0: this.clock, x: this.me.pos.x, z: this.me.pos.z, yaw: this.me.yaw, pitch: this.me.pitch, lift: true, y: L.y, delay: 2.4, door: { x: (L.x0 + L.x1) / 2, z: (L.z0 + L.z1) / 2 - 0.3, nx: 0, nz: 1 } };
+            document.getElementById('br-escape-time').textContent = `${fmtClock(m.time)} in the garage`;
+            sfx.playBR('liftRide', null, 0, 1.2);
+          } else if (ex) {
             this.escapeScene = { t0: this.clock, x: this.me.pos.x, z: this.me.pos.z, yaw: this.me.yaw, pitch: this.me.pitch, door: ex };
             document.getElementById('br-escape-time').textContent = `${fmtClock(m.time)} in the Backrooms`;
           } else this.hud.center('You escaped!', `${fmtClock(m.time)} in the Backrooms`, '#9dffb5', 5);
@@ -1452,7 +1484,19 @@ export class Game {
       // E / the hand button: a door, a switch, or climbing up for the red key
       if (inp.consume('use')) {
         const u = this.useTarget();
-        if (u) this.transport.send(u.kind === 'door' ? { t: 'door', i: u.i } : u.kind === 'switch' ? { t: 'switch', i: u.i } : { t: 'boost' });
+        if (u && u.kind === 'fuse') this.transport.send({ t: 'fuse' });
+        else if (u && u.kind !== 'crank') this.transport.send(u.kind === 'door' ? { t: 'door', i: u.i } : u.kind === 'switch' ? { t: 'switch', i: u.i } : { t: 'boost' });
+      }
+      // Level 1: the crank turns for as long as E / the hand button is held at it
+      this.cranking = false;
+      if (this.gar && inp.useHeld) {
+        const u = this.useTarget();
+        if (u && u.kind === 'crank') {
+          this.cranking = true;
+          // (real time, not the game clock: that runs slow when frames do)
+          const rt = performance.now();
+          if (rt >= (this.crankSend || 0)) { this.crankSend = rt + 150; this.transport.send({ t: 'crank' }); }
+        }
       }
       // up on someone's shoulders (or holding someone up): nobody moves until it's done
       const b = this.boostMe;
@@ -2027,6 +2071,8 @@ export class Game {
     }
   }
 
+  liftOpen() { const sh = this.world.doors.find(d => d.lock === 'shutter'); return !!(sh && sh.open && this.garSt && this.garSt.power); }
+
   // Level 1's shapeshifter: the host sends what it is right now ('s:car:12:3', 's:true:tall:suit' …) and where
   updateShifter(r, dt) {
     const m = r.model, parts = String(r.w || 's:true:lump:none').split(':'), form = parts[1];
@@ -2057,6 +2103,13 @@ export class Game {
     const me = this.me;
     if (!me.alive || !this.br) return null;
     const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw);
+    if (this.gar) {
+      // Level 1: the fuse box (until the power is on), the crank (until the shutter is up), then doors
+      const P = this.world.def.gar, near = (o, r) => Math.abs(o.y - me.pos.y) < 1.5 && Math.hypot(o.x + o.nx * 0.7 - me.pos.x, o.z + o.nz * 0.7 - me.pos.z) < r;
+      const sh = this.world.doors.find(d => d.lock === 'shutter');
+      if (!this.garSt.power && near(P.fuse, 1.7)) return { kind: 'fuse' };
+      if (sh && !sh.open && near(P.crank, 1.7)) return { kind: 'crank' };
+    }
     if (this.keySpot && !this.keyTaken && Math.hypot(this.keySpot.x - me.pos.x, this.keySpot.z - me.pos.z) < 1.4) return { kind: 'key' };
     for (let i = 0; i < this.switchSpots.length; i++) {
       const s = this.switchSpots[i], dx = s.fx - me.pos.x, dz = s.fz - me.pos.z, d = Math.hypot(dx, dz);
@@ -2115,15 +2168,20 @@ export class Game {
     if (esc) {
       // the ending scene: up to the door, the white swallows everything, your time, then it fades back to watching the others
       const el = document.getElementById('br-escape'), d = esc.door;
-      el.classList.toggle('hidden', escT > 7);
-      el.style.opacity = String(escT < 1.9 ? 0 : escT < 2.9 ? (escT - 1.9) : escT < 6 ? 1 : Math.max(0, 1 - (escT - 6)));
-      el.classList.toggle('words', escT > 3.1 && escT < 6.2);
-      if (escT > 7) { this.escapeScene = null; me.deathTime = performance.now() - 2000; }
+      const wT = escT - (esc.delay || 0);          // (the lift: its doors shut and it sets off first)
+      el.classList.toggle('hidden', wT > 7);
+      el.style.opacity = String(wT < 1.9 ? 0 : wT < 2.9 ? (wT - 1.9) : wT < 6 ? 1 : Math.max(0, 1 - (wT - 6)));
+      el.classList.toggle('words', wT > 3.1 && wT < 6.2);
+      if (esc.lift) {
+        this.builtMap.group.userData.setLiftDoors(wT > 6 ? 0 : smoothstep(Math.max(0, Math.min(1, (escT - 1.1) / 1.2))));
+        if (escT > 2.5 && wT < 3) this.shake = Math.max(this.shake, 0.5);      // riding up
+      }
+      if (wT > 7) { this.escapeScene = null; me.deathTime = performance.now() - 2000; }
     }
-    if (!me.alive && esc && escT < 6.5) {
+    if (!me.alive && esc && escT < 6.5 + (esc.delay || 0)) {
       // you are in the doorway: step into it, turn round for one last look back at the Backrooms, then the white
       const s = smoothstep(Math.min(1, escT / 0.6)), tx = d0(esc).x, tz = d0(esc).z;
-      x = esc.x + (tx - esc.x) * s; z = esc.z + (tz - esc.z) * s; y = EYE;
+      x = esc.x + (tx - esc.x) * s; z = esc.z + (tz - esc.z) * s; y = (esc.y || 0) + EYE;
       const back = Math.atan2(-esc.door.nx, -esc.door.nz), k = smoothstep(Math.max(0, Math.min(1, (escT - 0.35) / 1.3)));
       let dy = back - esc.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
       if (Math.abs(dy) < 0.4) dy += Math.PI * 2 * Math.sign(dy || 1);      // (always a real turn)
@@ -2359,7 +2417,8 @@ export class Game {
     if (me.alive) alive[me.team]++;
     if (this.gar) {
       // Level 1's three steps (stage 7 will tick them off)
-      hud.setBackrooms([{ text: 'Fix the power', done: false }, { text: 'Crank the shutter', done: false }, { text: 'Take the lift', done: false }]);
+      const sh = (this.world.doors || []).find(d => d.lock === 'shutter');
+      hud.setBackrooms([{ text: 'Fix the power', done: this.garSt.power }, { text: 'Crank the shutter', done: !!(sh && sh.open) }, { text: 'Take the lift', done: !!me.escaped }]);
     } else if (this.br) {
       // the task list (owner's design: everything in one order); finished tasks are crossed out
       const gate = (l) => (this.world.doors || []).find(d => d.lock === l);
@@ -2436,6 +2495,11 @@ export class Game {
       if (who.team === me.team) hud.progress(`${who.name} is ${b.state === 'planted' ? 'defusing' : 'planting'}`, b.prog / total);
       else hud.progress(null);
     } else hud.progress(null);
+    // Level 1: the shutter going up (yours, or someone else's winding)
+    if (this.gar && this.garSt.crank < 1 && this.garSt.crank > 0 && this.clock - (this.garSt.crankAt || -9) < 0.6) {
+      const who = this.garSt.crankBy === this.myId ? null : this.playerById(this.garSt.crankBy);
+      hud.progress(who ? `${who.name} is winding the shutter` : 'Winding the shutter…', this.garSt.crank);
+    }
     const touch = this.settings.touch;
     const canBuy = this.canBuy();
     let hint = '';
@@ -2458,19 +2522,22 @@ export class Game {
       const u = this.useTarget(), door = u && u.kind === 'door' ? this.world.doors[u.i] : null, press = touch ? 'Tap [[hand]]' : `Press ${this.key('use')}`;
       // (alone in there, the two-player parts work for one: the host's brSolo)
       const alone = (me.alive && !me.escaped ? 1 : 0) + [...this.remotes.values()].filter(r => r.team !== 'monster' && r.alive && !r.escaped).length < 2;
-      if (this.boostMe) hint = this.boostMe.climber ? 'Up on their shoulders… reaching for the key' : 'Holding them up…';
+      if (u && u.kind === 'fuse') hint = `${press} to switch the power back on`;
+      else if (u && u.kind === 'crank') hint = !this.garSt.power ? "The crank won't turn without power: find the fuse box" : this.cranking ? '' : `${touch ? 'Hold [[hand]]' : `Hold ${this.key('use')}`} to wind the shutter up (it will hear it)`;
+      else if (this.boostMe) hint = this.boostMe.climber ? 'Up on their shoulders… reaching for the key' : 'Holding them up…';
       else if (u && u.kind === 'key') hint = alone ? `The key is up on that shelf. ${press} to jump for it` : `The key is up on that shelf. ${press} to climb on a teammate's shoulders (they stand here too)`;
       else if (u && u.kind === 'switch') hint = alone ? `${press} to pull the lever (then the other one)` : `${press} to pull the lever (both levers at the same moment)`;
       else if (door && door.lock && !door.open) hint = door.lock === 'red' ? (me.key ? `${press} to unlock the door` : 'Locked. Its key is on a high shelf somewhere on this side')
         : door.lock === 'heavy' ? (alone ? `${press} to force the heavy door` : `Too heavy for one: two of you ${touch ? 'tap [[hand]]' : `press ${this.key('use')}`} at the same moment`) : 'The exit room is shut. Both levers in the lever room open it';
       else if (door && !door.lock) hint = `${press} to ${door.open ? 'shut' : 'open'} the door`;
       else if (me.alive && me.key && (this.world.doors || []).some(d => d.lock === 'red' && !d.open)) hint = 'You have the key: find the locked door';
+      else if (me.alive && this.gar && this.liftOpen() && Math.abs(me.pos.y - this.world.def.gar.lift.y) < 1 && Math.hypot(me.pos.x - 3.5, me.pos.z - 7.5) < 7) hint = 'The lift! Get in';
       else if (me.alive && this.clock < (this.brHintUntil || 0)) hint = touch ? 'Hold [[run]] to sprint, but it hears you' : `Hold ${this.key('walk')} to sprint, but it hears you`;
       else if (me.alive && this.gar) hint = '';
       else if (me.alive && this.clock < (this.brHintUntil || 0) + 9) hint = touch ? 'Tap [[note]] to leave a note for the others' : `Press ${this.key('note')} to leave a note for the others`;
       else if (me.alive && this.clock < (this.brHintUntil || 0) + 16 && this.fx && this.fx.dim < 0.3) hint = touch ? 'Dark in here: tap [[light]] for your flashlight' : `Dark in here: press ${this.key('inspect')} for your flashlight`;
       else if (me.alive && this.world.exit && Math.hypot(this.world.exit.x - me.pos.x, this.world.exit.z - me.pos.z) < 6 && (me.pos.x - this.world.exit.x) * this.world.exit.nx + (me.pos.z - this.world.exit.z) * this.world.exit.nz > 0) hint = 'The exit! Go through the door';
-      else if (!me.alive && me.escaped) hint = 'You got out. Watching the others…';
+      else if (!me.alive && me.escaped && !this.escapeScene) hint = 'You got out. Watching the others…';
     }
     hud.hint(hint);
     const useBtn = document.getElementById('btn-use');
