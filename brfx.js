@@ -832,7 +832,7 @@ export class BackroomsFX {
     const me = g.me, cam = g.camera;
     if (me.alive && me.light) {
       const f = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
-      list.push({ p: cam.position.clone().addScaledVector(f, 0.2), d: f, dist: 0 });
+      list.push({ p: cam.position.clone().addScaledVector(f, 0.2), d: f, dist: 0, k: g.flashK == null ? 1 : g.flashK });
     }
     for (const r of g.remotes.values()) {
       if (!r.alive || !r.light || r.team === 'monster') continue;
@@ -843,7 +843,7 @@ export class BackroomsFX {
     list.sort((a, b) => a.dist - b.dist);
     for (let i = 0; i < 4; i++) {
       const L = list[i];
-      FLASH.uFlashOn.value[i] = L ? 1 : 0;
+      FLASH.uFlashOn.value[i] = L ? (L.k == null ? 1 : L.k) : 0;
       if (L) { FLASH.uFlashPos.value[i].copy(L.p); FLASH.uFlashDir.value[i].copy(L.d); }
     }
   }

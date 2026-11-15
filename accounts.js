@@ -166,6 +166,16 @@ export async function reportMatch(stats) {
   return res;
 }
 
+// The Backrooms: remember on the account that this player has escaped Level 0 (Level 1 unlocked), so it follows
+// them to other devices. Quietly does nothing if the database hasn't got it yet (supabase.sql not re-run).
+export async function unlockBrLevel(level) {
+  if (!loggedIn() || ((profile.br_level | 0) >= level)) return;
+  try {
+    const v = await call('/rest/v1/rpc/unlock_br_level', { method: 'POST', body: { p_level: level } });
+    profile.br_level = Math.max(profile.br_level | 0, v | 0);
+  } catch (e) { console.warn('Could not save the Backrooms unlock to the account', e); }
+}
+
 export function favouriteWeapon(p) {
   const wk = (p && p.weapon_kills) || {};
   let best = null, n = 0;

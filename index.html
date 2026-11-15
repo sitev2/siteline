@@ -43,7 +43,8 @@
       <div class="tscore def"><b id="score-def">0</b><span class="tname" id="tname-def">DEF</span><small id="alive-def"></small></div>
     </div>
     <!-- the Backrooms: your tasks in order, finished ones crossed out (replaces the top bar there) -->
-    <div id="br-tasks"><div class="br-tasks-title">Tasks</div><ol id="br-task-list"></ol></div>
+    <div id="br-tasks"><div class="br-tasks-title">Tasks</div><ol id="br-task-list"></ol>
+      <div id="br-batt" class="hidden" aria-label="Flashlight battery"><i data-icon="battery"></i><span class="bb"><span id="br-batt-fill"></span></span></div></div>
     <div id="radar-wrap"><canvas id="radar"></canvas><div id="team-label"></div></div>
     <div id="killfeed"></div>
     <canvas id="crosshair" class="hidden"></canvas>
@@ -215,6 +216,7 @@
           <div class="lobby-row">
             <div class="match-rules" id="match-rules"><b>2v2</b> · first to <b>9</b> · sides swap after round <b>8</b> · 8–8 is a draw</div>
             <label class="check night-toggle"><input type="checkbox" id="lobby-night"> <i data-icon="moon"></i> Night mode</label>
+            <label class="field br-level br-stage hidden"><span>Level</span><select id="lobby-stage"><option value="0">Level 0: the yellow rooms</option><option value="1">Level 1: the garage</option></select></label>
             <label class="field br-level"><span>Difficulty</span><select id="lobby-level"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select></label>
             <button id="btn-shuffle" class="ghost host-only">Shuffle teams</button>
             <button id="btn-start" class="primary host-only">Start match</button>
@@ -247,8 +249,9 @@
           <select id="p-level"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select>
         </label>
         <label class="field p-stageopt hidden"><span>Level</span>
-          <select id="p-stage"><option value="0">Level 0: the yellow rooms</option><option value="1">Level 1: the garage (testing)</option></select>
+          <select id="p-stage"><option value="0">Level 0: the yellow rooms</option><option value="1">Level 1: the garage</option></select>
         </label>
+        <p class="note hidden" id="p-stage-note">Level 1 is locked: escape Level 0 first.</p>
         <label class="check p-nightopt"><input type="checkbox" id="p-night"> <i data-icon="moon"></i> Night mode (dark map, flashlights)</label>
         <p class="note" id="p-note">Friends can join with the room code or invite link from the pause menu. They take a bot's place.</p>
         <button id="p-start" class="primary">Start</button>
