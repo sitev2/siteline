@@ -9,6 +9,7 @@ import { MonsterBrain, outerCorners } from './monster.js';
 import { ShifterBrain } from './shifter.js';
 import { GAR_LEVELS, garLevel } from './garmap.js';
 import { POOL } from './poolmap.js';
+import { PoolHost } from './poolhost.js';
 import { BR_LEVELS, brLevel, brVariant, wallFace } from './brmap.js';
 import { cleanChat, CHAT_LIMIT } from './filter.js';
 import {
@@ -189,6 +190,7 @@ export class Server {
     const p = this.players.get(id);
     if (!p) return;
     if (this.brKey) this.dropKey(p);
+    if (this.pool && this.poolHost) this.poolHost.drop(p);
     this.bots.delete(id);
     // a friend left a practice game: a bot takes their place again
     if (this.botCfg && !p.bot && id !== this.localId && this.phase !== 'lobby' && this.phase !== 'over') {
@@ -264,6 +266,10 @@ export class Server {
         return;
       case 'boost':
         if (this.phase === 'br' && p.alive && !p.escaped) this.tryBoost(p);
+        return;
+      // the Poolrooms (poolhost.js): valves, the drain wheel, a long fall, a slide, the floaties
+      case 'valve': case 'drain': case 'fell': case 'slide': case 'ring': case 'throw':
+        if (this.phase === 'br' && this.pool && this.poolHost) this.poolHost.msg(p, msg);
         return;
       case 'pong':
         if (Number.isFinite(msg.ts)) {
@@ -711,6 +717,7 @@ export class Server {
     if (!tgt.alive) return;
     tgt.alive = false;
     if (this.brKey) this.dropKey(tgt);
+    if (this.pool && this.poolHost) this.poolHost.drop(tgt);
     tgt.deaths++;
     tgt.use = false;
     if (attacker && attacker !== tgt) {
@@ -780,6 +787,7 @@ export class Server {
       key: this.br && this.brKey ? (this.brKey.holder ? 1 : 0) : undefined,      // the red key isn't on its shelf
       gar: this.gar && this.garSt ? { power: this.garSt.power, crank: r2(this.garSt.crank), batts: this.garSt.batts } : undefined,      // Level 1's order so far
       block: this.gar && this.world ? this.world.block : undefined,              // Level 1: where the shapeshifter is parked as a car
+      pool: this.pool && this.poolHost ? this.poolHost.state() : undefined,      // Level 2: bridges, valves, heat, the drain, the floaties
     };
   }
 
@@ -1066,8 +1074,7 @@ export class Server {
     this.humans().forEach((p, i) => this.brSpawn(p, i));
   }
 
-  // ---------- Level 2 of the Backrooms: the Poolrooms (poolmap.js). No creature: only water, and falls ----------
-  // (Stage 1: the map and moving about in it. The puzzles, the slides and the ending come next. See CLAUDE.md.)
+  // ---------- Level 2 of the Backrooms: the Poolrooms (poolmap.js, poolhost.js). No creature: only water, and falls ----------
   // carry: straight on from Level 1's lift, as one run (the clock keeps going, everyone is alive again)
   startPool(carry = false) {
     if (!this.humans().length) return;
@@ -1086,13 +1093,14 @@ export class Server {
     this.corners = null; this.cornerUsed = true;
     this.notes = []; this.noteSeq = 0;
     this.keySpot = null; this.switchSpots = []; this.brKey = { holder: null }; this.switchDown = {}; this.switchAt = []; this.boost = null;
+    this.poolHost = new PoolHost(this);       // the order: plates and bridges, valves, the drain, the exit; falls; floaties
     this.phase = 'br';
     this.broadcast(this.startMsg());
     this.broadcastRoster();
     this.humans().forEach((p, i) => this.brSpawn(p, i));
   }
 
-  poolTick() {}
+  poolTick() { if (this.poolHost) this.poolHost.tick(); }
 
   // the shapeshifter parked as a car is solid (and gone again when it breaks out): everyone's world is told
   setBlock(r) {
@@ -1447,6 +1455,13 @@ export class Server {
     // inside has just been caught by the tall one, let them see what it does to them: ~6 s)
     // Level 0 escaped, and this host may play Level 1: the run carries straight on into the garage, everyone alive
     // again (also those who died in Level 0), once the last one's ending scene has played
+    // the Poolrooms: if everyone died, the Poolrooms start again (the run's clock keeps going)
+    if (!out && this.pool) {
+      this.brDone = false;
+      this.broadcast({ t: 'toast', text: 'Everyone is out. The Poolrooms start again…' });
+      this.later(5, () => { if (this.phase === 'br' && this.pool && this.humans().length) this.startPool(true); });
+      return;
+    }
     if (out && !this.gar && !this.pool && (this.botCfg ? this.botCfg.l1 : this.settings.l1)) {
       this.later(7, () => { if (this.phase === 'br' && !this.gar && this.humans().length) this.startGarage(true); });
       return;
@@ -1457,7 +1472,7 @@ export class Server {
   brEnd() {
     this.bots.delete('monster'); this.players.delete('monster');
     for (const p of this.humans()) { p.team = p.lobbyTeam === 'def' ? 'def' : 'atk'; p.escaped = false; p.w = STARTER_PISTOL[p.team]; }
-    this.br = false; this.gar = false; this.pool = false;
+    this.br = false; this.gar = false; this.pool = false; this.poolHost = null;
   }
 
   dmOver(reason) {
