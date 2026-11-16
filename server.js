@@ -8,6 +8,7 @@ import { NavGrid, BotBrain, BOT_NAMES } from './bots.js';
 import { MonsterBrain, outerCorners } from './monster.js';
 import { ShifterBrain } from './shifter.js';
 import { GAR_LEVELS, garLevel } from './garmap.js';
+import { POOL } from './poolmap.js';
 import { BR_LEVELS, brLevel, brVariant, wallFace } from './brmap.js';
 import { cleanChat, CHAT_LIMIT } from './filter.js';
 import {
@@ -856,7 +857,7 @@ export class Server {
     if (cfg.kind === 'br') {
       this.settings.mode = 'br';
       this.settings.level = brLevel(cfg.level);
-      if (cfg.stage === 1) this.startGarage(); else this.startBackrooms();
+      if (cfg.stage === 2) this.startPool(); else if (cfg.stage === 1) this.startGarage(); else this.startBackrooms();
       return;
     }
     if (cfg.kind === 'dm') {
@@ -987,6 +988,7 @@ export class Server {
     this.br = true;
     this.dm = false;
     this.brDone = false;
+    this.pool = false;
     this.settings.map = 'backrooms';
     // the maze's seed and the difficulty ("12345:hard"): a new maze every game
     this.variant = brVariant(1 + Math.floor(Math.random() * 2147483000), this.settings.level);
@@ -1034,7 +1036,7 @@ export class Server {
     if (!this.humans().length) return;
     for (const id of [...this.bots.keys()]) { this.bots.delete(id); this.players.delete(id); }
     const fresh = !this.br;
-    this.br = true; this.gar = true; this.dm = false; this.brDone = false;
+    this.br = true; this.gar = true; this.pool = false; this.dm = false; this.brDone = false;
     this.settings.map = 'garage';
     this.variant = brLevel(this.settings.level);
     this.world = new World(resolveMap('garage', this.variant));
@@ -1063,6 +1065,34 @@ export class Server {
     this.broadcastRoster();
     this.humans().forEach((p, i) => this.brSpawn(p, i));
   }
+
+  // ---------- Level 2 of the Backrooms: the Poolrooms (poolmap.js). No creature: only water, and falls ----------
+  // (Stage 1: the map and moving about in it. The puzzles, the slides and the ending come next. See CLAUDE.md.)
+  // carry: straight on from Level 1's lift, as one run (the clock keeps going, everyone is alive again)
+  startPool(carry = false) {
+    if (!this.humans().length) return;
+    for (const id of [...this.bots.keys()]) { this.bots.delete(id); this.players.delete(id); }
+    const fresh = !this.br;
+    this.br = true; this.gar = false; this.pool = true; this.dm = false; this.brDone = false;
+    this.settings.map = 'pool';
+    this.variant = brLevel(this.settings.level);
+    this.world = new World(resolveMap('pool', this.variant));
+    this.round = (this.round || 0) + 1;
+    if (!carry) this.timer = 0;
+    this.bomb = this.freshBomb();
+    this.drops.clear();
+    for (const p of this.humans()) { if (fresh) p.lobbyTeam = p.team; this.brPrepare(p); p.kills = 0; p.deaths = 0; }
+    this.doorAt = [];
+    this.corners = null; this.cornerUsed = true;
+    this.notes = []; this.noteSeq = 0;
+    this.keySpot = null; this.switchSpots = []; this.brKey = { holder: null }; this.switchDown = {}; this.switchAt = []; this.boost = null;
+    this.phase = 'br';
+    this.broadcast(this.startMsg());
+    this.broadcastRoster();
+    this.humans().forEach((p, i) => this.brSpawn(p, i));
+  }
+
+  poolTick() {}
 
   // the shapeshifter parked as a car is solid (and gone again when it breaks out): everyone's world is told
   setBlock(r) {
@@ -1147,13 +1177,14 @@ export class Server {
   brSpawn(p, i = Math.floor(Math.random() * 4)) {
     if (!this.players.has(p.id) || this.phase !== 'br') return;
     const s = this.world.spawns.atk[i % this.world.spawns.atk.length];
-    const y = this.gar ? this.world.def.gar.start.y : 0;
+    const y = this.gar ? this.world.def.gar.start.y : this.pool ? POOL.G : 0;
     Object.assign(p, { x: s.x, y, z: s.z, yaw: s.yaw, pitch: 0, hp: 100, alive: true, escaped: false, moved: 0 });
     this.send(p.id, { t: 'spawn', x: r2(s.x), y, z: r2(s.z), yaw: r2(s.yaw), rd: this.round });
   }
 
   brTick() {
     if (this.gar) return this.garTick();
+    if (this.pool) return this.poolTick();
     const door = this.world.exit, now = performance.now();
     this.boostTick(now);
     // where everyone has been in the last second or so (for the corner snatch)
@@ -1416,7 +1447,7 @@ export class Server {
     // inside has just been caught by the tall one, let them see what it does to them: ~6 s)
     // Level 0 escaped, and this host may play Level 1: the run carries straight on into the garage, everyone alive
     // again (also those who died in Level 0), once the last one's ending scene has played
-    if (out && !this.gar && (this.botCfg ? this.botCfg.l1 : this.settings.l1)) {
+    if (out && !this.gar && !this.pool && (this.botCfg ? this.botCfg.l1 : this.settings.l1)) {
       this.later(7, () => { if (this.phase === 'br' && !this.gar && this.humans().length) this.startGarage(true); });
       return;
     }
@@ -1426,7 +1457,7 @@ export class Server {
   brEnd() {
     this.bots.delete('monster'); this.players.delete('monster');
     for (const p of this.humans()) { p.team = p.lobbyTeam === 'def' ? 'def' : 'atk'; p.escaped = false; p.w = STARTER_PISTOL[p.team]; }
-    this.br = false; this.gar = false;
+    this.br = false; this.gar = false; this.pool = false;
   }
 
   dmOver(reason) {

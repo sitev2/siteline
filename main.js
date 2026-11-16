@@ -1486,4 +1486,5 @@ function init() {
 
 window.__debug = new URLSearchParams(location.search).has('debug');
 window.__app = { deliver: (m) => deliver(m), get game() { return app.game; }, get state() { return app; } };
+if (window.__debug) window.__app.practice = (cfg) => practice(cfg);      // (tests start any practice game straight away)
 init();

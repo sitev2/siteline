@@ -182,7 +182,7 @@ function makePlan(level) {
     { name: 'tunnel-w', x0: 14, z0: 20, x1: 16.5, z1: 28, y0: 0, y1: G + 2.5, wall: 'smooth', ceil: 'smooth', vault: 'z', spring: G + 1.25 },
     { name: 'tunnel-e', x0: 27.5, z0: 20, x1: 30, z1: 28, y0: 0, y1: G + 2.5, wall: 'smooth', ceil: 'smooth', vault: 'z', spring: G + 1.25 },
     { name: 'corridor', x0: 12, z0: 22.5, x1: 32, z1: 25.5, y0: 0, y1: G + 2.5, wall: 'smooth', ceil: 'smooth', vault: 'x', spring: G + 1.0 },
-    { name: 'deadend', x0: 34, z0: 3, x1: 37.5, z1: 17, y0: 0, y1: G + 2.4, wall: 'smooth', ceil: 'smooth' },
+    { name: 'deadend', x0: 34.4, z0: 3, x1: 37.5, z1: 17, y0: 0, y1: G + 2.4, wall: 'smooth', ceil: 'smooth', dark: 0.3 },      // dark: hardly any light gets in
     { name: 'kidney', x0: 11, z0: 28, x1: 35, z1: 50, y0: 0, y1: G + 4.2, wall: 'tile', ceil: 'tile', cove: 0.6 },
     { name: 'channel', x0: 35, z0: 21, x1: 41, z1: 45.5, y0: 0, y1: G + 4.2, wall: 'tile', ceil: 'tile' },
     { name: 'hallway', x0: 35.5, z0: 47, x1: 58.5, z1: 50, y0: G, y1: G + 3.4, wall: 'tile', ceil: 'smooth', cove: 0.5 },

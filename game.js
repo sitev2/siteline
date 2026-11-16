@@ -77,6 +77,7 @@ export class Game {
     this.world = new World(resolveMap(map, variant));
     this.gar = this.br && this.world.def.theme === 'garage';   // Backrooms Level 1: the garage and its shapeshifter
     if (this.gar && block) this.world.setBlock(block);         // (it is parked as a car right now)
+    this.pool = this.br && this.world.def.theme === 'pool';    // Backrooms Level 2: the Poolrooms (no creature: water and falls)
     this.hud = new Hud();
     this.running = true;
     this.paused = false;
@@ -201,7 +202,7 @@ export class Game {
     this.blast = null;
     this.remotes = new Map();
     this.ragdolls = new Ragdolls(this.scene, this.world);
-    if (this.br && !this.gar) this.ragdolls.setCeiling(BR.ceiling);       // (bodies swung about by the tall one stay under it)
+    if (this.br && !this.gar && !this.pool) this.ragdolls.setCeiling(BR.ceiling);       // (bodies swung about by the tall one stay under it)
     this.drops = new Map();     // id → { kind, w, model, ... }
     this.buyOpen = false;
     this.weaponKills = {};      // kills per gun this match (for account stats)
@@ -2729,6 +2730,8 @@ export class Game {
     // the sky follows the camera (so a short view distance never cuts it off)
     const skyK = (this.camera.far * 0.9) / 500;
     for (const s of this.sky) { s.position.copy(this.camera.position); s.scale.setScalar(skyK); }
+    // the Poolrooms: the water's mirror picture and people's shadows are drawn first
+    if (this.pool && this.builtMap.group.userData.preRender) this.builtMap.group.userData.preRender(this.renderer, this.scene, this.camera);
     if (this.post) this.post.render(this.scene, this.camera);
     else {
       this.renderer.setRenderTarget(null);
