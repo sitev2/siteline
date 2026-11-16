@@ -15,6 +15,7 @@
 
 import { backroomsMap } from './brmap.js';
 import { garageMap } from './garmap.js';
+import { poolMap } from './poolmap.js';
 
 const EAST = -Math.PI / 2, WEST = Math.PI / 2, NORTH = 0, SOUTH = Math.PI;
 // Wraps a builder so a block of map script can be placed with an offset
@@ -925,6 +926,8 @@ export function resolveMap(id, variant) {
   if (id === 'backrooms') return backroomsMap(variant);
   // Level 1 of the Backrooms: the garage, one fixed layout (the variant is the difficulty)
   if (id === 'garage') return garageMap(variant);
+  // Level 2: the Poolrooms, one fixed layout too
+  if (id === 'pool') return poolMap(variant);
   const d = MAPS[id] || MAPS.outpost;
   if (!d.sizes) return d;
   const v = d.sizes[variant] ? variant : 'small';
