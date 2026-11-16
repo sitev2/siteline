@@ -35,6 +35,9 @@ const LEVEL1_TESTERS = ['test123'];
 // (so it follows the player to other devices; guests only have the device).
 const BR_UNLOCK = 'siteline-br-level';
 function level1Unlocked() {
+  // test accounts (LEVEL1_TESTERS) can always play Level 1, without escaping Level 0 first
+  const t = acct.currentProfile();
+  if (t && LEVEL1_TESTERS.includes(String(t.username || '').toLowerCase())) return true;
   let local = false;
   try { local = localStorage.getItem(BR_UNLOCK) === '1'; } catch (e) { /* storage blocked */ }
   const p = acct.currentProfile();
