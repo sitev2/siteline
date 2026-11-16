@@ -5,6 +5,7 @@ import { makeTexture, letterTexture } from './textures.js';
 import { decorateMap } from './mapdeco.js';
 import { buildBackroomsScene } from './brview.js';
 import { buildGarageScene } from './garview.js';
+import { buildPoolScene } from './poolview.js';
 
 export const THEMES = {
   desert: {
@@ -455,6 +456,7 @@ function buildWater(world, theme, group, night) {
 export function buildMapScene(world, renderer, gfx = {}, night = false) {
   if (world.def.theme === 'backrooms') return buildBackroomsScene(world, renderer, gfx);
   if (world.def.theme === 'garage') return buildGarageScene(world, renderer, gfx);      // Backrooms Level 1
+  if (world.def.theme === 'pool') return buildPoolScene(world, renderer, gfx);          // Backrooms Level 2
   const theme = THEMES[world.def.theme] || THEMES.desert;
   const group = new THREE.Group();
   const shadows = !!gfx.shadows && gfx.shadows !== 'off';

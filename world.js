@@ -126,6 +126,16 @@ class Builder {
     w.doors.push(d);
   }
 
+  // a body of water with its own level that can change (the Poolrooms): info = { y, bottom, ... }; returns its index.
+  // wet() marks the cells it covers. waterAt() then answers from the grid.
+  body(info) {
+    const w = this.wd;
+    if (!w.waterGrid) w.waterGrid = new Uint8Array(w.w * w.h);
+    w.bodies.push({ ...info });
+    return w.bodies.length - 1;
+  }
+  wet(id, x0, z0, x1, z1) { this.cells(x0, z0, x1, z1, (ix, iz, i) => { this.wd.waterGrid[i] = id + 1; }); }
+
   spawn(team, x, z, yaw) { this.wd.spawns[team].push({ x, z, yaw }); }
   site(name, x0, z0, x1, z1) { this.wd.siteRects.push({ name, x0, z0, x1, z1 }); }
 }
@@ -158,6 +168,10 @@ export class World {
     }
     this.props = [];
     this.water = [];      // shallow canals: { x0, z0, x1, z1, y }
+    this.bodies = [];     // the Poolrooms: bodies of water marked cell by cell (waterGrid), each with its own level
+    this.waterGrid = null;
+    // extra solid shapes that aren't boxes (round pillars, curved pool walls, round rooms): the map's own test
+    this.solid = mapDef.solid || null;
     this.deco = [];       // visual-only extras for mapdeco.js
     this.houses = [];     // village maps: each house block with its look
     this.spawns = { atk: [], def: [], dm: [] };   // dm = deathmatch spawn points
@@ -329,8 +343,18 @@ export class World {
 
   // the water surface height here (0 = dry)
   waterAt(x, z) {
+    if (this.waterGrid) { const b = this.bodyAt(x, z); return b ? b.y : 0; }
     for (const w of this.water) if (x >= w.x0 && x <= w.x1 && z >= w.z0 && z <= w.z1) return w.y;
     return 0;
+  }
+
+  // the body of water over this point (the Poolrooms), or null
+  bodyAt(x, z) {
+    if (!this.waterGrid) return null;
+    const ix = Math.floor(x / CELL), iz = Math.floor(z / CELL);
+    if (ix < 0 || iz < 0 || ix >= this.w || iz >= this.h) return null;
+    const b = this.waterGrid[iz * this.w + ix];
+    return b ? this.bodies[b - 1] : null;
   }
 
   siteAt(x, z) {
@@ -370,6 +394,7 @@ export class World {
       const x0 = Math.floor((x - r) / CELL), x1 = Math.floor((x + r) / CELL), z0 = Math.floor((z - r) / CELL), z1 = Math.floor((z + r) / CELL);
       for (let iz = z0; iz <= z1; iz++) for (let ix = x0; ix <= x1; ix++) if (!this.pitCell(ix, iz)) return true;
     }
+    if (this.solid && this.solid(x, z, r, y, step, height)) return true;
     return this.forCircle(x, z, r, spans => {
       for (const s of spans) if (s.y1 > y + step && s.y0 < y + height) return true;
       return false;

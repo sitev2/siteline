@@ -105,7 +105,7 @@ export class Input {
       if (act === 'walk') this.walk = false;
     });
     this.on(window, 'blur', () => {
-      this.held.clear(); this.fire = false; this.useHeld = false; this.scoreHeld = false; this.walk = false; this.jumpHeld = false; this.updateMove();
+      this.held.clear(); this.fire = false; this.useHeld = false; this.scoreHeld = false; this.walk = false; this.jumpHeld = false; this.runHeld = false; this.updateMove();
     });
 
     // mouse
@@ -158,6 +158,7 @@ export class Input {
         else if (act === 'use') { this.useHeld = true; this.press('use'); info.kind = 'hold'; }
         else if (act === 'score') { this.scoreHeld = true; info.kind = 'hold'; }
         else if (act === 'jump') { this.jumpHeld = true; this.press('jump'); info.kind = 'hold'; }   // (held: sprint in the Backrooms)
+        else if (act === 'inspect') { this.runHeld = true; this.press('inspect'); info.kind = 'hold'; }   // (held: sprint in the Poolrooms)
         else { this.press(act); info.kind = 'tap'; }
       } else if (e.clientX < window.innerWidth * 0.42 && ![...this.pointers.values()].some(p => p.kind === 'joy')) {
         info.kind = 'joy';
@@ -199,6 +200,7 @@ export class Input {
         if (act === 'use') this.useHeld = false;
         if (act === 'score') this.scoreHeld = false;
         if (act === 'jump') this.jumpHeld = false;
+        if (act === 'inspect') this.runHeld = false;
       }
       if (info.kind === 'joy') {
         joy.classList.remove('active');

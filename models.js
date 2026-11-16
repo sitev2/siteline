@@ -792,7 +792,7 @@ const hashName = s => { let h = 0; for (const ch of String(s || '')) h = (h * 31
 
 // hazmat suit rubber: yellow with creases and scuffs (one shared material)
 let hazmat = null;
-function hazmatMat() {
+export function hazmatMat() {
   if (hazmat && hazmat.userData.detail === DETAIL) return hazmat;
   const S = 128, cv = document.createElement('canvas');
   cv.width = cv.height = S;
@@ -1149,16 +1149,46 @@ export function animateModel(model, dt, state) {
     T[1].rotation.x = mix(T[1].rotation.x, 0.25); S[1].rotation.x = mix(S[1].rotation.x, -1.65);
     T[0].rotation.x = mix(T[0].rotation.x, 1.4); S[0].rotation.x = mix(S[0].rotation.x, -1.4);
   }
+  // the Poolrooms: swimming (breaststroke, head up: the body nearly flat just under the surface, a frog kick)
+  // and climbing a ladder (hands on the rails, feet stepping up) blend in over the rest
+  model.swimW = (model.swimW || 0) + ((state.swim ? 1 : 0) - (model.swimW || 0)) * Math.min(1, dt * 5);
+  model.climbW = (model.climbW || 0) + ((state.climb != null ? 1 : 0) - (model.climbW || 0)) * Math.min(1, dt * 8);
+  const sw = smooth01(model.swimW), cw = smooth01(model.climbW);
+  // one stroke: 0 – 0.35 pull (hands sweep out and back), 0.35 – 0.55 hands together under the chin (knees drawn
+  // up), 0.55 – 1 hands shoot forward and the legs kick, then a glide
+  model.swimPh = ((model.swimPh || 0) + dt * (0.55 + 0.45 * Math.min(1, speed / 1.8))) % 1;
+  const sp = model.swimPh, bend = sp < 0.35 ? sp / 0.35 * 0.4 : sp < 0.55 ? 0.4 + (sp - 0.35) / 0.2 * 0.6 : Math.max(0, 1 - (sp - 0.55) / 0.12);
+  if (sw > 0.001) {
+    const mix = (a, b) => a + (b - a) * sw;
+    model.hips.position.y = mix(model.hips.position.y, 1.1 + Math.sin(sp * Math.PI * 2) * 0.025);
+    model.hips.rotation.set(mix(model.hips.rotation.x, -1.25 + bend * 0.12), mix(model.hips.rotation.y, 0), mix(model.hips.rotation.z, 0));
+    for (let i = 0; i < 2; i++) {
+      model.thighs[i].rotation.x = mix(model.thighs[i].rotation.x, 0.15 + bend * 0.55);
+      model.thighs[i].rotation.z = (i ? -1 : 1) * bend * 0.35 * sw;
+      model.shins[i].rotation.x = mix(model.shins[i].rotation.x, -0.15 - bend * 1.45);
+    }
+  } else for (let i = 0; i < 2; i++) model.thighs[i].rotation.z = 0;
+  // the ladder: the feet step up one rung after the other with the height climbed
+  const climbPh = (state.climb || 0) / 0.27 * Math.PI;
+  if (cw > 0.001) {
+    const mix = (a, b) => a + (b - a) * cw;
+    model.hips.rotation.set(mix(model.hips.rotation.x, 0), mix(model.hips.rotation.y, 0), mix(model.hips.rotation.z, 0));
+    for (let i = 0; i < 2; i++) {
+      const up = Math.max(0, Math.sin(climbPh + (i ? Math.PI : 0)));
+      model.thighs[i].rotation.x = mix(model.thighs[i].rotation.x, 0.25 + up * 0.75);
+      model.shins[i].rotation.x = mix(model.shins[i].rotation.x, -0.3 - up * 1.1);
+    }
+  }
   // upper body: lean into a run, breathing
-  const lean = -0.18 * run - 0.35 * kw + breathe * 0.012;
+  const lean = (-0.18 * run - 0.35 * kw + breathe * 0.012) * (1 - sw);
   model.spine.rotation.x = lean;
   model.spine.rotation.z = -Math.sin(ph) * 0.03 * run;
   // aim pitch and gun hold
   const aim = model.weapon === 'none' ? 0 : (state.pitch || 0) * (1 - kw) - 0.35 * kw;
   model.armsPitch = model.armsPitch == null ? aim : model.armsPitch + (aim - model.armsPitch) * Math.min(1, dt * 12);
-  model.arms.rotation.x = model.armsPitch - lean + model.kick * 0.12;
+  model.arms.rotation.x = (model.armsPitch - lean + model.kick * 0.12) * (1 - sw) + sw * (1.25 - bend * 0.12);      // (swimming: arms kept level)
   model.arms.position.y = 0.44 + Math.sin(ph * 2) * 0.01 * run - model.air * 0.01;
-  model.neck.rotation.x = (state.pitch || 0) * 0.6 - lean;
+  model.neck.rotation.x = ((state.pitch || 0) * 0.6 - lean) * (1 - sw) + sw * 1.15;      // (swimming: head up, looking ahead)
   model.neck.rotation.y = -model.blade * 0.85 - model.legYaw * 0.3;
   // hands on the gun (or working on the bomb); the gun turns back to point straight ahead
   const hold = model.gunHolder.position;
@@ -1201,6 +1231,21 @@ export function animateModel(model, dt, state) {
       _t.set(right ? 0.1 : -0.1, -0.55 + (right ? work : -work), -0.4);
       _hp.lerp(_t, kw);
       _hq.slerp(right ? Q_USE_R : Q_USE_L, kw);
+    }
+    // swimming: the breaststroke (arms space is kept level, -z ahead); climbing: hands on the rails, one above the other
+    if (sw > 0.001) {
+      const sd = right ? 1 : -1;
+      if (sp < 0.35) { const t = smooth01(sp / 0.35); _t.set(sd * (0.08 + 0.34 * t), -0.22 - 0.1 * t, -0.56 + 0.3 * t); }
+      else if (sp < 0.55) { const t = smooth01((sp - 0.35) / 0.2); _t.set(sd * (0.42 - 0.32 * t), -0.32 + 0.1 * t, -0.26 + 0.12 * t); }
+      else { const t = smooth01(Math.min(1, (sp - 0.55) / 0.2)); _t.set(sd * (0.1 - 0.02 * t), -0.22, -0.14 - 0.42 * t); }
+      _hp.lerp(_t, sw);
+      _hq.slerp(right ? Q_USE_R : Q_USE_L, sw);
+    }
+    if (cw > 0.001) {
+      const h = Math.sin(climbPh + (right ? Math.PI : 0)) * 0.13;
+      _t.set(right ? 0.24 : -0.24, 0.12 + h, -0.3);
+      _hp.lerp(_t, cw);
+      _hq.slerp(right ? Q_USE_R : Q_USE_L, cw);
     }
     // aim the arm at the wrist, then seat the hand on the end of the forearm
     _w.copy(arm.hand.userData.wrist).applyQuaternion(_hq).add(_hp);

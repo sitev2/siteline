@@ -24,6 +24,8 @@ import { icon } from './icons.js';
 import { BackroomsFX, LOGS } from './brfx.js';
 import { BR, wallFace } from './brmap.js';
 import { GAR_LEVELS, garLevel } from './garmap.js';
+import { POOL } from './poolmap.js';
+import { PoolHands, poolTint } from './poolplay.js';
 import { makeShifterModel, animateShifter } from './shiftmodel.js';
 
 const BOMB_STATES = ['none', 'carried', 'dropped', 'planted', 'defused', 'exploded'];
@@ -77,6 +79,7 @@ export class Game {
     this.world = new World(resolveMap(map, variant));
     this.gar = this.br && this.world.def.theme === 'garage';   // Backrooms Level 1: the garage and its shapeshifter
     if (this.gar && block) this.world.setBlock(block);         // (it is parked as a car right now)
+    this.pool = this.br && this.world.def.theme === 'pool';    // Backrooms Level 2: the Poolrooms (no creature: water and falls)
     this.hud = new Hud();
     this.running = true;
     this.paused = false;
@@ -201,7 +204,7 @@ export class Game {
     this.blast = null;
     this.remotes = new Map();
     this.ragdolls = new Ragdolls(this.scene, this.world);
-    if (this.br && !this.gar) this.ragdolls.setCeiling(BR.ceiling);       // (bodies swung about by the tall one stay under it)
+    if (this.br && !this.gar && !this.pool) this.ragdolls.setCeiling(BR.ceiling);       // (bodies swung about by the tall one stay under it)
     this.drops = new Map();     // id → { kind, w, model, ... }
     this.buyOpen = false;
     this.weaponKills = {};      // kills per gun this match (for account stats)
@@ -260,7 +263,17 @@ export class Game {
       this.fx.addNote({ id: -1, wall: true, log: 12, x: L.x + L.nx * 0.012, y: L.y, z: L.z + L.nz * 0.012, nx: L.nx, nz: L.nz, text: LOGS[12].text, name: 'attendant, nights', size: 0.46 });
       ud.onDrip = (x, y, z) => { sfx.playBR('drip', { x, y: y + 0.05, z }, this.occlusion(x, y + 0.3, z), 0.7); if (y < 0.1) this.addRipple(x, z, 0.35, 0.7); };
     }
-    if (this.br) {
+    document.body.classList.toggle('pool-mode', this.pool);
+    if (this.pool) {
+      // Level 2: no creature, no tasks on screen, no flashlight. Ladders are the way out of deep water.
+      this.poolLadders = [...this.world.def.pool.ladders, this.world.def.pool.exit.ladder];
+      this.poolHands = new PoolHands(this.vmScene);          // your own arms when you swim or climb
+      this.hud.center('Level 2', 'The Poolrooms', '#bfe9e2', 6);
+      // you can jump in here, so on phones the sprint button is its own (the inspect button, held)
+      const rb = document.getElementById('btn-inspect');
+      rb.innerHTML = icon('run'); rb.setAttribute('aria-label', 'Sprint');
+      this.brHintUntil = 12;
+    } else if (this.br) {
       if (this.gar) this.hud.center('Level 1', 'The garage. Not everything parked here is a car.', '#e8b46a', 7);
       else this.hud.center('The Backrooms', 'Heavy door, key, locked door, pits, levers, exit. Walking is quiet: it hears you sprint.', '#e8dc8a', 7);
       // the jump button becomes a hold-to-sprint button (no jumping in here)
@@ -272,9 +285,11 @@ export class Game {
 
   destroy() {
     this.running = false;
-    document.body.classList.remove('br-mode');
+    document.body.classList.remove('br-mode', 'pool-mode');
+    if (this.pool) { const rb = document.getElementById('btn-inspect'); rb.innerHTML = icon('search'); rb.setAttribute('aria-label', 'Inspect weapon'); }
+    if (this.builtMap && this.builtMap.group.userData.dispose) this.builtMap.group.userData.dispose();
     document.getElementById('br-batt').classList.add('hidden');
-    if (this.br) { const jb = document.getElementById('btn-jump'); jb.innerHTML = icon('jump'); jb.setAttribute('aria-label', 'Jump'); }
+    if (this.br && !this.pool) { const jb = document.getElementById('btn-jump'); jb.innerHTML = icon('jump'); jb.setAttribute('aria-label', 'Jump'); }
     if (this.fx) this.fx.destroy();
     sfx.stopAmbience();
     this.cancelReloadSfx();
@@ -359,6 +374,7 @@ export class Game {
       if (!rem.model) {
         // the Backrooms: hazmat suits, with the name on the back instead of a tag over the head
         rem.model = this.br ? makePlayerModel(r.team, r.name, false, 'hazmat') : makePlayerModel(r.team, r.name, this.isMate(r));
+        if (this.pool) { rem.model.root.traverse(o => o.layers.enable(this.builtMap.group.userData.castLayer)); poolTint(rem.model.root); }      // (they throw shadows in the sun, and are seen through the water)
         rem.model.root.visible = false;
         this.scene.add(rem.model.root);
       }
@@ -1004,7 +1020,7 @@ export class Game {
   surfaceAt(x, y, z) {
     const theme = this.world.def.theme;
     const ground = { desert: 'sand', industrial: 'hard', snow: 'snow', harbour: 'hard', quarry: 'gravel', railyard: 'gravel', village: 'hard', tuscan: 'hard' }[theme] || 'hard';
-    if (y < 0.3 && this.world.waterAt(x, z) > 0) return 'water';
+    if (this.pool ? this.world.waterAt(x, z) > y + 0.05 : y < 0.3 && this.world.waterAt(x, z) > 0) return 'water';
     if (y < 0.1) return ground;
     const spans = this.world.cellSpans(Math.floor(x / CELL), Math.floor(z / CELL));
     let best = null;
@@ -1079,7 +1095,7 @@ export class Game {
   }
 
   toggleFlashlight() {
-    if ((!this.night && !this.br) || !this.me.alive) return;
+    if ((!this.night && !this.br) || this.pool || !this.me.alive) return;      // (the Poolrooms are bright: no flashlight)
     if (this.gar && !this.me.light && this.batt <= 0) { sfx.playClick(); this.hud.center('', 'The battery is dead: find another', '#ff8a6a', 2.5); return; }
     this.me.light = !this.me.light;
     this.transport.send({ t: 'light', on: this.me.light });
@@ -1197,6 +1213,7 @@ export class Game {
 
   // a ring on the water at (x, z); does nothing away from water
   addRipple(x, z, size = 0.6, life = 0.9) {
+    if (this.pool) { if (!this.world.bodyAt(x, z)) return false; this.builtMap.group.userData.addRipple(x, z, size); return true; }      // (rings drawn by the water itself)
     const wy = this.world.waterAt(x, z);
     if (!wy || !this.ripples.length) return false;
     const r = this.ripples[this.rippleIdx++ % this.ripples.length];
@@ -1495,10 +1512,10 @@ export class Game {
       // N / the note button: write or draw a note; nothing else happens while the note is open
       if (inp.consume('note') && this.fx) this.fx.openEditor();
       // M / the map button: the map you've drawn by walking (open or shut)
-      if (inp.consume('map') && this.fx && !this.gar) this.fx.toggleMap();      // (no self-drawn map in Level 1)
+      if (inp.consume('map') && this.fx && !this.gar && !this.pool) this.fx.toggleMap();      // (no self-drawn map in Levels 1 and 2)
       if (this.fx && this.fx.editing) { inp.consume('use'); inp.consume('inspect'); if (inp.consume('escape')) this.fx.closeEditor(); return; }
       // F (the inspect key) is the flashlight in here, as well as L
-      if (inp.consume('inspect')) this.toggleFlashlight();
+      if (inp.consume('inspect') && !this.pool) this.toggleFlashlight();
       // E / the hand button: a door, a switch, or climbing up for the red key
       if (inp.consume('use')) {
         const u = this.useTarget();
@@ -1555,7 +1572,7 @@ export class Game {
   }
 
   // Backrooms: Shift (the walk key) or holding the run button on a phone sprints
-  sprinting() { return !!(this.input.walk || this.input.jumpHeld); }
+  sprinting() { return !!(this.input.walk || (this.pool ? this.input.runHeld : this.input.jumpHeld)); }      // (the Poolrooms: the jump button jumps, the run button sprints)
 
   // CS-style ground friction + acceleration, air-strafing and bunny-hop timing
   // Teammates' heads you could stand on: [{ x, z, r, top, id }]
@@ -1572,7 +1589,7 @@ export class Game {
     const me = this.me, inp = this.input, now = this.clock;
     const w = itemDef(me.weapon);
     // (no jumping in the Backrooms)
-    if (inp.consume('jump') && !this.br) me.jumpAt = now;   // remembered briefly so a press just before landing counts
+    if (inp.consume('jump') && (!this.br || this.pool)) me.jumpAt = now;   // remembered briefly so a press just before landing counts
 
     const mx = frozen ? 0 : inp.move.x, my = frozen ? 0 : inp.move.y;
     const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw);
@@ -1584,14 +1601,20 @@ export class Game {
     const gait = inp.walk ? WALK : 1;
     const wading = me.pos.y < 0.3 && this.world.waterAt(me.pos.x, me.pos.z) > 0;   // knee-deep canal water
     // the Backrooms: you walk (quietly) unless you hold Shift / the run button to sprint
-    const maxSpeed = this.br ? (this.sprinting() ? BR.sprint : BR.walk) * (wading ? 0.8 : 1)      // (Level 1's puddles slow you a little)
+    // the Poolrooms: on a ladder nothing else moves you; in deep water you swim (80 % of a walk); knee-deep water
+    // hardly slows you, waist-deep a little more
+    const pw = this.pool ? this.poolWater() : null;
+    if (pw && this.poolLadder(dt, wx, wz, amount, pw)) return;
+    const swim = !!(pw && pw.swim);
+    const maxSpeed = pw ? (swim ? BR.walk * 0.8 : (this.sprinting() ? BR.sprint : BR.walk) * (pw.depth > 0.62 ? 0.8 : pw.depth > 0.05 ? 0.95 : 1))
+      : this.br ? (this.sprinting() ? BR.sprint : BR.walk) * (wading ? 0.8 : 1)      // (Level 1's puddles slow you a little)
       : runSpeed(w, me.zoom > 0) * gait * (1 - 0.45 * me.tag) * (1 - me.landSlow) * (wading ? WADE : 1);
     const wish = maxSpeed * amount;
     const v = me.vel;
 
-    if (me.onGround) {
+    if (me.onGround || swim) {
       let jumped = false;
-      if (!frozen && me.jumpAt >= 0 && now - me.jumpAt < 0.1) {
+      if (!frozen && !swim && me.jumpAt >= 0 && now - me.jumpAt < 0.1) {
         v.y = JUMP_V; me.onGround = false; me.jumpAt = -1; jumped = true;
         me.peakY = me.pos.y; me.airTime = 0;
       }
@@ -1599,7 +1622,7 @@ export class Game {
         // friction
         const sp = Math.hypot(v.x, v.z);
         if (sp < 0.02) { v.x = 0; v.z = 0; } else {
-          const drop = Math.max(sp, STOP_SPEED) * FRICTION * dt;
+          const drop = swim ? sp * 2.2 * dt : Math.max(sp, STOP_SPEED) * FRICTION * dt;      // (water: you glide to a stop)
           const k = Math.max(0, sp - drop) / sp;
           v.x *= k; v.z *= k;
         }
@@ -1607,8 +1630,8 @@ export class Game {
       if (wish > 0) {
         const sp = Math.hypot(v.x, v.z);
         const cur = v.x * wx + v.z * wz;
-        let A = ACCEL;
-        if (cur < -0.2 * sp) A *= COUNTER_STRAFE;     // counter-strafe: stop in a frame or two
+        let A = swim ? 3.2 : ACCEL;
+        if (cur < -0.2 * sp && !swim) A *= COUNTER_STRAFE;     // counter-strafe: stop in a frame or two
         const add = wish - cur;
         if (add > 0) {
           const acc = Math.min(A * dt * Math.max(wish, maxSpeed * 0.5), add);
@@ -1639,7 +1662,8 @@ export class Game {
       me.mateLast = mate ? { x: mate.x, z: mate.z } : null;
     }
     const wasGround = me.onGround;
-    me.onGround = this.world.move(me.pos, v, dt, PLAYER_RADIUS, me.onGround, PLAYER_HEIGHT, plats);
+    me.onGround = this.world.move(me.pos, v, dt, PLAYER_RADIUS, me.onGround || swim, PLAYER_HEIGHT, plats);
+    if (pw) this.poolFloat(dt);
     const under = me.onGround ? plats.find(pl => Math.abs(pl.top - me.pos.y) < 0.02 && (me.pos.x - pl.x) ** 2 + (me.pos.z - pl.z) ** 2 < pl.r * pl.r) : null;
     if ((under && under.id) !== me.standingOn) { me.standingOn = under ? under.id : null; me.mateLast = under ? { x: under.x, z: under.z } : null; }
     if (!me.onGround) {
@@ -1654,16 +1678,84 @@ export class Game {
 
     const speed = Math.hypot(v.x, v.z);
     // wading can't be done quietly: even walking splashes
-    const inWater = me.onGround && me.pos.y < 0.3 && this.world.waterAt(me.pos.x, me.pos.z) > 0;
+    const inWater = this.pool ? !!(pw && pw.depth > 0.05 && me.onGround) : me.onGround && me.pos.y < 0.3 && this.world.waterAt(me.pos.x, me.pos.z) > 0;
     if (me.onGround && (inWater ? speed > 0.8 : speed > STEP_SPEED && (this.br || !inp.walk))) {
       me.stepTimer -= dt;
       if (me.stepTimer <= 0) {
         me.stepTimer = inWater ? 0.42 : 0.34;
-        sfx.playStep({ surface: this.surfaceAt(me.pos.x, me.pos.y, me.pos.z) });
+        sfx.playStep({ surface: inWater ? 'water' : this.surfaceAt(me.pos.x, me.pos.y, me.pos.z) });
         if (inWater) this.addRipple(me.pos.x, me.pos.z, 0.7);
       }
     }
+    // swimming: a stroke every so often sends rings out (and so does just floating there, now and then)
+    if (me.swim) {
+      me.stepTimer -= dt * (speed > 0.5 ? 1 : 0.22);
+      if (me.stepTimer <= 0) { me.stepTimer = 0.62; this.addRipple(me.pos.x, me.pos.z, speed > 0.5 ? 1 : 0.5); if (speed > 0.5) sfx.playStep({ surface: 'water' }); }
+    }
     this.vmBob += dt * speed * 1.6 * (me.onGround ? 1 : 0);
+  }
+
+  // ---- the Poolrooms: water ----
+  // the water where I am: how deep it is over the floor under me, where a swimmer floats, and whether I am swimming
+  poolWater() {
+    const me = this.me, b = this.world.bodyAt(me.pos.x, me.pos.z);
+    if (!b) return { depth: 0, swim: false, y: 0 };
+    const floor = this.world.groundAt(me.pos.x, me.pos.z, PLAYER_RADIUS, me.pos.y, 0.05);
+    const depth = b.y - floor, floatY = b.y - POOL.swim;
+    return { depth: Math.max(0, b.y - me.pos.y), y: b.y, floatY, deep: depth > POOL.deep, swim: depth > POOL.deep && me.pos.y <= floatY + 0.03 };
+  }
+  // after moving: deep water holds you up (your head never goes under), and falling into it is a splash, not a landing
+  poolFloat(dt) {
+    const me = this.me, w = this.poolWater();
+    const was = !!me.swim;
+    if (w.deep && me.pos.y <= w.floatY + 0.03) {
+      if (!was && me.vel.y < -2.5) { this.addRipple(me.pos.x, me.pos.z, 2.2); sfx.playLand({ surface: 'water', hard: Math.min(1, -me.vel.y / 9) }); this.vmLand = 0.5; me.vel.x *= 0.4; me.vel.z *= 0.4; me.dunk = this.clock; }
+      else if (!was) this.addRipple(me.pos.x, me.pos.z, 1.2);
+      me.pos.y = w.floatY; me.vel.y = 0;
+      me.swim = true; me.onGround = false; me.airTime = 0; me.peakY = me.pos.y;
+    } else me.swim = false;
+  }
+  // a ladder: push towards it (from the water, or from a drained pool's floor) to climb; step off the deck at one
+  // and you catch it; pull away to go down. Returns true while you are on one.
+  poolLadder(dt, wx, wz, amount, pw) {
+    const me = this.me;
+    let L = me.ladder || null;
+    if (!L) {
+      if (this.clock < (me.ladderFree || 0)) return false;
+      for (const c of this.poolLadders) {
+        if (me.pos.y > c.top - 0.25 || me.pos.y < c.bottom - 0.6) continue;
+        const fx = c.x - c.nx * 0.36, fz = c.z - c.nz * 0.36;
+        if ((me.pos.x - fx) ** 2 + (me.pos.z - fz) ** 2 > 0.6 * 0.6) continue;
+        const toward = (wx * c.nx + wz * c.nz) * amount;
+        if (toward > 0.3 || (!me.onGround && !me.swim && me.vel.y < -0.5 && me.pos.y > c.top - 1.3 && Math.hypot(me.vel.x, me.vel.z) < 3.2)) { L = c; break; }
+      }
+      if (!L) return false;
+      me.ladder = L; me.climbed = 0;
+    }
+    const toward = (wx * L.nx + wz * L.nz) * amount, side = Math.abs(-wx * L.nz + wz * L.nx) * amount;
+    const fx = L.x - L.nx * 0.36, fz = L.z - L.nz * 0.36;
+    me.pos.x += (fx - me.pos.x) * Math.min(1, dt * 10); me.pos.z += (fz - me.pos.z) * Math.min(1, dt * 10);
+    me.vel.x = me.vel.y = me.vel.z = 0;
+    const dir = toward > 0.2 ? 1 : toward < -0.2 ? -1 : 0;
+    me.pos.y += dir * 1.7 * dt; me.climbed += Math.abs(dir) * 1.7 * dt;
+    me.onGround = false; me.swim = false; me.airTime = 0; me.peakY = me.pos.y; me.climbDir = dir;
+    // a rung under your hands every 27 cm
+    if (me.climbed > 0.27) { me.climbed -= 0.27; sfx.playStep({ surface: 'metal' }); }
+    const b = this.world.bodyAt(fx, fz), floor = this.world.groundAt(fx, fz, 0.2, me.pos.y, 0.05);
+    const low = b && b.y - floor > POOL.deep ? b.y - POOL.swim : floor;
+    const jump = this.input.consume('jump');
+    if (me.pos.y >= L.top - 0.02 && !L.wall) {
+      // over the top: onto the deck
+      me.pos.x = L.x + L.nx * 0.5; me.pos.z = L.z + L.nz * 0.5; me.pos.y = L.top; me.onGround = true; me.ladder = null; me.ladderFree = this.clock + 0.5;
+      return false;
+    }
+    if (L.wall) me.pos.y = Math.min(me.pos.y, L.top - 0.05);
+    if (me.pos.y <= low + 0.01) {
+      me.pos.y = low;
+      // at the foot: let go by pulling away, moving sideways, or jumping
+      if (dir < 0 || side > 0.4 || jump) { me.ladder = null; me.ladderFree = this.clock + 0.4; return false; }
+    } else if (jump) { me.ladder = null; me.ladderFree = this.clock + 0.5; return false; }
+    return true;
   }
 
   onLand(now) {
@@ -2067,16 +2159,24 @@ export class Game {
       if (r.alive) {
         m.root.rotation.set(0, r.rp.yaw, 0);
         const fx = -Math.sin(r.rp.yaw), fz = -Math.cos(r.rp.yaw);
+        // the Poolrooms: swimming in deep water, or on a ladder
+        let swim = false, climb = null;
+        if (this.pool) {
+          const b = this.world.bodyAt(r.rp.x, r.rp.z);
+          if (b) { const fl = this.world.groundAt(r.rp.x, r.rp.z, 0.3, r.rp.y + 0.05, 0.05); swim = b.y - fl > POOL.deep && r.rp.y < b.y - POOL.swim + 0.15; }
+          if (m.root.userData.setWaterY) m.root.userData.setWaterY(b ? b.y : -1000);
+          for (const L of this.poolLadders) if (Math.hypot(r.rp.x - (L.x - L.nx * 0.36), r.rp.z - (L.z - L.nz * 0.36)) < 0.15 && r.rp.y < L.top - 0.05 && !swim) climb = r.rp.y;
+        }
         animateModel(m, dt, {
           speed: r.speed, fwd: r.vel.x * fx + r.vel.z * fz, side: r.vel.x * -fz + r.vel.z * fx,
-          pitch: r.rp.pitch, air: Math.abs(r.vel.y) > 1.2, use: !!r.use,
+          pitch: r.rp.pitch, air: Math.abs(r.vel.y) > 1.2 && !swim && climb == null, use: !!r.use, swim, climb,
         });
       }
       if (m.label) m.label.visible = r.alive;
       if (!r.alive || r.dummy) continue;
       const d = Math.hypot(r.rp.x - this.me.pos.x, r.rp.z - this.me.pos.z);
       // running footsteps of nearby players (walking is silent)
-      const wet = r.rp.y < 0.3 && this.world.waterAt(r.rp.x, r.rp.z) > 0;
+      const wet = this.pool ? this.world.waterAt(r.rp.x, r.rp.z) > r.rp.y + 0.05 : r.rp.y < 0.3 && this.world.waterAt(r.rp.x, r.rp.z) > 0;
       if ((wet ? speed > 0.8 : speed > STEP_SPEED) && Math.abs(vy) < 0.5) {
         r.stepTimer -= dt;
         if (r.stepTimer <= 0) {
@@ -2125,7 +2225,7 @@ export class Game {
   // what E / the hand button would do where you stand: climb up for the red key, press a switch, or a door
   useTarget() {
     const me = this.me;
-    if (!me.alive || !this.br) return null;
+    if (!me.alive || !this.br || this.pool) return null;
     const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw);
     if (this.gar) {
       // Level 1: the fuse box (until the power is on), the crank (until the shutter is up), then doors
@@ -2295,6 +2395,13 @@ export class Game {
         pitch += (Math.abs(s) - 0.5) * 0.006 * a;
       }
     }
+    if (this.pool && me.alive && me.swim) {
+      // afloat: the camera rides the water gently (and dips for a moment when you drop in)
+      const t = this.clock, d = t - (me.dunk == null ? -9 : me.dunk);
+      y += Math.sin(t * 1.7) * 0.028 + Math.sin(t * 2.9 + 1) * 0.011;
+      roll += Math.sin(t * 0.85) * 0.006;
+      if (d < 0.8) y -= 0.15 * Math.sin(d / 0.8 * Math.PI) * (1 - d / 0.8);
+    }
     const sn = this.fx && this.fx.camera(cam);
     if (sn) { x = sn.x; y = sn.y; z = sn.z; yaw = sn.yaw; pitch = sn.pitch; roll = sn.roll; spec = null; }
     if (spec && !itemDef(spec.w)) spec = null;
@@ -2444,7 +2551,8 @@ export class Game {
     const alive = { atk: 0, def: 0 };
     for (const r of this.remotes.values()) if (r.alive && !r.dummy) alive[r.team]++;
     if (me.alive) alive[me.team]++;
-    if (this.gar) {
+    if (this.pool) hud.setBackrooms([]);       // (no list of steps in the Poolrooms: you work it out by looking)
+    else if (this.gar) {
       // Level 1's three steps (stage 7 will tick them off)
       const sh = (this.world.doors || []).find(d => d.lock === 'shutter');
       hud.setBackrooms([{ text: 'Fix the power', done: this.garSt.power }, { text: 'Crank the shutter', done: !!(sh && sh.open) }, { text: 'Take the lift', done: !!me.escaped }]);
@@ -2546,7 +2654,10 @@ export class Game {
       hint = touch ? '[[spoon]] Tap [[swap]] for the spoon' : code ? `[[spoon]] Press ${keyLabel(code)} for the spoon` : '[[spoon]] Scroll the mouse wheel for the spoon';
     } else if (me.alive && this.phase === 'freeze') hint = touch ? 'Tap [[cart]] to buy' : `Press ${this.key('buy')} to buy`;
     else if (me.alive && this.dm && this.clock - (this.spawnedAt || 0) < 3) hint = touch ? 'Tap [[cart]] to change guns' : `Press ${this.key('buy')} to change guns`;
-    if (this.br) {
+    if (this.pool) {
+      // (only how to move, for the first few seconds; never what to do)
+      hint = me.alive && this.clock < (this.brHintUntil || 0) ? (touch ? 'Hold [[run]] to sprint · tap [[jump]] to jump' : `Hold ${this.key('walk')} to sprint · ${this.key('jump')} to jump`) : !me.alive && me.escaped && !this.escapeScene ? 'You got out. Watching the others…' : '';
+    } else if (this.br) {
       hint = '';
       const u = this.useTarget(), door = u && u.kind === 'door' ? this.world.doors[u.i] : null, press = touch ? 'Tap [[hand]]' : `Press ${this.key('use')}`;
       // (alone in there, the two-player parts work for one: the host's brSolo)
@@ -2588,9 +2699,9 @@ export class Game {
     if (altBtn.dataset.icon !== altLabel) { altBtn.dataset.icon = altLabel; altBtn.innerHTML = icon(altLabel); }
     document.getElementById('btn-swap').classList.toggle('hidden', !(me.inv.primary && me.inv.secondary) && !this.owns('c4') && !me.melee);
     const lightBtn = document.getElementById('btn-light');
-    lightBtn.classList.toggle('hidden', !this.night && !this.br);
+    lightBtn.classList.toggle('hidden', (!this.night && !this.br) || this.pool);
     document.getElementById('btn-note').classList.toggle('hidden', !this.br || !me.alive);
-    document.getElementById('btn-map').classList.toggle('hidden', !this.br || this.gar || !me.alive);
+    document.getElementById('btn-map').classList.toggle('hidden', !this.br || this.gar || this.pool || !me.alive);
     document.getElementById('btn-map').classList.toggle('on', !!(this.fx && this.fx.mapOpen));
     lightBtn.classList.toggle('on', !!me.light);
     document.getElementById('btn-drop').classList.toggle('hidden', !me.alive || this.dm || me.weapon === me.melee || (!!WEAPONS[me.weapon] && !(me.inv.primary && me.inv.secondary)));
@@ -2729,13 +2840,36 @@ export class Game {
     // the sky follows the camera (so a short view distance never cuts it off)
     const skyK = (this.camera.far * 0.9) / 500;
     for (const s of this.sky) { s.position.copy(this.camera.position); s.scale.setScalar(skyK); }
+    // the Poolrooms: the water's mirror picture and people's shadows are drawn first
+    if (this.pool) {
+      const ud = this.builtMap.group.userData, me = this.me, blobs = [];
+      if (me.alive && !me.swim && !me.ladder) blobs.push({ x: me.pos.x, y: me.pos.y, z: me.pos.z });
+      for (const r of this.remotes.values()) if (r.alive && r.model && r.model.root.visible && !(this.world.waterAt(r.rp.x, r.rp.z) > r.rp.y + 0.9)) blobs.push({ x: r.rp.x, y: r.rp.y, z: r.rp.z });
+      ud.setBlobs(blobs);
+      // my own shadow in the sun: a simple shape only the shadow picture sees
+      if (!this.shadowMe) { this.shadowMe = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, 1.2, 3, 8), new THREE.MeshBasicMaterial()); this.shadowMe.layers.set(ud.castLayer); this.scene.add(this.shadowMe); }
+      this.shadowMe.visible = me.alive; this.shadowMe.position.set(me.pos.x, me.pos.y + 0.86, me.pos.z);
+      ud.preRender(this.renderer, this.scene, this.camera);
+    }
     if (this.post) this.post.render(this.scene, this.camera);
     else {
       this.renderer.setRenderTarget(null);
       this.renderer.clear();
       this.renderer.render(this.scene, this.camera);
     }
-    if (this.br) return;          // no gun in your hands in the Backrooms
+    // no gun in your hands in the Backrooms (in the Poolrooms: your arms while you swim or climb)
+    if (this.pool && this.poolHands) {
+      const me = this.me;
+      const k = Math.tan(this.vmCamera.fov * Math.PI / 360) / Math.tan(this.camera.fov * Math.PI / 360);      // (so a hand on a rail lines up with the rail)
+      this.poolHands.update(dt, { swim: me.alive && me.swim, speed: Math.hypot(me.vel.x, me.vel.z), climb: me.alive && me.ladder ? { eyeY: this.camera.position.y, L: me.ladder, camera: this.camera, k } : null });
+      if (this.poolHands.root.visible) {
+        if (this.viewModel) this.viewModel.visible = false;
+        this.renderer.clearDepth();
+        this.renderer.render(this.vmScene, this.vmCamera);
+      }
+      return;
+    }
+    if (this.br) return;
     this.renderer.clearDepth();
     this.renderer.render(this.vmScene, this.vmCamera);
   }

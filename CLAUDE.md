@@ -320,6 +320,38 @@ The only folder is `server/` (the optional home game server).
     it vanishes for everyone and the taker's battery is full. Flickering tubes throw sparks and zap (`onSpark`).
   - STILL TO DO for Level 1: stage 8 only — a full test on a real phone and PC with real players (two-player run from Level 0's exit to
     the lift), then set `LEVEL1_OPEN = true` when the owner wants it public.
+- **Backrooms Level 2: the Poolrooms (being built: stage 1 of 3 done).** For now only the tester account (`test123`) can play it:
+  Practice → Backrooms → Level → "Level 2: the Poolrooms (being built)" (`cfg.stage === 2` → `Server.startPool()`). Stage 2 adds the puzzles,
+  slides, falls, floaties and the ending; stage 3 the real unlock (escaping Level 1), the run-on from Level 1, the lobby choice and "Run complete".
+  - `poolmap.js` — ONE fixed, hand-made layout (`resolveMap('pool', difficulty)`, theme `pool`, `world.def.pool` = the plan), 64 × 52 m:
+    ground floor deck at `POOL.G` 3 m (pools go down from there; their water at `POOL.WY` 2.88), flooded rooms (knee-deep, floor `POOL.SH`),
+    upper floor at `POOL.U` 10 m (7 m higher), roof underside `POOL.ROOF` 12.8. West side (start): lane hall (Picture B: slanted wall with
+    capsule windows), flooded hall + vaulted tunnels + dark dead ends (Picture C), kidney hall (Picture A), the start hallway (Level 1's lift
+    doors at its east end, shut). East side (needs the bridge across the deep channel, stage 2): atrium with the Great Pool (open to the roof),
+    slide hall + plunge pool, round stair tower (curved stair, `towerH`), galleries upstairs with NO railings, slide platform (three mouths),
+    the grotto (only by the green slide), the exit tunnel under the Great Pool (opens when it is drained, stage 2). No doors anywhere.
+    New world hooks (also used by the host): `b.body(info)` + `b.wet(...)` = bodies of water with their own level (`world.bodies`,
+    `world.bodyAt(x, z)`; `waterAt` answers from them), and `mapDef.solid(x, z, r, y, step, h)` = shapes that aren't boxes (round pillars,
+    round rooms, the pools' smooth curved edges), checked in `World.blocked`. Pillars never stand in the water (checked).
+  - `poolview.js` (+ `poolfx.js` shaders) — the look: every surface's soft light is baked at load (white sky in windows/skylights + the
+    sun's landing patches as lamps, with shadows, blurred fill) and then adapted to how bright the place is overall (`EXPO`: bright halls
+    turned down as a whole so sun patches still stand out); the low sun (fixed, `POOL.sun`) comes through ONE shadow picture taken at load.
+    The 5 cm mosaic (and 6×6 sheet seams) is drawn by the tile shader (exact grout filtering: no shimmer), damp shiny floor near water,
+    caustics under water and dancing light on walls/ceilings above it (Medium up), teal depth tint, soft haze. Water: gentle swell + rings
+    from people (`addRipple`), a real mirror picture on Medium up (`preRender`; Low uses the baked ceiling light instead), sun glints.
+    Light shafts + dust specks (Medium up), people's shadows in the sun (Medium up: a small second shadow picture, layer `castLayer`).
+    Curved parts are built on top of the grid: rounded pool lips + overflow gutters, round pillars, arches/capsules (`shapedHole`), vaults,
+    coves where ceilings curve into walls, the slanted window wall, steel ladders, round floor drains, coloured slide mouths.
+  - `poolplay.js` — your first-person arms (`PoolHands`: breaststroke while swimming, hand over hand on a ladder's rails) and `poolTint`
+    (people's parts under the surface are seen through the water).
+  - Movement (game.js `poolWater` / `poolFloat` / `poolLadder`): walk 2.7 / sprint 4.5 as in the Backrooms, knee-deep water hardly slows
+    you, deep water = swimming at 80 % of a walk (head up, the camera bobs; falling in is a splash, never a landing), you climb out only at
+    ladders (push towards one) and the lane pool's steps. Jumping IS allowed here (normal jump). Phones: the jump button jumps; the run
+    button (`#btn-inspect`, moved next to it in `pool-mode`) sprints while held (`input.runHeld`). No flashlight, no map, no task list, no hints
+    (only the move keys for the first seconds). Others see you swim (breaststroke, frog kick) or climb (`animateModel` `swim` / `climb`).
+  - `node check_pool.mjs [map]` walks and swims the whole map with no graphics: the start side is all reachable, nothing past the channel
+    without the bridge, everything (both floors, every ladder, plate spot, valve spot, slide mouth) with it, the grotto only by the green
+    slide and you can get out of it, nobody can get stuck anywhere, the exit only once the Great Pool is drained. `map` prints both floors.
 - `check_map.mjs` — `node check_map.mjs outpost` / `node check_map.mjs quarry large` checks every area and spawn is reachable
 
 - Rejoin: the last room joined as a guest is kept in localStorage for 30 min (`siteline-lastroom`); the menu shows

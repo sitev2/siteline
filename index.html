@@ -22,7 +22,7 @@
     // New .js files: add them to this list (libraries stay unversioned).
     (function () {
       var v = Date.parse(document.lastModified) || Date.now();
-      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'brfx', 'brmap', 'brview', 'buy', 'config', 'crosshair', 'filter', 'friends', 'game', 'garmap', 'garprops', 'garview', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'models', 'monster', 'net', 'netlog', 'nettest', 'post', 'ragdoll', 'server', 'shifter', 'shiftmodel', 'textures', 'touchlayout', 'weapons', 'world'];
+      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'brfx', 'brmap', 'brview', 'buy', 'config', 'crosshair', 'filter', 'friends', 'game', 'garmap', 'garprops', 'garview', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'models', 'monster', 'net', 'netlog', 'nettest', 'poolfx', 'poolmap', 'poolplay', 'poolview', 'post', 'ragdoll', 'server', 'shifter', 'shiftmodel', 'textures', 'touchlayout', 'weapons', 'world'];
       var imports = { three: './three.module.js' };
       for (var i = 0; i < files.length; i++) imports['./' + files[i] + '.js'] = './' + files[i] + '.js?v=' + v;
       window.SITELINE_V = v;
@@ -216,7 +216,7 @@
           <div class="lobby-row">
             <div class="match-rules" id="match-rules"><b>2v2</b> · first to <b>9</b> · sides swap after round <b>8</b> · 8–8 is a draw</div>
             <label class="check night-toggle"><input type="checkbox" id="lobby-night"> <i data-icon="moon"></i> Night mode</label>
-            <label class="field br-level br-stage hidden"><span>Level</span><select id="lobby-stage"><option value="0">Level 0: the yellow rooms</option><option value="1">Level 1: the garage</option></select></label>
+            <label class="field br-level br-stage hidden"><span>Level</span><select id="lobby-stage"><option value="0">Level 0: the yellow rooms</option><option value="1">Level 1: the garage</option><option value="2">Level 2: the Poolrooms (being built)</option></select></label>
             <label class="field br-level"><span>Difficulty</span><select id="lobby-level"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select></label>
             <button id="btn-shuffle" class="ghost host-only">Shuffle teams</button>
             <button id="btn-start" class="primary host-only">Start match</button>
@@ -249,7 +249,7 @@
           <select id="p-level"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select>
         </label>
         <label class="field p-stageopt hidden"><span>Level</span>
-          <select id="p-stage"><option value="0">Level 0: the yellow rooms</option><option value="1">Level 1: the garage</option></select>
+          <select id="p-stage"><option value="0">Level 0: the yellow rooms</option><option value="1">Level 1: the garage</option><option value="2">Level 2: the Poolrooms (being built)</option></select>
         </label>
         <p class="note hidden" id="p-stage-note">Level 1 is locked: escape Level 0 first.</p>
         <label class="check p-nightopt"><input type="checkbox" id="p-night"> <i data-icon="moon"></i> Night mode (dark map, flashlights)</label>
