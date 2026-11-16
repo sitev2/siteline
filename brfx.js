@@ -809,9 +809,9 @@ export class BackroomsFX {
     this.updateHeads(dt);
     this.updateBodies(dt);
     this.updateDread(dt);
-    if (!g.paused && !g.gar) this.hallucinate(dt);       // (no hallucinations in Level 1)
+    if (!g.paused && !g.gar && !g.pool) this.hallucinate(dt);       // (no hallucinations in Levels 1 and 2)
     this.readNote();
-    if (!g.gar) this.mapStep(dt);                        // (and no self-drawn map)
+    if (!g.gar && !g.pool) this.mapStep(dt);             // (and no self-drawn map)
     // people (and it) are only as bright as the place you are in
     if (this.built.lightAt && this.built.dimPeople) {
       let l = this.built.lightAt(g.camera.position.x, g.camera.position.z, g.camera.position.y - 1.6);

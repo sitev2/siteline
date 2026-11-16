@@ -1003,7 +1003,8 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   ud.lightAt = (x, z, y = G) => { const f = sample(probe, x, y + 1.2, z), g2 = sample(fill, x, y + 1.2, z); return Math.min(1.5, (f[1] * 1.3 + g2[1] * 0.9 + 0.06) * 1.25); };
   ud.debugLight = (x, y, z, nx = 0, ny = 1, nz = 0) => shade(x, y, z, nx, ny, nz).l.map(v => Math.round(v * 100) / 100);
   ud.sunAt = (x, y, z) => !world.raycast(x, y, z, -S[0], -S[1], -S[2], 80);
-  ud.dimPeople = (k, sun = false) => { hemi.intensity = 0.5 + 1.5 * Math.min(1.2, k); sunL.intensity = sun ? 2.4 : 0; };
+  let inSun = false, sunT = 0;
+  ud.dimPeople = (k) => { hemi.intensity = 0.5 + 1.5 * Math.min(1.2, k); sunL.intensity += ((inSun ? 2.4 : 0) - sunL.intensity) * 0.2; };
 
   // ================= every frame =================
   let ripI = 0;
@@ -1015,7 +1016,12 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     for (const w of waters) if (w.body.name === name) { w.mesh.position.y = y; w.mesh.visible = y > w.body.bottom + 0.03; w.box.min.y = w.box.max.y = y; }
     if (name === 'great') UNI.uGreatY.value = y;
   };
-  ud.update = (dt) => { UNI.uTime.value += dt; };
+  ud.update = (dt, dread, cam) => {
+    UNI.uTime.value += dt;
+    // is the camera standing in a patch of sun? (people near you are then lit by it too)
+    sunT -= dt;
+    if (sunT <= 0 && cam) { sunT = 0.25; inSun = ud.sunAt(cam.x, cam.y - 0.5, cam.z); }
+  };
 
   // the mirror picture for the water (Medium and up), and people's shadows in the sun
   const mirror = Q >= 1 ? { rt: null, cam: new THREE.PerspectiveCamera(), plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -(WY - 0.03)), scale: Q === 1 ? 0.5 : 0.7 } : null;

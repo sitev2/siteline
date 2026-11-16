@@ -51,6 +51,7 @@ export function setVolume(v) {
 // ---------- the room ----------
 // each map's acoustics: how long the reverb rings, how much of it, how bright
 const ROOMS = {
+  pool: { decay: 3.4, wet: 0.42, damp: 6800 },      // big, hard, tiled halls: a long bright echo
   desert: { decay: 0.9, wet: 0.16, damp: 3200 },
   industrial: { decay: 2.1, wet: 0.3, damp: 5200 },
   snow: { decay: 0.75, wet: 0.13, damp: 2400 },
@@ -816,6 +817,7 @@ const AMB = {
   tuscan: { wind: 0.35, windTone: 400, events: ['bird', 'bird', 'bell', 'gust', 'bird'] },
   backrooms: { buzz: 1, events: ['thud', 'creak', 'thud', 'clank'] },    // the endless fluorescent buzz
   garage: { hum: 1.3, buzz: 0.3, events: ['thud', 'creak', 'clank', 'hiss'] },      // a low electrical hum, the sodium lamps' buzz
+  pool: { hum: 0.35, water: 0.3, lap: 0.5, events: ['drip', 'drip', 'drip'] },      // the Poolrooms: a soft air hum, water lapping, drips
 };
 function ambienceBed(a, night) {
   const secs = 10;
@@ -878,6 +880,8 @@ const AMB_EVENT = {
   horn: () => buf(2.4, (x, sr) => { for (let i = 0; i < x.length; i++) { const t = i / sr, e = Math.min(1, t / 0.15) * (t < 1.8 ? 1 : Math.exp(-(t - 1.8) / 0.15)); let v = 0; for (let h = 1; h < 8; h++) v += Math.sin(6.283 * 110 * h * t) / h; x[i] = v * e * 0.4; } biquad(x, 'lowpass', 700, 0.7, sr); normalize(x, 0.5); }),
   clank: () => buf(1.2, (x, sr) => { partials(x, sr, 0, [[310 + Math.random() * 80, 0.5, 0.5], [780, 0.3, 0.35], [1440, 0.2, 0.2], [2310, 0.12, 0.12]], 1); noiseHit(x, sr, 0, 'lowpass', 800, 0.7, 0.03, 0.5); normalize(x, 0.5); }),
   hiss: () => buf(1.4, (x, sr) => { noiseHit(x, sr, 0, 'highpass', 3000, 0.7, 0.4, 0.6, 0.1); normalize(x, 0.35); }),
+  // a drop of water falling into still water, somewhere in a tiled hall
+  drip: () => buf(0.5, (x, sr) => { const f = 1100 + Math.random() * 900; for (let i = 0; i < 0.16 * sr; i++) { const t = i / sr; x[i] += Math.sin(6.283 * (f + 500 * t) * t) * Math.exp(-t * 34) * 0.5; } normalize(x, 0.3); }),
   beeper: () => buf(2.2, (x, sr) => { for (let p = 0; p < 4; p++) partials(x, sr, p * 0.5, [[1180, 0.5, 0.18]], 1); normalize(x, 0.4); }),
   gust: () => buf(2.5, (x, sr) => { sweepNoise(x, sr, 0, 2.4, 300, 900, 0.8, 1, 0.5); normalize(x, 0.5); }),
   // a church bell tolling a few times across the rooftops (bell partials: hum, prime, minor third, fifth, nominal)

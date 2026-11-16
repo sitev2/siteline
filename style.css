@@ -252,6 +252,7 @@ body:not(.is-host) .host-only { display: none !important; }
 #br-tasks { display: none; top: 50%; transform: translateY(-50%); left: calc(max(16px, 1.3vw) + var(--sal)); max-width: 50vw;
   font-size: max(10px, 1.75vh); pointer-events: none; text-shadow: 0 .07em .14em rgba(0,0,0,.9), 0 0 .55em rgba(0,0,0,.55); }
 body.br-mode #br-tasks { display: block; }
+body.pool-mode #br-tasks { display: none; }      /* the Poolrooms: nothing on screen tells you what to do */
 /* Level 1: the flashlight's battery, under the tasks */
 #br-batt { display: flex; align-items: center; gap: .5em; margin-top: .9em; color: rgba(255,255,255,.85); }
 #br-batt.hidden { display: none; }
