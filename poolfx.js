@@ -348,17 +348,18 @@ export function shaftMaterial(U) {
   return new THREE.ShaderMaterial({
     uniforms: { ...U, uShaft: { value: 0.055 } },
     vertexShader: /* glsl */`
-      attribute float aAlong;
-      varying float vA; varying vec3 vW, vN;
-      void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; vN = normal; vA = aAlong; gl_Position = projectionMatrix * viewMatrix * w; }`,
+      attribute float aAlong, aAcross;
+      varying float vA, vX; varying vec3 vW, vN;
+      void main() { vec4 w = modelMatrix * vec4(position, 1.0); vW = w.xyz; vN = normal; vA = aAlong; vX = aAcross; gl_Position = projectionMatrix * viewMatrix * w; }`,
     fragmentShader: /* glsl */`
       uniform vec3 uSunCol; uniform float uShaft, uTime;
-      varying float vA; varying vec3 vW, vN;
+      varying float vA, vX; varying vec3 vW, vN;
       void main() {
         vec3 V = normalize(cameraPosition - vW);
         float face = abs(dot(normalize(vN), V));
         float a = uShaft * (0.12 + 0.88 * face * face) * smoothstep(0.0, 0.08, vA) * (1.0 - vA * 0.65);
         a *= 0.92 + 0.08 * sin(vW.x * 1.7 + vW.z * 1.3 + uTime * 0.3);
+        a *= smoothstep(0.0, 0.3, vX) * smoothstep(1.0, 0.7, vX);          // (a square beam's corners melt away)
         float near = smoothstep(0.3, 2.2, length(cameraPosition - vW));
         gl_FragColor = vec4(uSunCol * 0.42 * a * near, 1.0);
         #include <colorspace_fragment>

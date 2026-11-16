@@ -17,6 +17,7 @@ const ROOFT = ROOF + 0.4;
 const S = POOL.sun;                                   // the way the sunlight travels
 const SUN = [3.3, 2.4, 1.4], SKY = [13, 12.6, 11.6], ALB = [0.84, 0.79, 0.66];
 const FIN = { cream: 0, white: 1, blue: 2, smooth: 3, gutter: 4 };
+const EXPO = { a: 0.34, b: 0.1, p: 1.05 };          // the eye's adaptation (see shade())
 
 class Buf {
   constructor() { this.pos = []; this.nor = []; this.uv = []; this.light = []; this.fx = []; this.glint = []; this.idx = []; this.map = new Map(); }
@@ -193,6 +194,24 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     }
     return a;
   });
+  // how bright the place round you is on the whole (the probes blurred over ~12 m): what the eye gets used to
+  const adaptG = PY.map((y, L) => {
+    let a = new Float32Array(PW * PD);
+    for (let i = 0; i < PW * PD; i++) a[i] = probeOk[L][i] ? (probe[L][i * 3] * 0.3 + probe[L][i * 3 + 1] * 0.6 + probe[L][i * 3 + 2] * 0.1) : 0;
+    for (let pass = 0; pass < 4; pass++) {
+      const o = new Float32Array(a.length);
+      for (let j = 0; j < PD; j++) for (let i = 0; i < PW; i++) {
+        if (!probeOk[L][j * PW + i]) continue;
+        let s2 = 0, n = 0;
+        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if (ii < 0 || jj < 0 || ii >= PW || jj >= PD || !probeOk[L][jj * PW + ii]) continue; s2 += a[jj * PW + ii]; n++; }
+        o[j * PW + i] = s2 / n;
+      }
+      a = o;
+    }
+    const out = new Float32Array(PW * PD * 3);
+    for (let i = 0; i < PW * PD; i++) out[i * 3] = out[i * 3 + 1] = out[i * 3 + 2] = a[i];
+    return out;
+  });
   const fo = [0, 0, 0];
   const sample = (grid, x, y, z) => {
     const order = y < 5.2 ? [0, 1, 2] : y < 8.7 ? [1, 0, 2] : [2, 1, 0];
@@ -238,10 +257,12 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     const f = sample(fill, nd.x, y + ny * 0.5, nd.z);
     const up = ny > 0.5 ? 0.85 : ny < -0.5 ? 1.0 : 1;
     const l = [(raw.r + f[0] * 1.5 * up + 0.05) * ao, (raw.g + f[1] * 1.5 * up + 0.048) * ao, (raw.b + f[2] * 1.5 * up + 0.045) * ao];
-    // the eye gets used to each room: very bright halls are pulled down, dim ones hardly changed
-    { const m = Math.max(l[0], l[1], l[2], 1e-4), room = roomAt(nd.x, y + ny * 0.3, nd.z), k = 1.12 / (m + 1) * (room && room.dark ? room.dark : 1); l[0] *= k; l[1] *= k; l[2] *= k; }
+    // the eye gets used to each place: bright halls are turned down as a whole (so a sun patch still stands out
+    // against the shade next to it), dim ones turned up a little
+    const adapt = sample(adaptG, nd.x, y + ny * 0.5, nd.z)[0];
+    { const room = roomAt(nd.x, y + ny * 0.3, nd.z), k = Math.min(1.7, Math.max(0.1, Math.pow(EXPO.a / (adapt + EXPO.b), EXPO.p))) * (room && room.dark ? room.dark : 1); l[0] *= k; l[1] *= k; l[2] *= k; }
     const gm = Math.hypot(raw.gx, raw.gy, raw.gz), gk = gm > 1e-5 ? Math.min(1.6, gm * 0.55) / gm : 0;
-    o = { l, g: [raw.gx * gk, raw.gy * gk, raw.gz * gk], c: Math.min(1.6, raw.c * 5.5), w: ny > 0.5 ? wetAt(x, y, z) : 0 };
+    o = { l, g: [raw.gx * gk, raw.gy * gk, raw.gz * gk], c: Math.min(1.6, raw.c * 5.5), w: ny > 0.5 ? wetAt(x, y, z) : 0, adapt };
     shadeCache.set(key, o);
     return o;
   };
@@ -330,7 +351,8 @@ export function buildPoolScene(world, renderer, gfx = {}) {
         }
         if (!parts.length) continue;
         // a deck's edge down into a pool is drawn by hand along the smooth edge (unless a wall stands on it)
-        const nbPool = poolCell(jx, jz) >= 0, deckEdge = nbPool && Math.abs(s.y1 - G) < 0.01 && !spans.some(t => t.y0 < G + 2 && t.y1 > G + 0.01);
+        // (only where the pool's smooth edge really runs along here: a pool cut off square by a room's wall keeps its plain wall)
+        const nbPool = poolCell(jx, jz) >= 0, deckEdge = nbPool && Math.abs(s.y1 - G) < 0.01 && !spans.some(t => t.y0 < G + 2 && t.y1 > G + 0.01) && sdfMin(x0 + 0.25 + nx * 0.25, z0 + 0.25 + nz * 0.25) > -0.45;
         if (deckEdge) continue;
         const nwk = wkOf(jx, jz) || (inExit((jx + 0.5) * CELL, (jz + 0.5) * CELL) ? 2 : 0);
         const e = nx === 1 ? [[x1, z1], [x1, z0]] : nx === -1 ? [[x0, z0], [x0, z1]] : nz === 1 ? [[x0, z1], [x1, z1]] : [[x1, z0], [x0, z0]];
@@ -939,7 +961,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   const fxGroup = new THREE.Group();
   group.add(fxGroup);
   {
-    const sp = [], sn = [], sa = [], dust = [], seed = [], gp = [], guv = [];
+    const sp = [], sn = [], sa = [], sx = [], dust = [], seed = [], gp = [], guv = [];
     for (const ap of apertures) {
       const { c, n, a, b, la, lb } = ap;
       // the window's glow: a soft white sheet just inside it
@@ -969,8 +991,9 @@ export function buildPoolScene(world, renderer, gfx = {}) {
         const ex = p2[0] - p[0], ey = p2[1] - p[1], ez = p2[2] - p[2];
         let nx = ey * S[2] - ez * S[1], ny = ez * S[0] - ex * S[2], nz = ex * S[1] - ey * S[0]; const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
         const far = (pp) => [pp[0] + S[0] * len, pp[1] + S[1] * len, pp[2] + S[2] * len];
-        const v4 = [[p, 0], [p2, 0], [far(p2), 1], [far(p), 1]];
-        for (const j of [0, 1, 2, 0, 2, 3]) { sp.push(...v4[j][0]); sn.push(nx, ny, nz); sa.push(v4[j][1]); }
+        // (across: 0 … 1 over a flat side of a square beam, so its corners can fade; round beams fade at their own edges)
+        const v4 = [[p, 0, 0], [p2, 0, 1], [far(p2), 1, 1], [far(p), 1, 0]];
+        for (const j of [0, 1, 2, 0, 2, 3]) { sp.push(...v4[j][0]); sn.push(nx, ny, nz); sa.push(v4[j][1]); sx.push(ap.shape === 'rect' ? v4[j][2] : 0.5); }
       }
       // dust: specks scattered through the beam
       const count = Math.min(140, Math.round(la * lb * len * 2.4));
@@ -989,7 +1012,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     }
     if (sp.length) {
       const g = new THREE.BufferGeometry();
-      g.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(sn, 3)); g.setAttribute('aAlong', new THREE.Float32BufferAttribute(sa, 1));
+      g.setAttribute('position', new THREE.Float32BufferAttribute(sp, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(sn, 3)); g.setAttribute('aAlong', new THREE.Float32BufferAttribute(sa, 1)); g.setAttribute('aAcross', new THREE.Float32BufferAttribute(sx, 1));
       const m = new THREE.Mesh(g, shaftMaterial(UNI)); m.renderOrder = 8; m.frustumCulled = false; fxGroup.add(m);
     }
     if (dust.length) {
@@ -1004,7 +1027,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   sunL.position.set(-S[0] * 10, -S[1] * 10, -S[2] * 10);
   group.add(hemi, sunL, sunL.target);
   ud.lightAt = (x, z, y = G) => { const f = sample(probe, x, y + 1.2, z), g2 = sample(fill, x, y + 1.2, z); return Math.min(1.5, (f[1] * 1.3 + g2[1] * 0.9 + 0.06) * 1.25); };
-  ud.debugLight = (x, y, z, nx = 0, ny = 1, nz = 0) => shade(x, y, z, nx, ny, nz).l.map(v => Math.round(v * 100) / 100);
+  ud.debugLight = (x, y, z, nx = 0, ny = 1, nz = 0) => { const o = shade(x, y, z, nx, ny, nz); return [Math.round(o.l[1] * 100) / 100, Math.round(o.adapt * 100) / 100]; };
   ud.sunAt = (x, y, z) => !world.raycast(x, y, z, -S[0], -S[1], -S[2], 80);
   let inSun = false, sunT = 0;
   ud.dimPeople = (k) => { hemi.intensity = 0.5 + 1.5 * Math.min(1.2, k); sunL.intensity += ((inSun ? 2.4 : 0) - sunL.intensity) * 0.2; };
@@ -1032,7 +1055,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   if (dyn) UNI.uDyn.value = dyn.rt.depthTexture;
   ud.castLayer = 3;                                         // things on this layer throw a shadow in the sun (people)
   const frustum = new THREE.Frustum(), pm = new THREE.Matrix4(), size = new THREE.Vector2();
-  const vTmp = new THREE.Vector3(), tTmp = new THREE.Vector3(), q4 = new THREE.Matrix4();
+  const vTmp = new THREE.Vector3(), tTmp = new THREE.Vector3(), q4 = new THREE.Matrix4(), clr = new THREE.Color();
   ud.preRender = (rend, scene, camera) => {
     const prevRT = rend.getRenderTarget(), auto = rend.autoClear;
     rend.autoClear = true;
@@ -1075,7 +1098,9 @@ export function buildPoolScene(world, renderer, gfx = {}) {
         fxGroup.visible = false;
         UNI.uClipY.value = WY - 0.03; UNI.uLite.value = 1;
         const cp = rend.clippingPlanes; rend.clippingPlanes = [mirror.plane];
+        rend.getClearColor(clr); const ca = rend.getClearAlpha(); rend.setClearColor(0x9a917f, 1);      // (undersides nobody draws read as shaded tile, not as white sky)
         rend.setRenderTarget(mirror.rt); rend.clear(); rend.render(scene, mc);
+        rend.setClearColor(clr, ca);
         rend.clippingPlanes = cp;
         UNI.uClipY.value = -1e6; UNI.uLite.value = 0;
         fxGroup.visible = true;
@@ -1084,6 +1109,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     }
     rend.setRenderTarget(prevRT); rend.autoClear = auto;
   };
+  ud.debugMirror = () => mirror && mirror.rt;
   ud.dispose = () => { shadowRT.dispose(); if (dyn) dyn.rt.dispose(); if (mirror && mirror.rt) mirror.rt.dispose(); };
 
   renderer.setClearColor(0xffffff, 1);                      // the sky in every window: blown-out white

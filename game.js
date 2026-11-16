@@ -25,6 +25,7 @@ import { BackroomsFX, LOGS } from './brfx.js';
 import { BR, wallFace } from './brmap.js';
 import { GAR_LEVELS, garLevel } from './garmap.js';
 import { POOL } from './poolmap.js';
+import { PoolHands, poolTint } from './poolplay.js';
 import { makeShifterModel, animateShifter } from './shiftmodel.js';
 
 const BOMB_STATES = ['none', 'carried', 'dropped', 'planted', 'defused', 'exploded'];
@@ -266,6 +267,7 @@ export class Game {
     if (this.pool) {
       // Level 2: no creature, no tasks on screen, no flashlight. Ladders are the way out of deep water.
       this.poolLadders = [...this.world.def.pool.ladders, this.world.def.pool.exit.ladder];
+      this.poolHands = new PoolHands(this.vmScene);          // your own arms when you swim or climb
       this.hud.center('Level 2', 'The Poolrooms', '#bfe9e2', 6);
       // you can jump in here, so on phones the sprint button is its own (the inspect button, held)
       const rb = document.getElementById('btn-inspect');
@@ -372,7 +374,7 @@ export class Game {
       if (!rem.model) {
         // the Backrooms: hazmat suits, with the name on the back instead of a tag over the head
         rem.model = this.br ? makePlayerModel(r.team, r.name, false, 'hazmat') : makePlayerModel(r.team, r.name, this.isMate(r));
-        if (this.pool) rem.model.root.traverse(o => o.layers.enable(this.builtMap.group.userData.castLayer));      // (they throw shadows in the sun)
+        if (this.pool) { rem.model.root.traverse(o => o.layers.enable(this.builtMap.group.userData.castLayer)); poolTint(rem.model.root); }      // (they throw shadows in the sun, and are seen through the water)
         rem.model.root.visible = false;
         this.scene.add(rem.model.root);
       }
@@ -1018,7 +1020,7 @@ export class Game {
   surfaceAt(x, y, z) {
     const theme = this.world.def.theme;
     const ground = { desert: 'sand', industrial: 'hard', snow: 'snow', harbour: 'hard', quarry: 'gravel', railyard: 'gravel', village: 'hard', tuscan: 'hard' }[theme] || 'hard';
-    if (y < 0.3 && this.world.waterAt(x, z) > 0) return 'water';
+    if (this.pool ? this.world.waterAt(x, z) > y + 0.05 : y < 0.3 && this.world.waterAt(x, z) > 0) return 'water';
     if (y < 0.1) return ground;
     const spans = this.world.cellSpans(Math.floor(x / CELL), Math.floor(z / CELL));
     let best = null;
@@ -2157,9 +2159,17 @@ export class Game {
       if (r.alive) {
         m.root.rotation.set(0, r.rp.yaw, 0);
         const fx = -Math.sin(r.rp.yaw), fz = -Math.cos(r.rp.yaw);
+        // the Poolrooms: swimming in deep water, or on a ladder
+        let swim = false, climb = null;
+        if (this.pool) {
+          const b = this.world.bodyAt(r.rp.x, r.rp.z);
+          if (b) { const fl = this.world.groundAt(r.rp.x, r.rp.z, 0.3, r.rp.y + 0.05, 0.05); swim = b.y - fl > POOL.deep && r.rp.y < b.y - POOL.swim + 0.15; }
+          if (m.root.userData.setWaterY) m.root.userData.setWaterY(b ? b.y : -1000);
+          for (const L of this.poolLadders) if (Math.hypot(r.rp.x - (L.x - L.nx * 0.36), r.rp.z - (L.z - L.nz * 0.36)) < 0.15 && r.rp.y < L.top - 0.05 && !swim) climb = r.rp.y;
+        }
         animateModel(m, dt, {
           speed: r.speed, fwd: r.vel.x * fx + r.vel.z * fz, side: r.vel.x * -fz + r.vel.z * fx,
-          pitch: r.rp.pitch, air: Math.abs(r.vel.y) > 1.2, use: !!r.use,
+          pitch: r.rp.pitch, air: Math.abs(r.vel.y) > 1.2 && !swim && climb == null, use: !!r.use, swim, climb,
         });
       }
       if (m.label) m.label.visible = r.alive;
@@ -2847,7 +2857,19 @@ export class Game {
       this.renderer.clear();
       this.renderer.render(this.scene, this.camera);
     }
-    if (this.br) return;          // no gun in your hands in the Backrooms
+    // no gun in your hands in the Backrooms (in the Poolrooms: your arms while you swim or climb)
+    if (this.pool && this.poolHands) {
+      const me = this.me;
+      const k = Math.tan(this.vmCamera.fov * Math.PI / 360) / Math.tan(this.camera.fov * Math.PI / 360);      // (so a hand on a rail lines up with the rail)
+      this.poolHands.update(dt, { swim: me.alive && me.swim, speed: Math.hypot(me.vel.x, me.vel.z), climb: me.alive && me.ladder ? { eyeY: this.camera.position.y, L: me.ladder, camera: this.camera, k } : null });
+      if (this.poolHands.root.visible) {
+        if (this.viewModel) this.viewModel.visible = false;
+        this.renderer.clearDepth();
+        this.renderer.render(this.vmScene, this.vmCamera);
+      }
+      return;
+    }
+    if (this.br) return;
     this.renderer.clearDepth();
     this.renderer.render(this.vmScene, this.vmCamera);
   }

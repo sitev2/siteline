@@ -173,11 +173,12 @@ function makePlan(level) {
   const S = [];
   const sky = (x0, z0, x1, z1, round = false) => S.push({ x0, z0, x1, z1, round });
   sky(42.5, 24, 46.5, 29); sky(42.5, 37, 46.5, 43); sky(48.5, 30, 53.5, 36); sky(53, 23, 57, 27);      // over the atrium
-  for (const z of [22.5, 28.5, 34.5, 40.5]) sky(36, z, 37.5, z + 1.5);                                // west gallery
-  for (const x of [43.5, 49.5, 55.5]) sky(x, 45, x + 1.5, 46.5);                                     // south gallery
-  for (const z of [23.5, 30.5, 37.5, 44]) sky(60, z, 61.5, z + 1.5);                                  // east gallery
-  sky(52.5, 18, 54, 19.5); sky(58.5, 18, 60, 19.5);                                                   // north gallery
-  sky(48, 5, 49.5, 6.5); sky(48, 13, 49.5, 14.5);                                                    // the corridor
+  // (upstairs galleries: only a few small ones, so it stays softer and cosier than the tall halls)
+  for (const z of [25, 37.5]) sky(36, z, 37.5, z + 1.5);                                              // west gallery
+  sky(49.5, 45, 51, 46.5);                                                                           // south gallery
+  for (const z of [27, 40.5]) sky(60, z, 61.5, z + 1.5);                                              // east gallery
+  sky(58.5, 18, 60, 19.5);                                                                           // north gallery
+  sky(48, 13, 49.5, 14.5);                                                                           // the corridor
   sky(43.5, 5, 45, 6.5);                                                                             // slide platform
   sky(42.5, 11.5, 45.5, 15.5);                                                                       // over the plunge pool
   for (const [dx, dz] of [[-3.3, 0], [0, -3.3], [3.3, 0], [0, 3.3]]) sky(TOWER.x + dx - 0.75, TOWER.z + dz - 0.75, TOWER.x + dx + 0.75, TOWER.z + dz + 0.75, true);
