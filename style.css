@@ -513,6 +513,9 @@ body.br-mode #ammo, body.br-mode #econ, body.br-mode #armor, body.br-mode #radar
 body.br-mode #hp, body.br-mode #team-label { display: none !important; }
 body.br-mode #touch #btn-fire, body.br-mode #touch #btn-fire-left, body.br-mode #touch #btn-reload, body.br-mode #touch #btn-alt,
 body.br-mode #touch #btn-swap, body.br-mode #touch #btn-drop, body.br-mode #touch #btn-inspect, body.br-mode #touch #btn-buy { display: none !important; }
+/* the Poolrooms: the inspect button is the hold-to-sprint button there (the jump button jumps) */
+body.br-mode.pool-mode #touch #btn-inspect { display: grid !important; }
+body.pool-mode #btn-inspect { width: 58px; height: 58px; right: calc(60px + var(--sar)); bottom: calc(46px + var(--sab)); top: auto; border-radius: 50%; font-size: 1.25rem; }
 #practice .panel { display: grid; gap: 12px; }
 #practice .p-range, #practice .p-match, #practice .p-count, #practice .p-botopt, #practice .p-behavior { display: none; }
 #practice.m-range.bots-on .p-behavior { display: grid; }
