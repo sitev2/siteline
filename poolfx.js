@@ -488,8 +488,9 @@ export function steamMaterial(U, pixelRatio) {
         p.z += cos(uTime * 0.27 + aSeed.y * 7.0) * 0.35 * age;
         vec4 mv = viewMatrix * vec4(p, 1.0);
         vA = h * sin(3.14159 * age) * smoothstep(0.3, 1.2, -mv.z) * (wy > 0.3 ? 1.0 : 0.0);
-        gl_PointSize = uPx * (0.5 + age * 1.3) * 300.0 / max(-mv.z, 0.5);
-        gl_Position = projectionMatrix * mv;
+        // (a wisp 0.5–1.8 m across; never bigger than a quarter of the screen, and nothing at all where it isn't hot)
+        gl_PointSize = min(uPx * (0.5 + age * 1.3) * 330.0 / max(-mv.z, 0.5), 260.0 * uPx);
+        gl_Position = vA < 0.004 ? vec4(2.0, 2.0, 2.0, 1.0) : projectionMatrix * mv;
       }`,
     fragmentShader: /* glsl */`
       varying float vA;

@@ -2,8 +2,9 @@
 // wheel with three temperature gauges, the two floaties, the exit hatch. poolview.js places them.
 import * as THREE from 'three';
 
-const brass = () => new THREE.MeshStandardMaterial({ color: '#b98a3c', metalness: 0.9, roughness: 0.3 });
-const pipeMat = () => new THREE.MeshStandardMaterial({ color: '#a77c45', metalness: 0.75, roughness: 0.42 });
+// (not too metallic: on Low there are no reflections, and full metal would come out nearly black)
+const brass = () => new THREE.MeshStandardMaterial({ color: '#d2a24c', metalness: 0.45, roughness: 0.32 });
+const pipeMat = () => new THREE.MeshStandardMaterial({ color: '#b98d58', metalness: 0.4, roughness: 0.45 });
 const darkMat = () => new THREE.MeshStandardMaterial({ color: '#2a2622', metalness: 0.4, roughness: 0.6 });
 
 // a wheel of radius r facing +z (its axle along z): rim, spokes, hub, and a handle knob on the rim
@@ -107,7 +108,7 @@ export function makeDrain() {
     needles.push(pivot);
   }
   // needle angle for heat 0 … 1 (cold at 7 o'clock, hot at 5 o'clock, through the top)
-  const setNeedle = (k, h) => { needles[k].rotation.z = Math.PI * 0.75 - h * Math.PI * 1.5 + Math.PI; };
+  const setNeedle = (k, h) => { needles[k].rotation.z = Math.PI * 0.75 - h * Math.PI * 1.5; };
   for (let k = 0; k < 3; k++) setNeedle(k, 0);
   return { root, wheel, needles, lock, setNeedle };
 }

@@ -317,8 +317,8 @@ export class PoolClient {
       if (r.holder === g.myId && me.alive) {
         // in front of you, both hands on it
         const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw);
-        m.position.set(me.pos.x + fx * 0.5, me.pos.y + EYE_H - 0.45 + Math.sin(me.pitch) * 0.3, me.pos.z + fz * 0.5);
-        m.rotation.set(Math.PI / 2 - 0.35, me.yaw, 0, 'YXZ');
+        m.position.set(me.pos.x + fx * 0.62, me.pos.y + EYE_H - 0.78 + Math.sin(me.pitch) * 0.35, me.pos.z + fz * 0.62);
+        m.rotation.set(0.5, me.yaw, 0, 'YXZ');      // (held low, tipped towards you: it doesn't block your view)
       } else if (r.holder) {
         const q = g.remotes.get(r.holder);
         if (q && q.rp) { const fx = -Math.sin(q.rp.yaw), fz = -Math.cos(q.rp.yaw); m.position.set(q.rp.x + fx * 0.38, q.rp.y + 1.15, q.rp.z + fz * 0.38); m.rotation.set(Math.PI / 2, q.rp.yaw, 0, 'YXZ'); }

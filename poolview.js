@@ -1055,8 +1055,8 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     const jg = drain.wheel.userData.jiggle || 0;
     drain.wheel.rotation.z = ease(drain.wheel.rotation.z, -(drain.wheel.userData.want || 0), dt * 6) + (jg > 0 ? Math.sin(jg * 60) * 0.04 * jg : 0);
     drain.wheel.userData.jiggle = Math.max(0, jg - dt);
-    for (const nd of drain.needles) nd.rotation.z = ease(nd.rotation.z, Math.PI * 0.75 - (nd.userData.want || 0) * Math.PI * 1.5 + Math.PI, dt * 3);
-    drain.lock.rotation.z = ease(drain.lock.rotation.z, (drain.lock.userData.want || 0) * -1.9, dt * 5);
+    for (const nd of drain.needles) nd.rotation.z = ease(nd.rotation.z, Math.PI * 0.75 - (nd.userData.want || 0) * Math.PI * 1.5, dt * 3);
+    drain.lock.rotation.z = ease(drain.lock.rotation.z, (drain.lock.userData.want || 0) * 1.9, dt * 5);      // (swings up and away from the wheel)
   };
 
   // ================= the sun's beams, the dust in them, the glow of the windows =================
