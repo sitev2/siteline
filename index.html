@@ -22,7 +22,7 @@
     // New .js files: add them to this list (libraries stay unversioned).
     (function () {
       var v = Date.parse(document.lastModified) || Date.now();
-      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'brfx', 'brmap', 'brview', 'buy', 'config', 'crosshair', 'filter', 'friends', 'game', 'garmap', 'garprops', 'garview', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'models', 'monster', 'net', 'netlog', 'nettest', 'poolfx', 'poolhost', 'poolmap', 'poolplay', 'poolview', 'post', 'ragdoll', 'server', 'shifter', 'shiftmodel', 'textures', 'touchlayout', 'weapons', 'world'];
+      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'brfx', 'brmap', 'brview', 'buy', 'config', 'crosshair', 'filter', 'friends', 'game', 'garmap', 'garprops', 'garview', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'models', 'monster', 'net', 'netlog', 'nettest', 'poolfx', 'poolhost', 'poolmap', 'poolplay', 'poolprops', 'poolview', 'post', 'ragdoll', 'server', 'shifter', 'shiftmodel', 'textures', 'touchlayout', 'weapons', 'world'];
       var imports = { three: './three.module.js' };
       for (var i = 0; i < files.length; i++) imports['./' + files[i] + '.js'] = './' + files[i] + '.js?v=' + v;
       window.SITELINE_V = v;

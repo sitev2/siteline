@@ -25,7 +25,8 @@ import { BackroomsFX, LOGS } from './brfx.js';
 import { BR, wallFace } from './brmap.js';
 import { GAR_LEVELS, garLevel } from './garmap.js';
 import { POOL } from './poolmap.js';
-import { PoolHands, poolTint } from './poolplay.js';
+import { PoolHands, PoolClient, poolTint } from './poolplay.js';
+import { FALL_KILL } from './poolhost.js';
 import { makeShifterModel, animateShifter } from './shiftmodel.js';
 
 const BOMB_STATES = ['none', 'carried', 'dropped', 'planted', 'defused', 'exploded'];
@@ -65,7 +66,7 @@ const d0 = (esc) => ({ x: esc.door.x + esc.door.nx * 0.15, z: esc.door.z + esc.d
 const smoothstep = t => t * t * (3 - 2 * t);
 
 export class Game {
-  constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night, doors, notes, key, block, gar, onEscape }) {
+  constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night, doors, notes, key, block, gar, pool, onEscape }) {
     this.transport = transport;
     this.myId = myId;
     this.practice = practice;
@@ -268,6 +269,8 @@ export class Game {
       // Level 2: no creature, no tasks on screen, no flashlight. Ladders are the way out of deep water.
       this.poolLadders = [...this.world.def.pool.ladders, this.world.def.pool.exit.ladder];
       this.poolHands = new PoolHands(this.vmScene);          // your own arms when you swim or climb
+      this.poolc = new PoolClient(this);                     // bridges, valves, the drain, floaties, slides, wet suits
+      if (pool) this.poolc.apply(pool);
       this.hud.center('Level 2', 'The Poolrooms', '#bfe9e2', 6);
       // you can jump in here, so on phones the sprint button is its own (the inspect button, held)
       const rb = document.getElementById('btn-inspect');
@@ -291,6 +294,7 @@ export class Game {
     document.getElementById('br-batt').classList.add('hidden');
     if (this.br && !this.pool) { const jb = document.getElementById('btn-jump'); jb.innerHTML = icon('jump'); jb.setAttribute('aria-label', 'Jump'); }
     if (this.fx) this.fx.destroy();
+    if (this.poolc) this.poolc.destroy();
     sfx.stopAmbience();
     this.cancelReloadSfx();
     this.closeChat();
@@ -570,14 +574,24 @@ export class Game {
         if (Math.hypot(d.cx - this.me.pos.x, d.cz - this.me.pos.z) < 7) this.shake = Math.min(1.2, this.shake + 0.5);
         return;
       }
+      case 'pool': if (this.poolc) this.poolc.apply(m.s); return;
+      case 'pfx': if (this.poolc) this.poolc.fx(m); return;
+      case 'slide': if (this.poolc) this.poolc.remoteSlide(m); return;
       case 'escaped':
         if (m.id === this.myId) {
           this.me.alive = false; this.me.escaped = true; this.me.deathTime = performance.now();
           sfx.playEscape();
           // the ending: you walk up to the door and into the white, then your time (updateCamera plays it)
           const ex = this.world.exit;
-          if (!this.gar && this.onEscape) this.onEscape(0);      // out of Level 0: Level 1 is unlocked for me
-          if (m.lift && this.gar) {
+          if (!this.gar && !this.pool && this.onEscape) this.onEscape(0);      // out of Level 0: Level 1 is unlocked for me
+          if (m.hatch && this.pool) {
+            // the Poolrooms' ending: up the last rungs into the white light; the water's sounds give way to wind and birds
+            this.escapeScene = { t0: this.clock, x: this.me.pos.x, y: this.me.pos.y, z: this.me.pos.z, yaw: this.me.yaw, pitch: this.me.pitch, hatch: true, delay: 0.2, door: { x: this.me.pos.x, z: this.me.pos.z, nx: 0, nz: 1 } };
+            document.getElementById('br-escape-time').textContent = `${fmtClock(m.time)} in the Poolrooms`;
+            sfx.stopAmbience();
+            setTimeout(() => { if (this.running) sfx.startAmbience('poolout', false, { x: this.me.pos.x, z: this.me.pos.z }, 30); }, 600);
+            if (this.onEscape) this.onEscape(2);
+          } else if (m.lift && this.gar) {
             // Level 1's ending: you step into the lift and turn round, its doors shut, it rides up, then the white
             const L = this.world.def.gar.lift;
             this.escapeScene = { t0: this.clock, x: this.me.pos.x, z: this.me.pos.z, yaw: this.me.yaw, pitch: this.me.pitch, lift: true, y: L.y, delay: 2.4, door: { x: (L.x0 + L.x1) / 2, z: (L.z0 + L.z1) / 2 - 0.3, nx: 0, nz: 1 } };
@@ -587,7 +601,7 @@ export class Game {
             this.escapeScene = { t0: this.clock, x: this.me.pos.x, z: this.me.pos.z, yaw: this.me.yaw, pitch: this.me.pitch, door: ex };
             document.getElementById('br-escape-time').textContent = `${fmtClock(m.time)} in the Backrooms`;
           } else this.hud.center('You escaped!', `${fmtClock(m.time)} in the Backrooms`, '#9dffb5', 5);
-        } else this.hud.center('', `${m.name} found the exit and escaped!`, '#9dffb5', 3);
+        } else this.hud.center('', this.pool ? `${m.name} climbed out into the light` : `${m.name} found the exit and escaped!`, '#9dffb5', 3);
         return;
       case 'shot': return this.onRemoteShot(m);
       case 'swing': return this.onRemoteSwing(m);
@@ -783,9 +797,10 @@ export class Game {
       this.me.zoom = 0;
       this.me.using = false;
       this.toggleBuy(false);
-      this.me.killedBy = m.w === 'monster' || m.w === 'shifter' ? 'It' : m.w === 'fall' ? 'the fall' : m.w === 'ceiling' ? 'the ceiling' : m.w === 'corner' ? 'something' : killer && m.killer !== this.myId ? `${killer.name} (${itemName(m.w)}${m.head ? ', headshot' : ''})` : (m.w === 'bomb' ? 'the bomb' : '');
+      this.me.killedBy = m.w === 'monster' || m.w === 'shifter' ? 'It' : m.w === 'fall' || m.w === 'poolfall' ? 'the fall' : m.w === 'ceiling' ? 'the ceiling' : m.w === 'corner' ? 'something' : killer && m.killer !== this.myId ? `${killer.name} (${itemName(m.w)}${m.head ? ', headshot' : ''})` : (m.w === 'bomb' ? 'the bomb' : '');
       if (m.w === 'monster') { sfx.playGrab(); this.shake = 2.5; this.hud.center('', 'It got you', '#ff4a3a', 3); }
       if (m.w === 'fall') this.hud.center('', 'You fell into the dark', '#cfc28a', 3);
+      if (m.w === 'poolfall') this.hud.center('', 'You fell too far', '#cfe6e0', 3);
       if (m.w === 'ceiling' || m.w === 'corner') this.hud.center('', m.w === 'ceiling' ? 'Something in the ceiling took you' : 'Something took you', '#ff4a3a', 3);
       // Level 1: it closes round you. You watch it come down over you, then nothing (updateCamera).
       if (m.w === 'shifter') { this.shake = 2.5; this.engulfMe = { t0: performance.now() }; this.hud.center('', 'It got you', '#ff4a3a', 3); }
@@ -1507,6 +1522,11 @@ export class Game {
     }
 
     if (this.br) {
+      // the Poolrooms: fire / tap throws the floatie you hold; on a slide nothing else happens
+      if (this.pool && this.poolc) {
+        if (inp.consume('click')) this.poolc.throw();
+        if (this.poolc.rideStep()) { for (const a of ['use', 'jump', 'note', 'inspect']) inp.consume(a); return; }
+      }
       // no guns, no bomb: just moving (any weapon keys do nothing)
       for (const a of ['reload', 'alt', 'w1', 'w2', 'w3', 'w5', 'next', 'prev', 'swap', 'drop', 'click', 'buy']) inp.consume(a);
       // N / the note button: write or draw a note; nothing else happens while the note is open
@@ -1519,7 +1539,8 @@ export class Game {
       // E / the hand button: a door, a switch, or climbing up for the red key
       if (inp.consume('use')) {
         const u = this.useTarget();
-        if (u && u.kind === 'fuse') this.transport.send({ t: 'fuse' });
+        if (this.pool) this.poolc.use(u);
+        else if (u && u.kind === 'fuse') this.transport.send({ t: 'fuse' });
         else if (u && u.kind === 'batt') this.transport.send({ t: 'batt', i: u.i });
         else if (u && u.kind !== 'crank') this.transport.send(u.kind === 'door' ? { t: 'door', i: u.i } : u.kind === 'switch' ? { t: 'switch', i: u.i } : { t: 'boost' });
       }
@@ -1762,6 +1783,8 @@ export class Game {
     const me = this.me;
     const fall = Math.max(0, me.peakY - me.pos.y);
     me.landedAt = now;
+    // the Poolrooms: more than 6 m onto a hard floor kills (the host decides; deep water never lands you here)
+    if (this.pool && fall > FALL_KILL && me.alive) { this.transport.send({ t: 'fell', h: Math.round(fall * 100) / 100 }); this.shake = 2; sfx.playLand({ surface: 'tile', hard: 1 }); }
     if (me.airTime < 0.12 && fall < 0.3) return;
     const hop = me.jumpAt >= 0 && now - me.jumpAt < 0.08;
     const fallLoss = Math.max(0, fall - 1.4) * 0.08;
@@ -2225,7 +2248,8 @@ export class Game {
   // what E / the hand button would do where you stand: climb up for the red key, press a switch, or a door
   useTarget() {
     const me = this.me;
-    if (!me.alive || !this.br || this.pool) return null;
+    if (this.pool) return this.poolc ? this.poolc.useTarget() : null;
+    if (!me.alive || !this.br) return null;
     const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw);
     if (this.gar) {
       // Level 1: the fuse box (until the power is on), the crank (until the shutter is up), then doors
@@ -2307,7 +2331,12 @@ export class Game {
       }
       if (wT > 7) { this.escapeScene = null; me.deathTime = performance.now() - 2000; }
     }
-    if (!me.alive && esc && escT < 6.5 + (esc.delay || 0)) {
+    if (!me.alive && esc && esc.hatch && escT < 6.5 + (esc.delay || 0)) {
+      // the Poolrooms: the last rungs, up into the white square of light
+      const k = smoothstep(Math.min(1, escT / 2.2)), h = this.world.def.pool.exit.hatch;
+      x = esc.x; z = esc.z + (h.z - esc.z) * k * 0.6; y = esc.y + EYE + (h.y + 0.5 - esc.y - EYE) * k;
+      yaw = esc.yaw; pitch = esc.pitch + (1.3 - esc.pitch) * smoothstep(Math.min(1, escT / 1.2));
+    } else if (!me.alive && esc && escT < 6.5 + (esc.delay || 0)) {
       // you are in the doorway: step into it, turn round for one last look back at the Backrooms, then the white
       const s = smoothstep(Math.min(1, escT / 0.6)), tx = d0(esc).x, tz = d0(esc).z;
       x = esc.x + (tx - esc.x) * s; z = esc.z + (tz - esc.z) * s; y = (esc.y || 0) + EYE;
@@ -2402,7 +2431,7 @@ export class Game {
       roll += Math.sin(t * 0.85) * 0.006;
       if (d < 0.8) y -= 0.15 * Math.sin(d / 0.8 * Math.PI) * (1 - d / 0.8);
     }
-    const sn = this.fx && this.fx.camera(cam);
+    const sn = (this.fx && this.fx.camera(cam)) || (this.poolc && me.alive && this.poolc.rideCamera());
     if (sn) { x = sn.x; y = sn.y; z = sn.z; yaw = sn.yaw; pitch = sn.pitch; roll = sn.roll; spec = null; }
     if (spec && !itemDef(spec.w)) spec = null;
     this.specTarget = spec;
@@ -2656,7 +2685,13 @@ export class Game {
     else if (me.alive && this.dm && this.clock - (this.spawnedAt || 0) < 3) hint = touch ? 'Tap [[cart]] to change guns' : `Press ${this.key('buy')} to change guns`;
     if (this.pool) {
       // (only how to move, for the first few seconds; never what to do)
-      hint = me.alive && this.clock < (this.brHintUntil || 0) ? (touch ? 'Hold [[run]] to sprint · tap [[jump]] to jump' : `Hold ${this.key('walk')} to sprint · ${this.key('jump')} to jump`) : !me.alive && me.escaped && !this.escapeScene ? 'You got out. Watching the others…' : '';
+      const u = me.alive && this.poolc ? this.poolc.useTarget() : null, hold = touch ? 'Hold [[hand]]' : `Hold ${this.key('use')}`, press = touch ? 'Tap [[hand]]' : `Press ${this.key('use')}`;
+      hint = !me.alive ? (me.escaped && !this.escapeScene ? 'You got out. Watching the others…' : '')
+        : this.poolc && this.poolc.holding() ? (touch ? 'Tap [[aim]] to throw it' : 'Click to throw it')
+        : u && u.kind === 'valve' ? (this.poolc.turning ? '' : `${hold} to turn the wheel`)
+        : u && u.kind === 'drain' ? (this.poolc.turning ? '' : `${hold} to turn the wheel`)
+        : u && u.kind === 'ring' ? `${press} to pick it up`
+        : this.clock < (this.brHintUntil || 0) ? (touch ? 'Hold [[run]] to sprint · tap [[jump]] to jump' : `Hold ${this.key('walk')} to sprint · ${this.key('jump')} to jump`) : '';
     } else if (this.br) {
       hint = '';
       const u = this.useTarget(), door = u && u.kind === 'door' ? this.world.doors[u.i] : null, press = touch ? 'Tap [[hand]]' : `Press ${this.key('use')}`;
@@ -2823,6 +2858,7 @@ export class Game {
     this.sendState(dt);
     this.updateRemotes(dt);
     if (this.fx) this.fx.update(dt);
+    if (this.poolc) this.poolc.update(dt);
     this.ragdolls.update(dt);
     this.updateDrops(dt);
     this.updateBomb(dt);
