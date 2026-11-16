@@ -459,7 +459,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   stripe(37.85, 23, 38.15, 44, plan.pools[3].bottom + 0.004, 1);
 
   // ---- round pillars ----
-  const segsRound = Q === 0 ? 14 : 24;
+  const segsRound = Q === 0 ? 20 : 36;
   const cylinder = (cx, cz, r, y0, y1, fin, wkBase, inward = false, a0 = 0, a1 = Math.PI * 2, segs = segsRound, yBot = null) => {
     const tiles = Math.max(8, Math.round(Math.PI * 2 * r / 0.05)), uPer = tiles * 0.05 / (Math.PI * 2);
     const rows = [y0, ...ROWS.filter(y => y > y0 + 0.1 && y < y1 - 0.1), y1], sg = inward ? -1 : 1;
@@ -552,6 +552,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       sector(t0, t0 + dth, y, 1);
       riser(t0, i === 0 ? G : y - rise, y, -1, i % 2 ? FIN.cream : FIN.cream);
     }
+    sector(-T.land - 8, T.a0 + 0.5, G + 0.003, 1);        // the floor at the foot of the stair
     // the top landing, and the last little step onto it
     sector(T.a1, T.a1 + 30, U, 1);
     riser(T.a1, U - rise * 0.5, U, -1);
@@ -580,7 +581,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   };
   // to3: (u, v, depth) → [x, y, z]; nFace: the way a plate at depth d faces; inner: towards the hole's middle
   const shapedHole = (o, w, h, to3, plates, d0, d1, lit = null) => {
-    const NA = 7;
+    const NA = o.noSoffit ? 10 : 7;
     for (const [cu, cv, ou, ov, r, a0] of shapeArcs(o, w, h)) {
       const arc = [];
       for (let k = 0; k <= NA; k++) { const a = a0 + (Math.PI / 2) * k / NA; arc.push([ou + Math.cos(a) * r, ov + Math.sin(a) * r, Math.cos(a), Math.sin(a)]); }
@@ -592,7 +593,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
         for (let k = 0; k < NA; k++) tri(B, ci, ids[k], ids[k + 1], n[0], n[1], n[2]);
       }
       // the curve through the wall
-      for (let k = 0; k < NA; k++) {
+      for (let k = 0; k < NA && !o.noSoffit; k++) {
         const q0 = arc[k], q1 = arc[k + 1];
         const nn = (q) => { const a = to3(q[0], q[1], d0), b = to3(q[0] - q[2] * 0.1, q[1] - q[3] * 0.1, d0); const l = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l, (b[2] - a[2]) / l]; };
         const n0 = nn(q0), n1 = nn(q1), al0 = a0 + (Math.PI / 2) * k / NA, al1 = a0 + (Math.PI / 2) * (k + 1) / NA;
@@ -610,7 +611,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     const plates = [];
     if (o.out !== -1 && o.only !== 1) plates.push([o.a0, nA]);
     if (o.out !== 1 && o.only !== -1) plates.push([o.a1, nB]);
-    const fin = wallFin(...to3(w / 2, h / 2, o.a0 - 0.2)) === FIN.smooth || wallFin(...to3(w / 2, h / 2, o.a1 + 0.2)) === FIN.smooth ? FIN.smooth : FIN.cream;
+    const fin = [o.a0 - 0.2, (o.a0 + o.a1) / 2, o.a1 + 0.2].some(d => wallFin(...to3(w / 2, Math.min(h / 2, 1), d)) === FIN.smooth) ? FIN.smooth : FIN.cream;
     shapedHole({ ...o, fin, uAt: u => o.u0 + u, vAt: v => o.y0 + v }, w, h, to3, plates, o.a0 - (o.pad0 || 0), o.a1 + (o.pad1 || 0));
   }
   // the way from the stair tower's top out to the corridor: an arch in the corridor's wall
@@ -669,7 +670,6 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       return r.spring + (r.y1 - r.spring) * Math.sqrt(Math.max(0, 1 - (2 * t - 1) ** 2));
     };
     const inR = (r, x, z) => x >= r.x0 - 0.001 && x <= r.x1 + 0.001 && z >= r.z0 - 0.001 && z <= r.z1 + 0.001;
-    const hgt = (x, z) => { let h = -1; for (const r of vaults) if (inR(r, x, z)) h = Math.max(h, hOf(r, x, z)); return h; };
     for (const r of vaults) {
       const along = r.vault === 'z', NS = 12;
       const across = Array.from({ length: NS + 1 }, (_, k) => { const a = Math.PI * k / NS; return (1 - Math.cos(a)) / 2; });      // closer together near the walls
@@ -677,19 +677,22 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       const fin = r.ceil === 'smooth' ? FIN.smooth : FIN.cream;
       let arcLen = [0];
       for (let k = 1; k <= NS; k++) { const ca = c0 + (c1 - c0) * across[k - 1], cb = c0 + (c1 - c0) * across[k]; arcLen.push(arcLen[k - 1] + Math.hypot(cb - ca, hOf(r, along ? cb : 0, along ? 0 : cb) - hOf(r, along ? ca : 0, along ? 0 : ca))); }
+      const fitV = Math.max(0.05, Math.round(arcLen[NS] / 0.05) * 0.05) / arcLen[NS];
       for (let l = l0; l < l1 - 1e-6; l += 0.5) {
+        // (where two vaulted rooms cross, neither has its vault: the bay between them has a flat ceiling)
+        const mx = along ? (c0 + c1) / 2 : l + 0.25, mz = along ? l + 0.25 : (c0 + c1) / 2;
+        if (vaults.some(o => o !== r && inR(o, mx, mz))) continue;
         for (let k = 0; k < NS; k++) {
-          const P = (kk, ll) => {
-            const c = c0 + (c1 - c0) * across[kk], x = along ? c : ll, z = along ? ll : c, own = hOf(r, x, z), y = Math.max(own, hgt(x, z));
-            // the way it faces: down and towards the middle
-            const t = across[kk] * 2 - 1, sl = y > own + 0.01 ? 0 : t * (r.y1 - r.spring) / Math.max(0.05, Math.sqrt(Math.max(0.0025, 1 - t * t))) / ((c1 - c0) / 2);
-            const nl = Math.hypot(1, sl), nc = -sl / nl, ny = -1 / nl;
-            const B = bufAt(x, y, z);
-            return [B, V(B, x, y, z, along ? nc : 0, ny, along ? 0 : nc, ll, arcLen[kk], fin, 0)];
+          // each corner: where it is, and the way the vault faces there (down and towards the middle)
+          const at = (kk, ll) => {
+            const c = c0 + (c1 - c0) * across[kk], x = along ? c : ll, z = along ? ll : c, y = hOf(r, x, z);
+            const t = across[kk] * 2 - 1, sl = t * (r.y1 - r.spring) / Math.max(0.05, Math.sqrt(Math.max(0.0025, 1 - t * t))) / ((c1 - c0) / 2), nl = Math.hypot(1, sl);
+            return { x, y, z, nc: -sl / nl, ny: -1 / nl, u: ll, v: r.spring + arcLen[kk] * fitV };      // (the tiling carries on up from the wall's)
           };
-          const a = P(k, l), B = a[0];
-          const mk = (kk, ll) => { const c = c0 + (c1 - c0) * across[kk], x = along ? c : ll, z = along ? ll : c, own = hOf(r, x, z), y = Math.max(own, hgt(x, z)); const t = across[kk] * 2 - 1, sl = y > own + 0.01 ? 0 : t * (r.y1 - r.spring) / Math.max(0.05, Math.sqrt(Math.max(0.0025, 1 - t * t))) / ((c1 - c0) / 2), nl = Math.hypot(1, sl); return V(B, x, y, z, along ? -sl / nl : 0, -1 / nl, along ? 0 : -sl / nl, ll, arcLen[kk], fin, 0); };
-          quad(B, mk(k, l), mk(k + 1, l), mk(k + 1, l + 0.5), mk(k, l + 0.5), 0, -1, 0);
+          const q = [at(k, l), at(k + 1, l), at(k + 1, l + 0.5), at(k, l + 0.5)], B = bufAt(q[0].x, q[0].y, q[0].z);
+          const ids = q.map(p => V(B, p.x, p.y, p.z, along ? p.nc : 0, p.ny, along ? 0 : p.nc, p.u, p.v, fin, 0));
+          const sn = q.reduce((a, p) => [a[0] + p.nc, a[1] + p.ny], [0, 0]);
+          quad(B, ids[0], ids[1], ids[2], ids[3], along ? sn[0] : 0, sn[1], along ? 0 : sn[0]);
         }
       }
     }
@@ -711,7 +714,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
         if (!room || !room.cove || room.vault) continue;
         const r = room.cove, fin = room.ceil === 'smooth' ? FIN.smooth : FIN.cream;
         for (const [nx, nz] of SIDES) {
-          if (!solidAt(ix + nx, iz + nz, cy - 0.15) || !solidAt(ix + nx, iz + nz, cy - r)) continue;       // a wall on this side, right up to the ceiling
+          if (!solidAt(ix + nx, iz + nz, cy - 0.15) || !solidAt(ix + nx, iz + nz, cy - r + 0.03)) continue;       // a wall on this side, right up to the ceiling
           // the wall's face: at this cell's edge; (wx, wz) a point on it, t along it
           const wx = cx + nx * 0.25, wz = cz + nz * 0.25, tx = nz, tz = -nx, inx = -nx, inz = -nz;
           const strip = (ax, az, bx, bz) => {
@@ -812,7 +815,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   const waterMat = waterMaterial(UNI, Q);
   const waters = [];
   {
-    const up = { l: [0, 0, 0], g: [0, 0, 0] };
+    const up = { l: [3.2, 3.2, 3.1], g: [0, 0, 0] };
     world.bodies.forEach((body, bi) => {
       const B = new Buf(), box = new THREE.Box3();
       const has = (ix, iz) => bodyIdx(ix, iz) === bi + 1;
@@ -823,7 +826,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
         // what the mirror would show there on Low: the ceiling over it, as it is lit; and where the sky's shine comes from
         const ix = Math.min(Wc - 1, Math.floor(x / CELL - 0.01)), iz = Math.min(Dc - 1, Math.floor(z / CELL - 0.01));
         let cy = 99; const sp = spansAt(ix, iz); if (sp) for (const s of sp) if (s.y0 > WY && s.y0 < cy) cy = s.y0;
-        const c = cy < 90 ? shade((ix + 0.5) * CELL, cy, (iz + 0.5) * CELL, 0, -1, 0) : up, f = shade(x, WY + 0.02, z, 0, 1, 0);
+        const c = cy < 90 ? shade((ix + 0.5) * CELL, cy, (iz + 0.5) * CELL, 0, -1, 0) : up, f = shade(x, WY + 0.02, z, 0, 1, 0);      // (no ceiling: a skylight, the white sky)
         B.pos.push(x, 0, z); B.light.push(c.l[0] * 0.8, c.l[1] * 0.78, c.l[2] * 0.7); B.glint.push(f.g[0], f.g[1], f.g[2]);
         B.map.set(key, i); box.expandByPoint(new THREE.Vector3(x, body.y, z));
         return i;
@@ -904,8 +907,8 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   // the slides: a coloured ring round each dark mouth upstairs, and the end of each tube where it lets you out
   for (const s of plan.slides) {
     const m = s.mouth;
-    put('plain', new THREE.TorusGeometry(0.78, 0.09, 8, 28), m.x, m.y, m.z + 1, s.color, new THREE.Matrix4().setPosition(m.x, m.y, m.z + 0.03));
-    put('plain', new THREE.CircleGeometry(0.76, 28), m.x, m.y, m.z + 1, '#07080a', new THREE.Matrix4().setPosition(m.x, m.y, m.z + 0.012));
+    put('plain', new THREE.TorusGeometry(0.76, 0.08, 8, 28), m.x, m.y, m.z + 1, s.color, new THREE.Matrix4().setPosition(m.x, m.y, m.z + 0.03));
+    put('plain', new THREE.CircleGeometry(0.75, 28), m.x, m.y, m.z + 1, '#07080a', new THREE.Matrix4().setPosition(m.x, m.y, m.z + 0.012));
     const o = s.out, len = 1.5, q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(o.nx, -0.18, o.nz).normalize());
     const mid = new THREE.Vector3(o.x + o.nx * (len / 2 - 0.3), o.y + 0.05, o.z + o.nz * (len / 2 - 0.3));
     const m4 = new THREE.Matrix4().compose(mid, q, new THREE.Vector3(1, 1, 1));

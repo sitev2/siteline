@@ -143,8 +143,18 @@ function makePlan(level) {
   arch('x', 9, 11, 30.5, 33.5, G, G + 3.3);                // lane hall ↔ kidney hall
   arch('x', 9, 11, 41, 44, G, G + 3.3);
   arch('x', 9, 11, 17, 19.5, SH, G + 2.9, { floor: 'steps' });      // lane hall → flooded hall
-  arch('z', 26, 28, 14, 16.5, SH, G + 2.5, { floor: 'steps' });     // the two tunnels into the kidney hall
-  arch('z', 26, 28, 27.5, 30, SH, G + 2.5, { floor: 'steps' });
+  // the two tunnels into the kidney hall (their own vault is the arch: only the wall round each end is drawn)
+  arch('z', 26, 28, 14, 16.5, SH, G + 2.5, { floor: 'steps', only: 1, noSoffit: true });
+  arch('z', 26, 28, 27.5, 30, SH, G + 2.5, { floor: 'steps', only: 1, noSoffit: true });
+  arch('z', 20, 20.5, 14, 16.5, SH, G + 2.5, { only: -1, noSoffit: true, noCut: true });      // (and their mouths in the flooded hall)
+  arch('z', 20, 20.5, 27.5, 30, SH, G + 2.5, { only: -1, noSoffit: true, noCut: true });
+  // where the tunnels cross the long corridor the ceiling is flat: four arches meet round a square bay
+  for (const x of [14, 27.5]) {
+    arch('z', 22, 22.5, x, x + 2.5, SH, G + 2.5, { only: 1, noSoffit: true, noCut: true });
+    arch('z', 25.5, 26, x, x + 2.5, SH, G + 2.5, { only: -1, noSoffit: true, noCut: true });
+    arch('x', x - 0.5, x, 22.5, 25.5, SH, G + 2.5, { only: 1, noSoffit: true, noCut: true });
+    arch('x', x + 2.5, x + 3, 22.5, 25.5, SH, G + 2.5, { only: -1, noSoffit: true, noCut: true });
+  }
   for (const z of [4, 9, 14]) arch('x', 34, 34.5, z, z + 2, SH, G + 2.2);      // the dark dead ends
   arch('x', 35, 35.5, 47.2, 49.8, G, G + 3.1);              // start hallway → kidney hall
   arch('z', 19.5, 21, 43, 45.5, G, G + 2.9);               // slide hall ↔ atrium
@@ -189,7 +199,7 @@ function makePlan(level) {
     { name: 'atrium', x0: 41, z0: 21, x1: 58, z1: 44, y0: 0, y1: ROOF, wall: 'tile', ceil: 'smooth' },
     { name: 'slidehall', x0: 41.5, z0: 9, x1: 47, z1: 19.5, y0: 0, y1: ROOF, wall: 'tile', ceil: 'smooth' },
     { name: 'lobby', x0: 54.5, z0: 15, x1: 56.5, z1: 20, y0: G, y1: G + 3, wall: 'tile', ceil: 'tile', vault: 'z', spring: G + 2 },
-    { name: 'grotto', x0: 58.5, z0: 26, x1: 62.5, z1: 40, y0: 0, y1: G + 3.2, wall: 'tile', ceil: 'tile', vault: 'z', spring: G + 1.9 },
+    { name: 'grotto', x0: 58.5, z0: 26, x1: 62.5, z1: 40, y0: 0, y1: G + 3.6, wall: 'tile', ceil: 'tile', vault: 'z', spring: G + 2.6 },
     { name: 'exit', x0: 51, z0: 41, x1: 53, z1: 46.5, y0: 0, y1: 8.5, wall: 'tile', ceil: 'tile' },
     { name: 'upstairs', x0: 30, z0: 2, x1: 63, z1: 48, y0: U, y1: ROOF, wall: 'tile', ceil: 'smooth', cove: 0.45 },
   ];
@@ -231,9 +241,9 @@ function makePlan(level) {
   plan.drain = { x: 45.4, y: G, z: 33, nx: -1, nz: 0, pool: 4 };              // the big wheel and its gauge, by the Great Pool
   // the slides: three mouths in the slide platform's north wall; where each lets you out
   plan.slides = [
-    { name: 'red', color: '#d8402f', mouth: { x: 42.6, y: U + 0.95, z: 3 }, out: { x: 20, y: WY + 1.3, z: 28, nx: 0, nz: 1 } },
+    { name: 'red', color: '#d8402f', mouth: { x: 42.45, y: U + 0.95, z: 3 }, out: { x: 20, y: WY + 1.3, z: 28, nx: 0, nz: 1 } },
     { name: 'blue', color: '#2f6fd8', mouth: { x: 44.25, y: U + 0.95, z: 3 }, out: { x: 45, y: WY + 1.2, z: 9, nx: 0, nz: 1 } },
-    { name: 'green', color: '#3aa95a', mouth: { x: 45.9, y: U + 0.95, z: 3 }, out: { x: 60.5, y: G + 0.75, z: 26, nx: 0, nz: 1 } },
+    { name: 'green', color: '#3aa95a', mouth: { x: 46.05, y: U + 0.95, z: 3 }, out: { x: 60.5, y: G + 0.75, z: 26, nx: 0, nz: 1 } },
   ];
   // small round steel drains in the dry floor
   plan.drains = [[12.4, 46], [22.6, 34.2], [31, 48.8], [33.2, 44], [18, 29.2], [7.4, 24], [7.4, 36], [7.4, 45.9], [43.5, 31], [43.5, 40], [50, 23.2], [50, 42.6], [42.4, 18.4],
@@ -300,7 +310,7 @@ export function poolMap(variant) {
       air(41, 21, 58, 44, G, ROOF);                           // atrium
       air(41.5, 9, 47, 19.5, G, ROOF);                        // slide hall
       air(54.5, 16.5, 56.5, 20, G, G + 3);                    // the tower's lobby
-      air(58.5, 26, 62.5, 40, G, G + 3.2);                    // grotto
+      air(58.5, 26, 62.5, 40, G, G + 3.6);                    // grotto
       air(58.5, 26, 62.5, 29.5, SH, G);                       // (its splash basin, and the step out of it)
       b.add(58.5, 29, 62.5, 29.5, SH, SH + (G - SH) / 2, 'mass');
       // ---- upper floor ----
@@ -314,7 +324,7 @@ export function poolMap(variant) {
       // ---- openings: arches, windows, skylights ----
       for (const o of plan.openings) {
         const r = o.axis === 'x' ? [o.a0, o.u0, o.a1, o.u1] : [o.u0, o.a0, o.u1, o.a1];
-        air(r[0], r[1], r[2], r[3], o.y0, o.y1);
+        if (!o.noCut) air(r[0], r[1], r[2], r[3], o.y0, o.y1);
         if (o.floor === 'steps') {
           // two steps up from the flooded floor to the dry deck, inside the arch (at its dry end)
           const dry = o.axis === 'x' ? -1 : 1;            // which end is the deck: west for 'x' arches, south for 'z'

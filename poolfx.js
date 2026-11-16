@@ -157,6 +157,7 @@ const TILE_FRAG = /* glsl */`
       // shimmer nor a dark band where the tiles get smaller than a pixel
       vec2 ga = g + gw - 0.5 * fw, gb = g + gw + 0.5 * fw;
       vec2 cov = clamp((floor(gb) * 2.0 * gw + min(fract(gb), 2.0 * gw) - floor(ga) * 2.0 * gw - min(fract(ga), 2.0 * gw)) / fw, 0.0, 1.0);
+      cov = mix(cov, vec2(2.0 * gw), smoothstep(0.45, 1.4, max(fw.x, fw.y)));      // (far off: no stripes, just the average)
       float grout = 1.0 - (1.0 - cov.x) * (1.0 - cov.y);
       float near = 1.0 - smoothstep(0.15, 0.6, max(fw.x, fw.y));
       float h = hash21(id);
@@ -345,7 +346,7 @@ export function waterMaterial(U, q) {
 // A beam is the prism under a window or skylight. Its sides glow faintly (more where you look along them).
 export function shaftMaterial(U) {
   return new THREE.ShaderMaterial({
-    uniforms: { ...U, uShaft: { value: 0.075 } },
+    uniforms: { ...U, uShaft: { value: 0.055 } },
     vertexShader: /* glsl */`
       attribute float aAlong;
       varying float vA; varying vec3 vW, vN;

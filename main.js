@@ -919,11 +919,12 @@ function gameLoading(step, frac, msg = null) {
     return;
   }
   if (msg) {
-    const def = msg.map === 'backrooms' ? { name: 'The Backrooms' } : msg.map === 'garage' ? { name: 'Level 1: The Garage' } : MAPS[msg.map];
+    const def = msg.map === 'backrooms' ? { name: 'The Backrooms' } : msg.map === 'garage' ? { name: 'Level 1: The Garage' } : msg.map === 'pool' ? { name: 'The Poolrooms' } : MAPS[msg.map];
     const lv = msg.mode === 'br' && typeof msg.variant === 'string' ? msg.variant.split(':').pop() : '';
     $('gl-title').textContent = def ? def.name : 'Loading';
     $('gl-sub').textContent = [msg.practice ? 'Practice' : '', MODE_NAMES[msg.mode] || '', lv ? lv[0].toUpperCase() + lv.slice(1) : ''].filter(Boolean).join(' · ');
     el.dataset.mode = msg.mode || '';
+    el.dataset.map = msg.map || '';
     $('gl-fill').style.transition = 'none'; $('gl-fill').style.width = '0';
     void el.offsetWidth;
     $('gl-fill').style.transition = '';
@@ -934,11 +935,11 @@ function gameLoading(step, frac, msg = null) {
 }
 async function beginGame(msg) {
   const queue = app.starting = [];
-  gameLoading(msg.map === 'garage' ? 'Pouring the concrete…' : msg.mode === 'br' ? 'Building the maze…' : 'Building the map…', 0.15, msg);
+  gameLoading(msg.map === 'pool' ? 'Filling the pools…' : msg.map === 'garage' ? 'Pouring the concrete…' : msg.mode === 'br' ? 'Building the maze…' : 'Building the map…', 0.15, msg);
   await nextPaint(); await nextPaint();
   if (app.starting !== queue) return;            // left before it was ready
   try {
-    gameLoading(msg.mode === 'br' ? 'Wiring the lights…' : 'Lighting the map…', 0.45);
+    gameLoading(msg.map === 'pool' ? 'Letting the light in…' : msg.mode === 'br' ? 'Wiring the lights…' : 'Lighting the map…', 0.45);
     startGame(msg);
   } catch (e) {
     app.starting = null;
