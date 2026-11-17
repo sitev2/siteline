@@ -129,7 +129,9 @@ export class Server {
       const rec = this.brGone && this.brGone.get(p.name.toLowerCase());
       if (rec) { this.brGone.delete(p.name.toLowerCase()); Object.assign(p, { lives: rec.lives, escaped: rec.escaped, escapeTime: rec.escapeTime, brDeath: rec.brDeath }); }
       this.send(id, this.startMsg());
-      if (this.phase === 'br' && p.lives > 0 && !p.escaped) this.later(0.3, () => this.brSpawn(p));
+      // someone who left and comes back is dead (they watch until the next try); only brand-new players start alive
+      if (this.phase === 'br' && !rec) this.later(0.3, () => this.brSpawn(p));
+      else if (rec) this.send(id, { t: 'toast', text: rec.escaped ? 'You already got out.' : 'You left this game, so you watch until it starts again.' });
     } else if (this.phase === 'dm') {
       // jump straight into a running deathmatch
       p.team = 'ffa';
@@ -1477,7 +1479,18 @@ export class Server {
       this.later(7, () => { if (this.phase === 'br' && !this.gar && this.humans().length) this.startGarage(true); });
       return;
     }
-    this.later(out ? (this.gar ? 9.5 : 7) : this.brCaught ? 6 : 2, () => { if (this.phase === 'br') this.matchOver(out ? 'escaped' : 'lost', out === hs.length ? 'all' : out ? 'some' : 'none'); });
+    this.later(out ? (this.gar ? 9.5 : 7) : this.brCaught ? 6 : 2, () => {
+      if (this.phase !== 'br') return;
+      this.matchOver(out ? 'escaped' : 'lost', out === hs.length ? 'all' : out ? 'some' : 'none');
+      // everyone died: after 5 s on the results screen the same level starts again
+      if (!out) {
+        this.broadcast({ t: 'toast', text: 'Starting this level again in 5 seconds…' });
+        this.later(5, () => {
+          if (this.phase !== 'over' || !this.br || !this.humans().length) return;
+          if (this.pool) this.startPool(); else if (this.gar) this.startGarage(); else this.startBackrooms();
+        });
+      }
+    });
   }
 
   brEnd() {
