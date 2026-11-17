@@ -64,7 +64,7 @@ function explore(w, from, opt = {}) {
       go(add(n.ix + dx, n.iz + dz, f.y, f.swim));
     }
     // out over a pool's edge (game.js poolEdge, the same tests): from deep water, push at the side, onto dry floor
-    if (n.swim) {
+    if (false && n.swim) {   // edge climbing is off (owner's request)
       const wb = w.bodyAt(n.x, n.z), wy = wb ? wb.y : 0;
       for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [0.707, 0.707], [0.707, -0.707], [-0.707, 0.707], [-0.707, -0.707]]) {
         const nx = n.x + dx * (R + 0.22), nz = n.z + dz * (R + 0.22);

@@ -1632,7 +1632,9 @@ export class Game {
     // hardly slows you, waist-deep a little more
     const pw = this.pool ? this.poolWater() : null;
     if (pw && this.poolLadder(dt, wx, wz, amount, pw)) return;
-    if (pw && this.poolEdge(dt, wx, wz, amount, pw)) return;
+    // no climbing out over a pool's edge any more (owner's request): only ladders and the lane pool's steps
+    const EDGE_CLIMB = false;
+    if (EDGE_CLIMB && pw && this.poolEdge(dt, wx, wz, amount, pw)) return;
     const swim = !!(pw && pw.swim);
     const maxSpeed = pw ? (swim ? BR.walk * 0.8 : (this.sprinting() ? BR.sprint : BR.walk) * (pw.depth > 0.62 ? 0.8 : pw.depth > 0.05 ? 0.95 : 1))
       : this.br ? (this.sprinting() ? BR.sprint : BR.walk) * (wading ? 0.8 : 1)      // (Level 1's puddles slow you a little)
