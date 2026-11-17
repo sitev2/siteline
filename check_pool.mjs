@@ -328,5 +328,62 @@ for (const level of ['easy', 'normal', 'hard']) for (const n of [1, 2]) {
   ok(S.phase === 'br' && S.pool && a.alive && b.alive && S.poolHost !== H && S.timer >= t0, 'with everyone dead the Poolrooms did not start again');
   ok(!msgs.some(m => m.t === 'over'), 'everyone dying ended the game instead of starting the Poolrooms again');
 }
+// ---- stage 3: choosing the Poolrooms in the lobby (only a host who has escaped Level 1), a friend joining late
+//      only watches, and one whole run: Level 0 → Level 1 → the Poolrooms, ending in "Run complete" ----
+for (const l2 of [false, true]) {
+  const msgs = [];
+  const S = new Server({ send: (id, m) => { if (m.t !== 'snap' && m.t !== 'ping') msgs.push({ id, ...m }); }, practice: false, ownerId: 'a', localId: null });
+  const ok = (c, t) => { if (!c) fail(`the lobby (host ${l2 ? 'has' : 'hasn\'t'} escaped Level 1): ${t}`); };
+  const run = (secs) => { for (let t = 0; t < secs * 20; t++) { simNow += 50; S.tick(); } };
+  S.addPlayer('a', 'Ann'); S.addPlayer('b', 'Ben');
+  S.receive('a', { t: 'settings', mode: 'br', l1: true, l2 });
+  S.receive('b', { t: 'settings', l2: true, stage: 2 });                  // (only the host may say so)
+  S.receive('a', { t: 'settings', stage: 2 });
+  ok((S.settings.stage || 0) === (l2 ? 2 : 0), 'the Poolrooms could be chosen by a host who has not escaped Level 1');
+  if (!l2) continue;
+  S.receive('a', { t: 'startMatch' });
+  ok(S.phase === 'br' && S.pool && S.players.get('a').alive && S.players.get('b').alive, 'the Poolrooms did not start from the lobby');
+  run(2);
+  S.addPlayer('c', 'Cal');
+  run(2);
+  ok(!S.players.get('c').alive && msgs.some(m => m.id === 'c' && m.t === 'start'), 'a friend who joined late was put into the Poolrooms (they should watch)');
+}
+{
+  const msgs = [];
+  const S = new Server({ send: (id, m) => { if (m.t !== 'snap' && m.t !== 'ping') msgs.push({ id, ...m }); }, practice: false, ownerId: 'a', localId: null });
+  const ok = (c, t) => { if (!c) fail(`one whole run: ${t}`); };
+  const run = (secs) => { for (let t = 0; t < secs * 20; t++) { simNow += 50; S.tick(); } };
+  S.addPlayer('a', 'Ann'); S.addPlayer('b', 'Ben');
+  S.receive('a', { t: 'settings', mode: 'br', l1: true, l2: false, stage: 0 });
+  S.receive('a', { t: 'startMatch' });
+  const a = S.players.get('a'), b = S.players.get('b');
+  // Level 0: both walk out of the exit
+  S.bots.get('monster').update = () => {};
+  run(20);
+  const e = S.world.exit;
+  for (const p of [a, b]) { p.x = e.x + e.nx * 0.3; p.z = e.z + e.nz * 0.3; p.y = 0; }
+  run(1); ok(a.escaped && b.escaped, 'nobody got out of Level 0');
+  run(8); ok(S.gar && a.alive && b.alive, 'the run did not carry on into Level 1');
+  // Level 1: power, the shutter, the lift (the host's own state, quickly)
+  S.bots.get('monster').update = () => {};
+  run(15);
+  S.garSt.power = true; S.garSt.crank = 1; const si = S.world.doors.findIndex(d => d.lock === 'shutter'); S.world.setDoor(si, true);
+  for (const p of [a, b]) { p.x = 3; p.y = S.world.def.gar.lift.y; p.z = 3; }
+  run(1); ok(a.escaped && b.escaped, 'nobody took the lift out of Level 1');
+  run(11);
+  ok(S.pool && S.phase === 'br' && a.alive && b.alive && !msgs.some(m => m.t === 'over'), 'escaping Level 1 did not carry straight on into the Poolrooms');
+  ok(Math.abs(a.y - G) < 0.01 && S.timer > 30, 'the Poolrooms did not start at their start, or the run\'s clock was reset');
+  // the Poolrooms: drained by the host, both climb out through the hatch
+  run(25);
+  const H = S.poolHost; H.drainAt = performance.now() - 11000; run(1);
+  const sh = S.world.def.pool.exit.shaft, h = S.world.def.pool.exit.hatch;
+  for (const p of [a, b]) { p.x = (sh.x0 + sh.x1) / 2; p.z = sh.z0 + 0.6; p.y = h.out + 0.05; }
+  run(1); ok(a.escaped && b.escaped, 'nobody got out through the hatch');
+  run(10);
+  const over = msgs.find(m => m.t === 'over');
+  ok(over && over.map === 'pool' && over.winner === 'escaped', 'no result at the end of the run');
+  ok(over && Array.isArray(over.run) && over.run.map(r => r.level).join() === '0,1,2' && over.run.every(r => r.time > 0), `the run's level times are wrong: ${over && JSON.stringify(over.run)}`);
+  if (over && over.run) console.log(`one whole run: ${over.run.map(r => `level ${r.level} ${r.time} s`).join(', ')}`);
+}
 console.log(bad ? `${bad} problem(s)` : 'Level 2 Poolrooms: all checks passed');
 process.exit(bad ? 1 : 0);

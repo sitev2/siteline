@@ -31,30 +31,39 @@ const BACKROOMS_TESTERS = ['test123'];
 // in Practice. Set LEVEL1_OPEN to true to show it to everyone.
 const LEVEL1_OPEN = false;
 const LEVEL1_TESTERS = ['test123'];
-// Level 1 is unlocked by escaping Level 0: remembered on this device, and on the account when logged in
-// (so it follows the player to other devices; guests only have the device).
+// How far you have got in the Backrooms: 1 = escaped Level 0 (Level 1 unlocked), 2 = escaped Level 1 (the
+// Poolrooms unlocked), 3 = escaped the Poolrooms (a tick in the menu). Remembered on this device, and on the account
+// when logged in (so it follows the player to other devices; guests only have the device).
 const BR_UNLOCK = 'siteline-br-level';
-function level1Unlocked() {
-  // test accounts (LEVEL1_TESTERS) can always play Level 1, without escaping Level 0 first
-  const t = acct.currentProfile();
-  if (t && LEVEL1_TESTERS.includes(String(t.username || '').toLowerCase())) return true;
-  let local = false;
-  try { local = localStorage.getItem(BR_UNLOCK) === '1'; } catch (e) { /* storage blocked */ }
-  const p = acct.currentProfile();
-  return local || !!(p && (p.br_level | 0) >= 1);
+function localBrLevel() {
+  try { return Math.max(0, Math.min(3, parseInt(localStorage.getItem(BR_UNLOCK) || '0', 10) || 0)); } catch (e) { return 0; }
 }
-function unlockLevel1() {
-  try { localStorage.setItem(BR_UNLOCK, '1'); } catch (e) { /* storage blocked */ }
-  acct.unlockBrLevel(1);
+function brProgress() {
+  const p = acct.currentProfile();
+  return Math.max(localBrLevel(), p ? (p.br_level | 0) : 0);
+}
+const isTester = () => { const t = acct.currentProfile(); return !!(t && LEVEL1_TESTERS.includes(String(t.username || '').toLowerCase())); };
+// test accounts (LEVEL1_TESTERS) can always play Levels 1 and 2, without escaping the level before first
+function level1Unlocked() { return isTester() || brProgress() >= 1; }
+function level2Unlocked() { return isTester() || brProgress() >= 2; }
+function poolEscaped() { return brProgress() >= 3; }
+// a level's name in the Level choosers (the Poolrooms get a small tick once you have got out of them)
+function stageName(n, open) {
+  if (n === 2) return open ? `Level 2: The Poolrooms${poolEscaped() ? '  ✓ escaped' : ''}` : 'Level 2: locked';
+  return n === 1 ? 'Level 1: the garage' : 'Level 0: the yellow rooms';
+}
+// escaped a level: the next one is unlocked (escaping the Poolrooms earns its tick)
+function unlockBrLevel(n) {
+  if (localBrLevel() < n) { try { localStorage.setItem(BR_UNLOCK, String(n)); } catch (e) { /* storage blocked */ } }
+  acct.unlockBrLevel(n);
 }
 // logged in: the device and the account tell each other what they know
 function syncUnlock() {
   const p = acct.currentProfile();
   if (!p) return;
-  let local = false;
-  try { local = localStorage.getItem(BR_UNLOCK) === '1'; } catch (e) { /* storage blocked */ }
-  if ((p.br_level | 0) >= 1 && !local) { try { localStorage.setItem(BR_UNLOCK, '1'); } catch (e) { /* storage blocked */ } }
-  else if (local && (p.br_level | 0) < 1) acct.unlockBrLevel(1);
+  const local = localBrLevel(), acc = p.br_level | 0;
+  if (acc > local) { try { localStorage.setItem(BR_UNLOCK, String(Math.min(3, acc))); } catch (e) { /* storage blocked */ } }
+  else if (local > acc) acct.unlockBrLevel(local);
 }
 function level1Allowed() {
   if (LEVEL1_OPEN) return true;
@@ -631,14 +640,16 @@ function renderPracticeMenu() {
   $('p-level').value = P.level;
   $('p-level-label').textContent = P.kind === 'br' ? 'Difficulty' : 'Bot difficulty';
   $('p-night').checked = !!P.night;
-  // Level 1 (testers only)
-  const l1 = P.kind === 'br' && level1Allowed(), open = level1Unlocked();
+  // Levels 1 and 2 (testers only while Level 1 is being tested): each locked until you escaped the one before
+  const l1 = P.kind === 'br' && level1Allowed(), open = level1Unlocked(), open2 = level2Unlocked();
   document.querySelector('.p-stageopt').classList.toggle('hidden', !l1);
-  if (!l1 || !open) P.stage = 0;
-  // (locked until you have escaped Level 0)
+  if (!l1 || (P.stage === 1 && !open) || (P.stage === 2 && !open2)) P.stage = 0;
   $('p-stage').options[1].disabled = !open;
   $('p-stage').options[1].textContent = open ? 'Level 1: the garage' : 'Level 1: locked';
-  $('p-stage-note').classList.toggle('hidden', !l1 || open);
+  $('p-stage').options[2].disabled = !open2;
+  $('p-stage').options[2].textContent = stageName(2, open2);
+  $('p-stage-note').textContent = !open ? 'Level 1 is locked: escape Level 0 first.' : 'The Poolrooms are locked: escape Level 1 first.';
+  $('p-stage-note').classList.toggle('hidden', !l1 || open2);
   $('p-stage').value = String(P.stage || 0);
 }
 
@@ -661,8 +672,9 @@ function bindPracticeMenu() {
     const side = p.side === 'random' ? (Math.random() < 0.5 ? 'atk' : 'def') : p.side;
     practice({
       kind: p.kind, map, level: p.level, behavior: p.behavior, side, night: !!p.night,
-      stage: p.kind === 'br' && level1Allowed() && level1Unlocked() ? (p.stage || 0) : 0,
-      l1: level1Allowed(),          // (escaping Level 0 then carries straight on into Level 1)
+      stage: p.kind === 'br' && level1Allowed() && ((p.stage === 1 && level1Unlocked()) || (p.stage === 2 && level2Unlocked())) ? p.stage : 0,
+      l1: level1Allowed(),          // (escaping Level 0 then carries straight on into Level 1, and Level 1 into the Poolrooms)
+      l2: level1Allowed() && level2Unlocked(),
       count: p.kind === 'dm' ? p.dmCount : (p.bots ? p.count : 0),
     });
   });
@@ -792,12 +804,15 @@ function renderLobby() {
   $('lobby-level').disabled = !isLeader();
   // the Backrooms level: the host tells the room whether Level 1 may be played at all (testers only for now),
   // and can only choose it once they have escaped Level 0 themselves
-  const l1 = !!app.lobby.l1, st = $('lobby-stage');
-  if (isLeader() && br && l1 !== level1Allowed()) sendToServer({ t: 'settings', l1: level1Allowed() });
+  // (and the Poolrooms only once the host has escaped Level 1: the host's game says so, the host checks it)
+  const l1 = !!app.lobby.l1, st = $('lobby-stage'), l2 = level1Allowed() && level2Unlocked();
+  if (isLeader() && br && (l1 !== level1Allowed() || !!app.lobby.l2 !== l2)) sendToServer({ t: 'settings', l1: level1Allowed(), l2 });
   document.querySelector('.br-stage').classList.toggle('hidden', !l1);
   const mayPick = isLeader() && level1Unlocked();
   st.options[1].disabled = !mayPick && app.lobby.stage !== 1;
   st.options[1].textContent = isLeader() && !level1Unlocked() ? 'Level 1: locked (escape Level 0 first)' : 'Level 1: the garage';
+  st.options[2].disabled = !(isLeader() && l2) && app.lobby.stage !== 2;
+  st.options[2].textContent = isLeader() && !l2 ? 'Level 2: locked (escape Level 1 first)' : stageName(2, true);
   st.value = String(app.lobby.stage || 0);
   st.disabled = !isLeader();
   for (const b of document.querySelectorAll('.mode-btn[data-mode]')) {
@@ -849,7 +864,8 @@ function renderLobby() {
   const counts = { atk: app.roster.filter(p => p.team === 'atk').length, def: app.roster.filter(p => p.team === 'def').length };
   const D = RULES.dm;
   $('match-rules').innerHTML = br
-    ? (app.lobby.stage === 1 && app.lobby.l1 ? '<b>The Backrooms, Level 1</b> · 2–4 players together · the garage · fix the power, crank the shutter, take the lift'
+    ? (app.lobby.stage === 2 && app.lobby.l2 ? '<b>The Backrooms, Level 2: The Poolrooms</b> · 2–4 players together · bright tiled halls and still water · nothing lives here'
+      : app.lobby.stage === 1 && app.lobby.l1 ? '<b>The Backrooms, Level 1</b> · 2–4 players together · the garage · fix the power, crank the shutter, take the lift'
       : '<b>The Backrooms</b> · 2–4 players together · a new random maze every game · no guns · find the exit before it finds you')
     : dm ? `<b>Deathmatch</b> · everyone for themselves · first to <b>${D.killLimit}</b> kills or <b>${D.timeLimit / 60}</b> minutes · ${n === 3 ? 'played on a 2v2 map with 3 players' : 'small map for 2, large for 4'}`
     : '<b>2v2</b> · first to <b>9</b> · sides swap after round <b>8</b> · 8–8 is a draw';
@@ -975,7 +991,7 @@ function startGame(msg) {
     block: msg.block,
     gar: msg.gar,
     pool: msg.pool,
-    onEscape: (stage) => { if (stage === 0) unlockLevel1(); },
+    onEscape: (stage) => unlockBrLevel(stage + 1),      // (escaped Level n: Level n + 1 is unlocked; the Poolrooms: their tick)
     night: !!(msg.settings && msg.settings.night),
     settings,
     quality: resolvedQuality(),
@@ -1052,21 +1068,38 @@ function finishOver() {
 function showBrOver(msg) {
   const me = msg.stats.find(s => s.id === app.myId);
   const clock = s => `${Math.floor((s || 0) / 60)}:${String(Math.floor((s || 0) % 60)).padStart(2, '0')}`;
-  $('over-title').textContent = msg.reason === 'all' ? (msg.stats.length > 1 ? 'Everyone escaped!' : 'You escaped!')
+  // out of the Poolrooms (the last level): "Run complete", with each level's time and the whole run's
+  const done = msg.map === 'pool' && msg.winner === 'escaped' && Array.isArray(msg.run) && msg.run.length;
+  $('over-title').textContent = done ? 'Run complete' : msg.reason === 'all' ? (msg.stats.length > 1 ? 'Everyone escaped!' : 'You escaped!')
     : msg.reason === 'some' ? (me && me.escaped ? 'You escaped!' : 'Some of you escaped') : 'Nobody made it out';
   $('over-title').style.color = msg.winner === 'escaped' ? '#9dffb5' : '#ff6b4a';
-  $('over-score').innerHTML = `<span>${clock(msg.time)}</span>`;
+  // (the whole run: its clock when the last one got out — the same clock as everyone's own time below)
+  const total = done ? (msg.runTotal ?? msg.run.reduce((a, r) => a + (r.time | 0), 0)) : msg.time;
+  $('over-score').innerHTML = `<span>${clock(total)}</span>`;
+  const parts = [];
+  if (done) {
+    const NAMES = ['Level 0: the yellow rooms', 'Level 1: the garage', 'Level 2: The Poolrooms'];
+    const levels = document.createElement('table');
+    levels.className = 'run-levels';
+    levels.innerHTML = '<tr><th>Level</th><th>Time</th></tr>';
+    for (const r of msg.run) { const tr = document.createElement('tr'); for (const v of [NAMES[r.level] || `Level ${r.level}`, clock(r.time)]) { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); } levels.appendChild(tr); }
+    const tr = document.createElement('tr'); tr.className = 'run-total';
+    for (const v of ['The whole run', clock(total)]) { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); }
+    levels.appendChild(tr);
+    parts.push(levels);
+  }
   const table = document.createElement('table');
   table.innerHTML = '<tr><th>Player</th><th>What happened</th></tr>';
   for (const s of msg.stats.slice().sort((a, b) => (b.escaped - a.escaped) || ((a.time || 0) - (b.time || 0)))) {
     const tr = document.createElement('tr');
-    const how = s.escaped ? `${msg.map === 'garage' ? 'Took the lift' : 'Escaped'} (${clock(s.time)})` : s.how === 'fell' ? 'Fell into a pit' : s.how === 'monster' ? 'Caught by it'
+    const how = s.escaped ? `${msg.map === 'garage' ? 'Took the lift' : msg.map === 'pool' ? 'Climbed out' : 'Escaped'} (${clock(s.time)})` : s.how === 'fell' ? 'Fell into a pit' : s.how === 'poolfall' ? 'Fell too far' : s.how === 'late' ? 'Joined to watch' : s.how === 'monster' ? 'Caught by it'
       : s.how === 'ceiling' ? 'Taken by the ceiling' : s.how === 'corner' ? 'Vanished' : 'Left the game';
     for (const v of [s.name, how]) { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); }
     tr.lastChild.style.color = s.escaped ? '#9dffb5' : '#ff8a6a';
     table.appendChild(tr);
   }
-  $('over-stats').replaceChildren(table);
+  parts.push(table);
+  $('over-stats').replaceChildren(...parts);
   finishOver();
 }
 
@@ -1439,7 +1472,7 @@ function init() {
   for (const b of document.querySelectorAll('.mode-btn[data-mode]')) b.addEventListener('click', () => sendToServer({ t: 'settings', mode: b.dataset.mode }));
   $('lobby-night').addEventListener('change', e => sendToServer({ t: 'settings', night: e.target.checked }));
   $('lobby-level').addEventListener('change', e => sendToServer({ t: 'settings', level: e.target.value }));
-  $('lobby-stage').addEventListener('change', e => sendToServer({ t: 'settings', stage: level1Unlocked() ? Number(e.target.value) || 0 : 0 }));
+  $('lobby-stage').addEventListener('change', e => { const v = Number(e.target.value) || 0; sendToServer({ t: 'settings', stage: (v === 1 && level1Unlocked()) || (v === 2 && level2Unlocked()) ? v : 0 }); });
   $('btn-start').addEventListener('click', () => { initAudio(); tryFullscreen(); sendToServer({ t: 'startMatch' }); });
 
   $('btn-resume').addEventListener('click', resume);
