@@ -1458,7 +1458,8 @@ export class Server {
     if (now - (p.noteAt || 0) < 2500) { this.send(p.id, { t: 'toast', text: 'Wait a moment before leaving another note' }); return; }
     if (this.notes.filter(n => n.by === p.id).length >= 10) { this.send(p.id, { t: 'toast', text: 'You have left 10 notes already' }); return; }
     if (this.notes.length >= 80 || ![m.x, m.y, m.z, m.yaw].every(Number.isFinite)) return;
-    if (Math.hypot(m.x - p.x, m.z - p.z) > 3 || m.y < -0.1 || m.y > 2.6) return;
+    // (within reach, at the height of the floor you stand on: Level 1 and the Poolrooms have floors higher up)
+    if (Math.hypot(m.x - p.x, m.z - p.z) > 3 || m.y < p.y - 0.7 || m.y > p.y + 2.6) return;
     const img = typeof m.img === 'string' && m.img.startsWith('data:image/png;base64,') && m.img.length < 60000 ? m.img : '';
     const text = cleanChat(String(m.text || ''), 140);
     if (!text && !img) return;
