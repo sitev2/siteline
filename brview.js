@@ -107,41 +107,22 @@ function wallpaperTexture(renderer) {
   return tex(c, renderer);
 }
 
-// damp mustard carpet (1 tile = 2 m). `tint`: the section's own carpet colour (LOOKS): every pixel keeps its
-// shade relative to the mustard and takes on the new colour, so the pile, damp patches and fibres stay the same.
-// The mustard one is drawn once (it takes a while: over a second on a slow computer) and the others are copies of
-// its pixels, recoloured.
-let carpetPixels = null;
-function carpetTexture(renderer, tint = null) {
-  const S = 512, [c, ctx] = canvas(S);
-  if (!carpetPixels) {
-    const R = rng(23);
-    ctx.fillStyle = '#9c8641';
-    ctx.fillRect(0, 0, S, S);
-    noise(ctx, S, S, 60000, ['#7f6b31', '#b29b52', '#8d7838', '#a8914a', '#6f5d2a'], 0.55, R, 1.4);
-    // tufted fibres
-    ctx.lineWidth = 1;
-    for (let i = 0; i < 9000; i++) {
-      const x = R() * S, y = R() * S, a = R() * Math.PI * 2, l = 1.5 + R() * 2.5;
-      ctx.globalAlpha = 0.18; ctx.strokeStyle = R() < 0.5 ? '#c4ad62' : '#6a5826';
-      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-    blotches(ctx, S, S, 7, 'rgba(70,55,20,1)', 0.16, R, 30, 110);     // damp patches
-    blotches(ctx, S, S, 5, 'rgba(200,180,110,1)', 0.06, R, 40, 120);
-    carpetPixels = ctx.getImageData(0, 0, S, S);
+// damp mustard carpet (1 tile = 2 m)
+function carpetTexture(renderer) {
+  const S = 512, [c, ctx] = canvas(S), R = rng(23);
+  ctx.fillStyle = '#9c8641';
+  ctx.fillRect(0, 0, S, S);
+  noise(ctx, S, S, 60000, ['#7f6b31', '#b29b52', '#8d7838', '#a8914a', '#6f5d2a'], 0.55, R, 1.4);
+  // tufted fibres
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 9000; i++) {
+    const x = R() * S, y = R() * S, a = R() * Math.PI * 2, l = 1.5 + R() * 2.5;
+    ctx.globalAlpha = 0.18; ctx.strokeStyle = R() < 0.5 ? '#c4ad62' : '#6a5826';
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke();
   }
-  const img = ctx.createImageData(S, S), d = img.data;
-  d.set(carpetPixels.data);
-  if (tint) {
-    const base = [0x9c, 0x86, 0x41];
-    for (let i = 0; i < d.length; i += 4) {
-      // how light this pixel is next to the mustard, carried over to the new colour
-      const k = (d[i] / base[0] + d[i + 1] / base[1] + d[i + 2] / base[2]) / 3;
-      for (let ch = 0; ch < 3; ch++) d[i + ch] = Math.max(0, Math.min(255, tint[ch] * k));
-    }
-  }
-  ctx.putImageData(img, 0, 0);
+  ctx.globalAlpha = 1;
+  blotches(ctx, S, S, 7, 'rgba(70,55,20,1)', 0.16, R, 30, 110);     // damp patches
+  blotches(ctx, S, S, 5, 'rgba(200,180,110,1)', 0.06, R, 40, 120);
   return tex(c, renderer);
 }
 
@@ -320,18 +301,16 @@ vec3 flashLight(vec3 P, vec3 N) {
 }
 
 // ---------- baked lighting ----------
-// Each section of Level 0 looks different, so you always know where you are (owner: the walls stay the same colour):
-// its own carpet and its own light (the panels, what they light, the light bounced about, the haze). A is the old look.
-//   light: the panels' colour; bounce: the light bounced off its carpet and walls; carpet: the carpet's colour
-//   (null = the old mustard); fog: the haze
+// Each section of Level 0 looks different, so you always know where you are: its own light (owner: the walls and the
+// floor stay the same colour everywhere). The panels' colour, what they light, and the haze. A is the old look.
 const LOOKS = [
-  { light: [1.0, 0.95, 0.82], bounce: [1.0, 0.9, 0.55], carpet: null, fog: [0x9a, 0x8f, 0x55] },                // A: warm white, mustard carpet
-  { light: [0.9, 0.98, 0.88], bounce: [0.9, 0.93, 0.6], carpet: [0x56, 0x64, 0x42], fog: [0x86, 0x90, 0x5e] },    // B: greenish white, dull moss-green carpet
-  { light: [0.86, 0.93, 1.0], bounce: [0.86, 0.87, 0.72], carpet: [0x5c, 0x66, 0x72], fog: [0x82, 0x89, 0x84] },   // C: cold blue-white, slate-grey carpet
-  { light: [1.0, 0.85, 0.66], bounce: [1.0, 0.8, 0.52], carpet: [0x7c, 0x3a, 0x33], fog: [0x9a, 0x7c, 0x54] },     // D: amber, maroon carpet
+  { light: [1.0, 0.95, 0.82], fog: [0x9a, 0x8f, 0x55] },     // A: warm white (as before)
+  { light: [0.88, 1.0, 0.86], fog: [0x8a, 0x93, 0x5c] },     // B: greenish white
+  { light: [0.8, 0.9, 1.0], fog: [0x80, 0x88, 0x84] },       // C: cold blue-white
+  { light: [1.0, 0.82, 0.6], fog: [0x9c, 0x7c, 0x50] },      // D: amber
 ];
 const LIGHT = LOOKS[0].light;            // warm fluorescent
-const BOUNCE = LOOKS[0].bounce;          // light bounced off yellow carpet and walls
+const BOUNCE = [1.0, 0.9, 0.55];          // light bounced off yellow carpet and walls
 
 // the team doors' paint (they're the same doors, just coloured): red (the red key), steel (two push), yellow (two switches)
 // ('red' is the door the key opens: an ordinary door now, the owner asked for normal colours; it gets a brass lock plate)
@@ -461,12 +440,9 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     return out;
   };
   const bounce = blur(floorL, 5);
-  // the same, coloured by what it bounced off: each section's carpet and walls (LOOKS.bounce), blending where they meet
+  // the same, coloured by what it bounced off (the yellow carpet and walls)
   const tinted = new Float32Array(floorL.length);
-  for (let iz = 0; iz < FD; iz++) for (let ix = 0; ix < FW; ix++) {
-    const k = iz * FW + ix, b = lookAt(ix * CELL, iz * CELL).bounce;
-    for (let c = 0; c < 3; c++) tinted[k * 3 + c] = floorL[k * 3 + c] * b[c];
-  }
+  for (let k = 0; k < FW * FD; k++) for (let c = 0; c < 3; c++) tinted[k * 3 + c] = floorL[k * 3 + c] * BOUNCE[c];
   const bounceT = blur(tinted, 5);
   const bounceAt = (x, z, c) => {
     const ix = Math.max(0, Math.min(FW - 1, Math.round(x / CELL))), iz = Math.max(0, Math.min(FD - 1, Math.round(z / CELL)));
@@ -545,12 +521,12 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     const cr = bounceT[k * 3] * 0.62 + glow * gk[0], cg = bounceT[k * 3 + 1] * 0.62 + glow * 0.97 * gk[1], cb = bounceT[k * 3 + 2] * 0.62 + glow * 0.88 * gk[2];
     cPos.push(x, H, z); cUV.push(x / 1.2, z / 1.2); cCol.push(...finish(cr, cg, cb, 0.55 + floorAO[k] * 0.45, gr));
   }
-  const fIdx = LOOKS.map(() => []), cIdx = [];       // (the floor: one mesh per section, each with its own carpet)
+  const fIdx = [], cIdx = [];
   for (let iz = 0; iz < Dc; iz++) for (let ix = 0; ix < Wc; ix++) {
     if (isSolid(ix, iz)) continue;
     const a = iz * FW + ix, b = a + 1, c = a + FW, d = c + 1;
     cIdx.push(a, b, d, a, d, c);
-    if (!isPit(ix, iz)) fIdx[LOOKS.indexOf(lookAt((ix + 0.5) * CELL, (iz + 0.5) * CELL))].push(a, c, d, a, d, b);
+    if (!isPit(ix, iz)) fIdx.push(a, c, d, a, d, b);
   }
   const mesh = (pos, uv, col, idx, material) => {
     const g = new THREE.BufferGeometry();
@@ -566,7 +542,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
   };
   const baked = (map) => addFlash(new THREE.MeshBasicMaterial({ map, vertexColors: true }));
   const surfaces = [];
-  LOOKS.forEach((look, i) => { if (fIdx[i].length) surfaces.push(mesh(fPos, fUV, fCol, fIdx[i], baked(carpetTexture(renderer, look.carpet)))); });
+  surfaces.push(mesh(fPos, fUV, fCol, fIdx, baked(carpetTexture(renderer))));
   const ceilMat = baked(ceilingTexture(renderer));
   surfaces.push(mesh(cPos, cUV, cCol, cIdx, ceilMat));
 

@@ -88,8 +88,10 @@ export class MonsterBrain {
     return true;
   }
   inHome(x, z) { const r = this.region(x, z); return r === this.home || (r === 4 && this.home === 3); }
+  // a section past its home (where it must never go ahead of the players)
+  ahead(x, z) { return Math.min(3, this.region(x, z)) > this.home; }
   // its home moves on with the players' tasks, but never ahead of them: only once one of them is in a later
-  // section, or standing right by the open gate out of its home (heading there)
+  // section, or standing in the open gateway out of its home (going through)
   updateHome() {
     const stage = this.s.brStage ? this.s.brStage() : 3;
     if (this.home >= stage) return;
@@ -97,7 +99,7 @@ export class MonsterBrain {
     let furthest = -1;
     for (const q of this.humans()) {
       let r = Math.min(3, this.region(q.x, q.z));
-      if (g && g.open && Math.hypot(q.x - g.cx, q.z - g.cz) < 3) r = Math.max(r, this.home + 1);
+      if (g && g.open && Math.hypot(q.x - g.cx, q.z - g.cz) < 1.2) r = Math.max(r, this.home + 1);
       furthest = Math.max(furthest, r);
     }
     if (furthest > this.home) this.home = Math.min(stage, furthest);
@@ -196,7 +198,7 @@ export class MonsterBrain {
   // a door banged somewhere: go and look if it's close enough to hear
   hearNoise(x, z, range) {
     const p = this.p;
-    if (this.state === 'chase' || this.state === 'wait' || Math.hypot(x - p.x, z - p.z) > range) return;
+    if (this.state === 'chase' || this.state === 'wait' || Math.hypot(x - p.x, z - p.z) > range || this.ahead(x, z)) return;
     this.last = { x, z, vx: 0, vz: 0, t: this.thinkAt, id: null };
     this.lastClue = this.thinkAt;
     this.state = 'search'; this.searchPts = []; this.pauseUntil = 0;
@@ -337,6 +339,7 @@ export class MonsterBrain {
         let gx = L.x + L.vx * lead, gz = L.z + L.vz * lead;
         const i = this.nav.nearest(gx, 0, gz);
         if (i >= 0) { gx = this.nav.x[i]; gz = this.nav.z[i]; }
+        if (this.ahead(gx, gz) && !this.ahead(L.x, L.z)) { gx = L.x; gz = L.z; }      // (not on past its home on a guess)
         this.state = 'pursue'; this.goal = { x: gx, y: 0, z: gz }; this.target = null; this.path = null;
       }
     } else if (heard) {
@@ -364,6 +367,10 @@ export class MonsterBrain {
       if (this.state === 'wander' && now > this.listenAt) { this.listenAt = now + 14 + Math.random() * 14; this.pauseUntil = now + 1.8 + Math.random() * 1.6; }
       if (this.state === 'wander' && !this.goal) this.goal = this.wanderGoal(now);
     }
+    // never ahead of the players: past its home it only goes after someone it has seen there; otherwise it turns back
+    if (this.ahead(p.x, p.z) && !['chase', 'stalk', 'hangGo'].includes(this.state) && !(this.goal && this.inHome(this.goal.x, this.goal.z))) {
+      this.state = 'wander'; this.goal = this.wanderGoal(now); this.path = null;
+    }
     p.use = this.state === 'chase';     // clients: screeching, running animation
   }
 
@@ -384,7 +391,7 @@ export class MonsterBrain {
     for (const c of cands) {
       for (const [sx, sz] of [[-c.qx, -c.qz], [c.qx, -c.qz], [-c.qx, c.qz]]) {
         const mx = c.x + sx * 0.55, mz = c.z + sz * 0.55;
-        if (!nav.standable(mx, 0, mz) || w.isPit(mx, mz)) continue;
+        if (!nav.standable(mx, 0, mz) || w.isPit(mx, mz) || !this.inHome(mx, mz)) continue;       // (only in its home section)
         if (w.los(ex, ey, ez, mx, 1.4, mz) || w.los(ex, ey, ez, mx, 2.4, mz)) continue;       // all of it hidden
         for (let k = 0; k < 8; k++) {
           const a = k * Math.PI / 4, lx = Math.cos(a) * 0.65, lz = Math.sin(a) * 0.65;
@@ -456,8 +463,8 @@ export class MonsterBrain {
     let goal = null;
     if (t) {
       const i = nav.randomNode((x, y, z) => y < 0.1 && Math.hypot(x - p.x, z - p.z) < 14 && Math.hypot(x - t.x, z - t.z) > Math.hypot(p.x - t.x, p.z - t.z) + 2
-        && !this.world.los(t.x, t.y + 1.6, t.z, x, 1.4, z), 120);
-      if (i >= 0 && Math.hypot(nav.x[i] - t.x, nav.z[i] - t.z) > Math.hypot(p.x - t.x, p.z - t.z)) goal = { x: nav.x[i], y: 0, z: nav.z[i] };
+        && this.inHome(x, z) && !this.world.los(t.x, t.y + 1.6, t.z, x, 1.4, z), 120);
+      if (i >= 0 && this.inHome(nav.x[i], nav.z[i]) && Math.hypot(nav.x[i] - t.x, nav.z[i] - t.z) > Math.hypot(p.x - t.x, p.z - t.z)) goal = { x: nav.x[i], y: 0, z: nav.z[i] };
     }
     this.state = goal ? 'retreat' : 'wander';
     this.goal = goal;
