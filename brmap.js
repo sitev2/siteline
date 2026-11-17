@@ -28,15 +28,15 @@ export const BR = {
 // how far it hears running / walking, how many places it searches and when it wakes up (s).
 export const BR_LEVELS = {
   easy: {
-    bridge: 1.5, holes: 4, dark: 4, arrows: 0.22, doors: 28,
+    bridge: 1.5, holes: 4, dark: 4, arrows: 0.22, arrowMax: 5, doors: 28,
     monster: { speed: 1.05, sight: 16, chaseSight: 13, fov: 1.0, lose: 0.25, lead: 0.7, hear: 11, hearWalk: 2.5, search: 3, wake: 30 },
   },
   normal: {
-    bridge: 1, holes: 6, dark: 6, arrows: 0.15, doors: 20,
+    bridge: 1, holes: 6, dark: 6, arrows: 0.15, arrowMax: 4, doors: 20,
     monster: { speed: 1.10, sight: 22, chaseSight: 19, fov: 1.2, lose: 0.55, lead: 1.2, hear: 14, hearWalk: 3, search: 4, wake: 20 },
   },
   hard: {
-    bridge: 0.5, holes: 7, dark: 8, arrows: 0.09, doors: 12,
+    bridge: 0.5, holes: 7, dark: 8, arrows: 0.09, arrowMax: 3, doors: 12,
     monster: { speed: 1.15, sight: 28, chaseSight: 28, fov: 1.3, lose: 0.9, lead: 1.6, hear: 16, hearWalk: 3.5, search: 5, wake: 15 },
   },
 };
@@ -467,27 +467,41 @@ export function planMaze(seed, level = 'normal') {
     const tx = Math.floor((cx + Math.cos(ang) * 1.1) / T) * T, tz = Math.floor((cz + Math.sin(ang) * 1.1) / T) * T;
     holes.push({ rx: x, rz: z, x: tx + T / 2, z: tz + T / 2, size: T, kind: R() < 0.5 ? 'missing' : 'shifted', dir: pick(0, 3) });
   }
-  // 9. big black arrows sprayed on walls (the owner asked for fewer, and vaguer): in a few of the rooms where the
-  // way splits (and always the start), pointing the rough compass direction of the exit, as the crow flies, not
-  // the way through the maze; on a wall that runs that way
+  // 9. big black arrows sprayed on walls (the owner: "make the arrows actually useful and put less of them"): each
+  // one points the way to take through the maze (the first step of the shortest walk to the exit), and they stand
+  // only at the start and in rooms where the way splits (3+ openings) and a wrong turn costs the most, well
+  // spread out (at least 6 rooms apart), on a wall that runs the same way as the arrow
   dist = walk(exit.x, exit.z);
   const arrows = [];
-  for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
-    if ((x === exit.x && z === exit.z) || inPitRoom(x, z) || dist[z][x] < 2) continue;
+  const arrowCells = [];
+  const arrowAt = (x, z) => {
     const ways = DIRS.filter(([dx, dz]) => !wallTo(x, z, dx, dz));
-    const atStart = x === sx && z === sz;
-    if (!atStart && (ways.length < 3 || R() > L.arrows)) continue;
-    const ox = exit.x - x, oz = exit.z - z, big = Math.max(Math.abs(ox), Math.abs(oz)), small = Math.min(Math.abs(ox), Math.abs(oz));
-    // the bigger of the two compass directions; when it's nearly diagonal, either
-    let alongX = Math.abs(ox) >= Math.abs(oz);
-    if (small > big * 0.5 && R() < 0.4) alongX = !alongX;
-    const dx = alongX ? Math.sign(ox) : 0, dz = alongX ? 0 : Math.sign(oz);
-    if (!dx && !dz) continue;
-    // a solid wall of this room running the same way (its normal is across the arrow)
+    // the neighbour that is one step nearer the exit
+    const next = ways.find(([dx, dz]) => inside(x + dx, z + dz) && dist[z + dz][x + dx] === dist[z][x] - 1);
+    if (!next) return null;
+    const [dx, dz] = next;
     const walls = (dx ? [[0, -1], [0, 1]] : [[-1, 0], [1, 0]]).filter(([wx, wz]) => wallTo(x, z, wx, wz) && !used.has(wkey(x, z, wx, wz)));
-    if (!walls.length) continue;
+    if (!walls.length) return null;
     const [wx, wz] = walls[Math.floor(R() * walls.length)];
-    arrows.push({ x, z, wx, wz, dx, dz, tilt: (R() - 0.5) * 0.18, s: 0.95 + R() * 0.1 });
+    return { x, z, wx, wz, dx, dz, tilt: (R() - 0.5) * 0.18, s: 0.95 + R() * 0.1 };
+  };
+  {
+    const start = arrowAt(sx, sz);
+    if (start) { arrows.push(start); arrowCells.push([sx, sz]); }
+    const spots = [];
+    for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+      if ((x === exit.x && z === exit.z) || inPitRoom(x, z) || dist[z][x] < 2) continue;
+      if (DIRS.filter(([dx, dz]) => !wallTo(x, z, dx, dz)).length < 3) continue;
+      spots.push([x, z]);
+    }
+    for (let i = spots.length - 1; i > 0; i--) { const j = Math.floor(R() * (i + 1)); [spots[i], spots[j]] = [spots[j], spots[i]]; }
+    const maxExtra = L.arrowMax;
+    for (const [x, z] of spots) {
+      if (arrows.length - (start ? 1 : 0) >= maxExtra) break;
+      if (arrowCells.some(([ax, az]) => Math.abs(ax - x) + Math.abs(az - z) < 6)) continue;
+      const a = arrowAt(x, z);
+      if (a) { arrows.push(a); arrowCells.push([x, z]); }
+    }
   }
   // 10. explorer logs: notes taped up by people who were here before, each a clue (text + a little drawing,
   // brfx.js LOGS) about what to do. Clue 0 is always in the start room; the rest are spread out, never on a wall
