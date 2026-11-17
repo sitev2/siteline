@@ -66,7 +66,7 @@ const d0 = (esc) => ({ x: esc.door.x + esc.door.nx * 0.15, z: esc.door.z + esc.d
 const smoothstep = t => t * t * (3 - 2 * t);
 
 export class Game {
-  constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night, doors, notes, key, block, gar, pool, onEscape }) {
+  constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night, doors, notes, key, crossed, block, gar, pool, onEscape }) {
     this.transport = transport;
     this.myId = myId;
     this.practice = practice;
@@ -142,6 +142,7 @@ export class Game {
     this.keySpot = plan && plan.key ? spot(plan.key, 0.55) : null;
     this.switchSpots = plan ? (plan.switches || []).map(s => spot(s, 0.5)) : [];
     this.keyTaken = !!key;
+    this.brCrossed = !!crossed;            // someone has crossed the pit hall into the last section (the host says)
     if (built.group.userData.setKey) built.group.userData.setKey(!this.keyTaken);
     // this map's acoustics and background sound
     sfx.setRoom(this.world.def.theme);
@@ -552,6 +553,10 @@ export class Game {
         if (m.id === this.myId) this.me.key = true;
         this.hud.center('', m.id === this.myId ? 'You have the key: find the locked door' : `${m.name} got the key`, '#e8c873', 3);
         sfx.playClick();
+        return;
+      }
+      case 'crossed': {
+        this.brCrossed = true;
         return;
       }
       case 'keyBack': {
@@ -2591,12 +2596,14 @@ export class Game {
       const gate = (l) => (this.world.doors || []).find(d => d.lock === l);
       const hv = gate('heavy'), kd = gate('red'), ex = gate('twin');
       const opened = (d) => !d || d.open;
+      // (the pit hall has no door: it is ticked off once someone is across it, in the last section)
       hud.setBackrooms([
         { text: 'Open the heavy door', done: opened(hv) },
         { text: 'Find the key', done: this.keyTaken || opened(kd) },
-        { text: 'Open the locked door', done: opened(kd) },
-        { text: 'Cross the pits, pull both levers', done: opened(ex) },
-        { text: 'Find the exit', done: !!me.escaped },
+        { text: 'Unlock the door', done: opened(kd) },
+        { text: 'Cross the pit hall', done: this.brCrossed || opened(ex) },
+        { text: 'Pull both levers together', done: opened(ex) },
+        { text: 'Get out', done: !!me.escaped },
       ]);
     } else if (this.dm) {
       let best = null;

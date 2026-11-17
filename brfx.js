@@ -361,29 +361,38 @@ export class BackroomsFX {
     this.mapT -= dt;
     if (this.mapT > 0) return;
     this.mapT = 0.12;
-    const W = this.mapImg.width, H = this.mapImg.height, C = 0.5, R = 2.4, px = me.pos.x, pz = me.pos.z;
+    const W = this.mapImg.width, H = this.mapImg.height, C = 0.5, R = 12, HALF = 0.85;   // R: how far you see; HALF: half the view angle (about 100 degrees across)
     const kind = this.mapKind, known = this.mapKnown, d = this.mapData.data;
     const COL = { 1: [214, 205, 178, 255], 2: [44, 44, 56, 255], 3: [95, 92, 98, 255] };
-    const i0 = Math.max(0, Math.floor((px - R) / C)), i1 = Math.min(W - 1, Math.floor((px + R) / C));
-    const k0 = Math.max(0, Math.floor((pz - R) / C)), k1 = Math.min(H - 1, Math.floor((pz + R) / C));
-    for (let iz = k0; iz <= k1; iz++) for (let ix = i0; ix <= i1; ix++) {
+    const mark = (ix, iz) => {
       const j = iz * W + ix;
-      if (known[j]) continue;
-      const cx = (ix + 0.5) * C, cz = (iz + 0.5) * C, dist = Math.hypot(cx - px, cz - pz);
-      if (dist > R) continue;
-      // only what you can actually see from here (walls hide what's behind them)
-      let seen = true;
-      for (let t = 0.25; t < dist - 0.3; t += 0.25) {
-        const qx = Math.floor((px + (cx - px) * t / dist) / C), qz = Math.floor((pz + (cz - pz) * t / dist) / C);
-        if (kind[qz * W + qx] === 2) { seen = false; break; }
-      }
-      if (!seen) continue;
       known[j] = kind[j];
       d.set(COL[kind[j]], j * 4);
       this.mapDirty = true;
       const b = this.mapBox || (this.mapBox = { x0: ix, x1: ix, z0: iz, z1: iz });
       b.x0 = Math.min(b.x0, ix); b.x1 = Math.max(b.x1, ix); b.z0 = Math.min(b.z0, iz); b.z1 = Math.max(b.z1, iz);
+    };
+    // the map is shared: everyone alive adds what THEY can see (each screen works it out from the players' positions)
+    const viewers = [{ x: me.pos.x, z: me.pos.z, yaw: me.yaw }];
+    for (const r of g.remotes.values()) if (r.alive && r.team !== 'monster' && r.rp) viewers.push({ x: r.rp.x, z: r.rp.z, yaw: r.rp.yaw });
+    for (const v of viewers) {
+      const px = v.x, pz = v.z;
+      for (let a = -HALF; a <= HALF + 1e-6; a += 0.025) {
+        const ang = v.yaw + a, dx = -Math.sin(ang), dz = -Math.cos(ang);
+        for (let t = 0; t <= R; t += 0.25) {
+          const ix = Math.floor((px + dx * t) / C), iz = Math.floor((pz + dz * t) / C);
+          if (ix < 0 || iz < 0 || ix >= W || iz >= H) break;
+          if (!known[iz * W + ix]) mark(ix, iz);
+          if (kind[iz * W + ix] === 2) break;
+        }
+      }
+      // the floor right round your feet too
+      for (let iz = Math.floor((pz - 1) / C); iz <= Math.floor((pz + 1) / C); iz++) for (let ix = Math.floor((px - 1) / C); ix <= Math.floor((px + 1) / C); ix++) {
+        if (ix < 0 || iz < 0 || ix >= W || iz >= H || known[iz * W + ix] || kind[iz * W + ix] === 2) continue;
+        mark(ix, iz);
+      }
     }
+    const px = me.pos.x, pz = me.pos.z;
     const last = this.trail[this.trail.length - 1];
     if (!last || Math.hypot(last.x - px, last.z - pz) > 0.6) { this.trail.push({ x: px, z: pz }); if (this.trail.length > 4000) this.trail.splice(0, 1000); }
     if (this.mapOpen) this.drawMap();
@@ -412,9 +421,18 @@ export class BackroomsFX {
     }
     // you: a red arrowhead pointing the way you face
     const [mx, my] = to(me.pos.x, me.pos.z), fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw);
-    ctx.fillStyle = '#c0392b'; ctx.beginPath();
-    ctx.moveTo(mx + fx * 11, my + fz * 11); ctx.lineTo(mx - fx * 6 - fz * 6, my - fz * 6 + fx * 6); ctx.lineTo(mx - fx * 6 + fz * 6, my - fz * 6 - fx * 6);
-    ctx.fill();
+    const arrow = (x, y, fx, fz, col) => {
+      ctx.fillStyle = col; ctx.beginPath();
+      ctx.moveTo(x + fx * 11, y + fz * 11); ctx.lineTo(x - fx * 6 - fz * 6, y - fz * 6 + fx * 6); ctx.lineTo(x - fx * 6 + fz * 6, y - fz * 6 - fx * 6);
+      ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.stroke();
+    };
+    // your teammates (shared map), blue arrowheads
+    for (const r of this.g.remotes.values()) {
+      if (!r.alive || r.team === 'monster' || !r.rp) continue;
+      const [ox, oy] = to(r.rp.x, r.rp.z);
+      arrow(ox, oy, -Math.sin(r.rp.yaw), -Math.cos(r.rp.yaw), '#2c6fd1');
+    }
+    arrow(mx, my, fx, fz, '#c0392b');
   }
 
   // ---------- notes ----------
@@ -824,6 +842,8 @@ export class BackroomsFX {
       const fog = g.scene.fog;
       if (fog) {
         if (!this.fogBase) this.fogBase = fog.color.clone();
+        // (each section of Level 0 has its own haze colour: it blends over as you go through)
+        if (this.built.fogAt) this.fogBase.lerp(this.built.fogAt(g.camera.position.x, g.camera.position.z), Math.min(1, dt * 1.5));
         fog.color.copy(this.fogBase).multiplyScalar(Math.max(0.015, Math.min(1, this.dim * 1.1)));
       }
     }

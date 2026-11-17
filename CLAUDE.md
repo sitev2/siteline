@@ -114,25 +114,41 @@ The only folder is `server/` (the optional home game server).
   Controls in the Backrooms only (owner's choice; 2v2/DM unchanged): you WALK by default (`BR.walk` 2.7 m/s, quiet; was 3.2 — owner asked for slower, may still tune), Shift (the 'walk'
   key) or holding the jump button on phones (it shows the `run` icon; `input.jumpHeld`) SPRINTS (`BR.sprint` 4.5 m/s, was 5.3, loud; the monster's speeds were cut ~15 % too; `Game.sprinting()`),
   no jumping, F (the inspect key) is the flashlight as well as L.
-  A new random maze every game: `brmap.js` (`planMaze(seed, level)` / `backroomsMap(variant)`;
-  NOT in `MAPS`, `resolveMap('backrooms', variant)`; the variant is "seed:level" (`brVariant` / `parseBrVariant`, a plain number = normal)):
-  28×28 rooms of 4 m (`BR.cells`; was 20×20, the owner asked for a bigger map: about twice the area, ~5 s to load in a test browser),
-  spanning tree + 14 % loops + bigger rooms (as many per area as before), ONE pillar hall (repeating 1 m pillars, 3–5 rooms a side), a few free
-  pillars (12 %), NO single pitfalls (owner removed them). The exit (owner: "going all left mustn't find it"): a door in a small room
-  out in the maze (not on an edge), as far as possible from the start and never on its side; the 8 walls meeting that room's corners from
+  A new random layout every game: `brmap.js` (`planMaze(seed, level)` / `backroomsMap(variant)`;
+  NOT in `MAPS`, `resolveMap('backrooms', variant)`; the variant is "seed:level" (`brVariant` / `parseBrVariant`, a plain number = normal)).
+  LINEAR (owner's layout, so players don't get lost; it replaced one 28×28 maze cut into diagonal areas): FOUR SECTIONS IN A ROW,
+  west → east, on 44 × 22 rooms of 4 m (`BR.cols` / `BR.rows`, `SECTIONS`; about the old area; ~10 % slower to load than the old maze):
+  A start (11 × 22, start in a west corner) | B key (11 × 22) | C pits (11 wide but only 11 rows, `plan.cz0`…`cz1`, about centred, solid
+  wall above and below; its west 6 columns a short maze, its east 5 the PIT HALL) | D levers + exit (11 × 22). `plan.sec[z][x]` = 0–3
+  (-1 solid); `brSection(plan, x, z)` (metres) also gives 4 for the exit room. Each section is its own maze: a growing tree (`NEWEST` 0.75:
+  mostly from the newest room, sometimes an older one), no dead-end corridor longer than `DEAD_END` 4 rooms (its far end is opened into a
+  neighbour), `LOOPS` 5 % extra openings (~6 % in all; never zero: players need something to run round), bigger rooms (as many per area as
+  before), ONE pillar hall (in A, B or D, repeating 1 m pillars, 3–5 rooms a side), a few free pillars (12 %, never across a section
+  edge), NO single pitfalls (owner removed them). The pit hall (`plan.hall`, `hallHoles(plan)`): entered by ONE doorway (a gap, no door:
+  `plan.hallDoor`) from C's maze onto a landing of 1.5 m+, then the 2.5 m holes with the level's walkway width; across it they reach the
+  north and south walls (owner's choice: no walking round by the wall; the floor left over is thicker wall, `padN` / `padS`); its east
+  side is open all along into D (no wall, no gate) with 1 m+ of floor kept on D's side (the walls between D's rooms end there; with
+  less, some of D's rooms could only be reached the long way). The exit (owner: "going all left mustn't find it"): a door in a small room
+  at D's far east end (columns W−4…W−2, not on an edge), as far as it can be from the pit hall; the 8 walls meeting that room's corners from
   outside are knocked out and it gets its own 4 walls but one (the way in, random), so its walls are an island: keeping a hand on one
   wall (always left / always right) never gets there. The door is on the inside of the wall facing the way in (`b.exit` → `world.exit`,
   n points into the room; the host only counts you through it from in front: `ahead > -0.3`). No pit rooms or doors in the 3×3 rooms
-  round it (`byExit`), and no pillar hall within a room of it (a pillar on its corner would join it to the rest). Pit rooms (owner's reference picture; "composed of square holes", the room itself may be a
-  rectangle): two, 2×3 / 3×2 / 3×3 rooms (8×12 / 12×8 / 12×12 m), set across the shortest way to the exit; a regular grid of identical
+  round it (`byExit`), and no pillar hall within a room of it (a pillar on its corner would join it to the rest). Small pit rooms (extras besides the pit hall; owner's reference picture; "composed of square holes", the room itself may be a
+  rectangle): one in B and one in D, 2×3 / 3×2 / 3×3 rooms (8×12 / 12×8 / 12×12 m), set across the way through that section; a regular grid of identical
   2.5 m square holes (`PIT_HOLE`, `pitHoles()`; `b.pit` → `world.pitGrid`, `isPit`: no floor, you fall; below y −3 the host kills you)
   with walkways of the level's width between them; at each end of a row the strip by the wall is either none (the holes touch the wall)
-  or at least 1 m — never a thinner ledge, which nobody could walk along. Big black spray-painted arrows (`plan.arrows`, drawn in `brview.js` from `arrowTexture`): just lines, big but skinny (owner: a ~3.3 × 1.6 m quad, the size of a wall, 5 cm lines: a shaft + an open head, overspray, drips); few and USEFUL (owner: "make the arrows actually useful and put less of them"): one in the start room plus at most `arrowMax` (5 / 4 / 3 by difficulty) in rooms where the way splits (3+ openings), at least 6 rooms apart; each points the real way — the first step of the shortest walk to the exit (`arrowAt` in `brmap.js`), no longer the vague compass direction. Doorways: `L.doors` = 28 / 20 / 12 a maze by difficulty (easy / normal / hard; owner: "enough doors to evade the monster" — it was 3), at least 4 rooms apart, each where going round is a real detour (6+ rooms, `goodDoor`) and nothing is
+  or at least 1 m — never a thinner ledge, which nobody could walk along; a side with a way in always keeps its strip (`pitHoles(…, needLo,
+  needHi)`; the plan stores the layout in `r.xs` / `r.zs`), or the way in opened straight onto a hole. Big black spray-painted arrows (`plan.arrows`, drawn in `brview.js` from `arrowTexture`): just lines, big but skinny (owner: a ~3.3 × 1.6 m quad, the size of a wall, 5 cm lines: a shaft + an open head, overspray, drips); few and USEFUL (owner: "make the arrows actually useful and put less of them"): one in the start room plus at most `arrowMax` (5 / 4 / 3 by difficulty) in rooms where the way splits (3+ openings), at least 6 rooms apart; each points the real way — the first step of the shortest walk to the exit through the gates, so along the strip, generally east (`arrowAt` in `brmap.js`), no longer the vague compass direction. Doorways: `L.doors` = 28 / 20 / 12 a maze by difficulty (easy / normal / hard; owner: "enough doors to evade the monster" — it was 3), at least 4 rooms apart, each where going round is a real detour (6+ rooms, `goodDoor`) and nothing is
   ever sealed off with every door shut (`walkShut`); a wall with a
   1.5 × 2.2 m gap; the wall above is a `wallpaper` span from 2.2 m. Walls fill the
   cell [line, line + 0.5) east/south of each room line. `backroomsMap` checks every maze (`mazeOk`: player start→exit, monster→start with
-  3×3 clearance) and deterministically tries seed variations if one fails. `node check_br.mjs 300` checks many seeds (all three levels,
-  with every door shut, and that the exit room's walls are an island). The NavGrid treats a
+  3×3 clearance, and on to D across the pit hall; `brTest.mazeOk` says why one fails) and deterministically tries seed variations if one
+  fails (in 300 seeds none needs to). `node check_br.mjs 300` checks many seeds (all three levels; see Testing). On easy only (owner's choice
+  so far), a faint worn trail in the carpet (`plan.guide`, `wear()` in `brview.js`: ~20 % darker, ~1 m wide) runs task by task: start →
+  heavy door → the key → the locked door → the pit hall's doorway → (none across holes) → the levers → the lever door → the exit. Each
+  section has its own LIGHT colour (`LOOKS` in `brview.js`: A warm white as before, B greenish white, C cold blue-white, D amber; the panels,
+  the baked light, the haze via `userData.fogAt` → brfx), so you always know where you are; the walls and the floor stay the same colour
+  everywhere (owner). The NavGrid treats a
   hole next to a cell as no wall (walk along its edge).
   Doors open and shut (`b.door` → `world.doors`; kind 'way' = double doors in a doorway; every door leads somewhere — the old 'blank' doors
   onto bricks were removed at the owner's request, the code for them is unused). The door frame covers the wall's cut edges (5 cm into the
@@ -168,25 +184,32 @@ The only folder is `server/` (the optional home game server).
   SpotLight for people 12.8 / 11.2 intensity, others' beam cone at 0.8, 48 / 42 m, 0.36 rad, penumbra 0.9; 2v2 night mode keeps the old flashlight); the baked surfaces get flashlight cones through a shader hook (`addFlash` / `FLASH`
   uniforms in `brview.js`, filled by `brfx.js`); people and the haze dim with the light where you stand (`lightAt`, `dimPeople`).
   Flickering panels throw sparks + a zap when they stutter back on (`userData.update(dt, dread, cam)`, `onSpark`).
-  THE ORDER (owner's design; it replaced the optional team shortcuts): everyone has to finish the Backrooms in one order. `planMaze`
-  step 5b cuts the maze into four areas by how many rooms a room is from the start corner, across + down (`ZONES` 12 / 25 / 38;
-  `plan.zone[z][x]` = 0–3, 9 = the big pit room), walls up every opening between two areas, joins each area up again inside, and opens
-  one gate between each (`plan.locked`, now real openings with a locked 'way' door in them):
-  area 0 (start) → 'heavy' door (riveted steel; two players press E within 1.5 s) → area 1, where the key hangs (`plan.key`, a BRASS
+  THE ORDER (owner's design; it replaced the optional team shortcuts): everyone has to finish the Backrooms in one order, one task per
+  section. The only opening in the wall between two sections is its gate (`plan.locked`: a real opening at a random row, with a locked
+  'way' door in it; into C at one of C's rows):
+  A (start) → 'heavy' door (riveted steel; two players press E within 1.5 s) → B, where the key hangs (`plan.key`, a BRASS
   key now, owner asked for a normal colour) on its high shelf: climb on a teammate's shoulders (`{t:'boost'}` → `tryBoost`) → 'red'
-  door (only its name in the code: it is an ordinary dark door with a brass lock plate; the key opens it) → area 2 → the BIG pit room
-  (`plan.big`, 5 × 4 rooms = 20 × 16 m of the same 2.5 m holes, the only way from area 2 to area 3: in at the near end, out at the
-  far end) → area 3 with the lever room (`plan.switches`: both levers in ONE room, on two walls, pulled within 2 s) → 'twin' door
-  (hazard stripes) on the exit room's one way in → the exit. The exit is deep in area 3. Solo (`Server.brSolo()`: fewer than 2
+  door (only its name in the code: it is an ordinary dark door with a brass lock plate; the key opens it) → C → across the PIT HALL (no
+  door: it is the gate, the only way into D; done once someone is in D: the host's `brCrossed` → `{t:'crossed'}`, the start message
+  carries `crossed`) → D with the lever room (`plan.switches`: both levers in ONE room, on two walls, pulled within 2 s, a few rooms from
+  the exit) → 'twin' door (hazard stripes) on the exit room's one way in → the exit. Solo (`Server.brSolo()`: fewer than 2
   players alive inside): the heavy door opens for one, E under the shelf just takes the key, and a pulled lever stays down so one
   player pulls one then the other. Instead of the top bar (hidden in `br-mode`), a task list sits middle left (vertically centred, sized by the screen: `max(10px, 1.75vh)`, all in em) as plain text, no box (`#br-tasks`,
-  owner's request): all five tasks in order, finished ones ticked and crossed out, the current one highlighted
-  (`hud.setBackrooms([{ text, done }])`, filled from the gates' `open` and `keyTaken` in `Game.updateHud`). It starts in area 1 and can't pass a shut gate: `MonsterBrain.region` / `canReach` (it
-  ignores players and goals behind one, so the start area is quiet until the heavy door opens). A seed that can't be laid out sets
+  owner's request): all six tasks in order (Open the heavy door / Find the key / Unlock the door / Cross the pit hall / Pull both levers
+  together / Get out), finished ones ticked and crossed out, the current one highlighted
+  (`hud.setBackrooms([{ text, done }])`, filled from the gates' `open`, `keyTaken` and `brCrossed` in `Game.updateHud`).
+  The monster's HOME (owner's rules, `monster.js`): the section of the current task (`Server.brStage()`: 0 A until the heavy door is open,
+  1 B until the locked door is open, 2 C until someone has crossed, 3 D). It starts in A (`plan.monster`, well away from the start; wakes
+  after `lv.wake` s as before) and can't pass a shut gate (`MonsterBrain.region` = `brSection`, `canReach`; gates [heavy, red, none, twin]).
+  `updateHome()`: its home only moves on once a player is in a later section or standing in the open gateway (never ahead of the
+  players: a gate opened with them still behind it, it stays put; it never teleports, it walks through). It wanders, peeks, backs off and
+  searches only in its home (`inHome`, `wanderGoal`: towards the nearest player in there); past its home it only goes after someone it has
+  seen there (`ahead()` turns it back). Players who go back through an open gate can be chased back as anyone is (seen, heard: chase,
+  stalk, pursue, search; across the pit hall on the walkways too); once it has lost them it goes home again (`startSearch` outside home →
+  wander → home). Split players: whoever it hears or sees first, else the nearest one at home. A seed that can't be laid out sets
   `plan.bad` and `backroomsMap` tries the next (up to 40); `mazeOk` now also checks, on the real floor with every ordinary door shut
   and the gates open, that the exit, the key and the lever room can be walked to (a wall end can pinch a 1 m pit walkway shut).
-  `check_br.mjs` checks the order: with a gate shut nothing after it is reachable, and the levers can't be reached without crossing
-  the big pit room. Once open the gates stay open. The key goes back on its shelf if its holder dies, escapes or
+  `check_br.mjs` checks the order (see Testing). Once open the gates stay open. The key goes back on its shelf if its holder dies, escapes or
   leaves (`dropKey`, `{t:'keyBack'}`); the start message carries `key`. E / the hand button picks the target with `Game.useTarget()` (key spot,
   lever, then door), with hints for each. Explorer logs 9–11 explain them, taped up near each.
   Explorer logs (owner's pick): `plan.logs` (brmap step 10, `LOG_COUNT` 7 a maze: clue 0 always in the start room, the rest spread out
@@ -256,6 +279,10 @@ The only folder is `server/` (the optional home game server).
   no clue; stops to listen now and then). Hears sprinting (> 3.5 m/s) within `lv.hear` and walking within `lv.hearWalk`; catches on contact (`monsterKill`). The models in
   `models.js` are OUR OWN designs (the owner once asked for a known character from someone else's Backrooms videos; we declined to copy it).
   Sounds in `audio.js` (fluorescent buzz bed, clank/servo/slam, screech/grab). Account stats are not reported for this mode.
+- Backrooms lives (PR #77): in Level 0 and Level 1 everyone has 3 lives (`BR_LIVES` in `server.js`): caught or fallen, you are back in the
+  start room after 7 s; the game ends when everyone is out of lives, escaped or gone, and when everyone is dead the same level starts again
+  5 s after the results. Leaving and rejoining keeps your lives, and a dead player who rejoins stays dead (`brGone`). NOT in the Poolrooms:
+  there, when everyone is dead, the Poolrooms start again (`brCheck`, `check_pool.mjs`).
 - Backrooms online needs 2–4 players (owner's rule): the lobby's Start is off with fewer and says so, and `Server.startMatch` refuses too.
   Practice can still be played alone; Level 0's solo rules (`brSolo`) stay for solo Practice and for the last one alive. The HUD has no
   timer and no alive counter in the Backrooms (the top bar is hidden; only the task list shows).
@@ -401,6 +428,14 @@ The only folder is `server/` (the optional home game server).
     every difficulty): plates and bridges (solo hold, never onto a swimmer), wrong valves don't unlock, undo, the drain, the hatch, falls
     (deadly onto floor, safe into water), floaties, slides, everyone dead = start again.
 - `check_map.mjs` — `node check_map.mjs outpost` / `node check_map.mjs quarry large` checks every area and spawn is reachable
+- `check_br.mjs` — `node check_br.mjs 300` (or `node check_br.mjs 300 0 hard` for one level; `node check_br.mjs 1 <seed>` prints a map) checks
+  Level 0 layouts on the real floor: start, key, levers and exit reachable with every ordinary door shut; every room reachable; each gate the
+  only way between its sections; C → D only across the pit hall (block the hall: D unreachable); no section a dead end; exit room an
+  island; no dead end longer than 4 rooms; the monster starts in A, can only get into sections whose gates are open at each stage, reaches
+  every room of the current section, and (doors shut) can follow players back into earlier sections; its home logic (`MonsterBrain`).
+- `check_br_monster.mjs` — `node check_br_monster.mjs [easy|normal|hard]` plays Level 0 fast with no graphics: two pretend (uncatchable)
+  players go through the stages; checks the monster stays in A when a gate opens with them still behind it, follows them into B, C, D (across
+  the pit hall), never gets ahead of them, and walks home after chasing someone back.
 
 - Rejoin: the last room joined as a guest is kept in localStorage for 30 min (`siteline-lastroom`); the menu shows
   "Rejoin your last game (CODE)". The host remembers leavers by name (`rememberLeaver` / `restoreLeaver` in `server.js`): team,

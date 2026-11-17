@@ -69,7 +69,7 @@ for (const l1 of [true, false]) {
   S.bots.get('monster').update = () => {};
   const run = (secs) => { for (let t = 0; t < secs * 20; t++) { simNow += 50; S.tick(); } };
   run(30);
-  S.kill(b, null, 'fall', false);                                         // Ben dies in Level 0
+  b.lives = 1; S.kill(b, null, 'fall', false);                           // Ben dies in Level 0, on his last life (3 lives each)
   a.x = e.x + e.nx * 0.3; a.z = e.z + e.nz * 0.3; a.y = 0; run(1);        // Ann walks out of the exit
   ok(a.escaped, 'Ann did not escape Level 0');
   const t0 = S.timer;

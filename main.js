@@ -988,6 +988,7 @@ function startGame(msg) {
     doors: msg.doors,
     notes: msg.notes,
     key: msg.key,
+    crossed: msg.crossed,
     block: msg.block,
     gar: msg.gar,
     pool: msg.pool,
