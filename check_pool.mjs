@@ -1,5 +1,5 @@
 // Checks Level 2 (the Poolrooms) with no graphics: walks and swims the map the way a player does (steps up to
-// 0.42 m, swimming in deep water, climbing out only at ladders and steps) and proves that
+// 0.42 m, swimming in deep water, climbing out at ladders, steps and over the edges where allowed) and proves that
 //   - the start is in the hallway, and every room on the start side can be reached from it;
 //   - nobody can get stuck: from everywhere you can reach there is a way back to the start;
 //   - the far side (atrium, slide hall, stairs, upstairs) needs the bridge, and with it all of it can be reached;
@@ -62,6 +62,20 @@ function explore(w, from, opt = {}) {
       // walking off an edge: fine into water or down a small drop; a long fall onto hard floor is not a way
       if (drop > STEP + 0.01 && !f.swim && (opt.noDrops || drop > 6)) continue;
       go(add(n.ix + dx, n.iz + dz, f.y, f.swim));
+    }
+    // out over a pool's edge (game.js poolEdge, the same tests): from deep water, push at the side, onto dry floor
+    if (n.swim) {
+      const wb = w.bodyAt(n.x, n.z), wy = wb ? wb.y : 0;
+      for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1], [0.707, 0.707], [0.707, -0.707], [-0.707, 0.707], [-0.707, -0.707]]) {
+        const nx = n.x + dx * (R + 0.22), nz = n.z + dz * (R + 0.22);
+        if (w.bodyAt(nx, nz) && !w.blocked(nx, nz, 0.05, n.y, 0.05)) continue;
+        for (const d of [0.7, 0.95, 1.2]) {
+          const x = n.x + dx * d, z = n.z + dz * d, g = w.groundAt(x, z, R, wy, 0.6), b = w.bodyAt(x, z);
+          if (g < wy - 0.05 || g - n.y > 1.7 || (b && b.y > g + 0.05) || w.blocked(x, z, R, g, 0.1) || !plan.climbOK(x, z)) continue;
+          go(at(x, z, g + 0.05));
+          break;
+        }
+      }
     }
     // ladders: from the water (or a drained pool's floor) at its foot up onto the deck, and back down
     for (const L of ladders) {

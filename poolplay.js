@@ -54,9 +54,23 @@ export class PoolHands {
 
   // state: { swim, speed, climb: { eyeY, L (the ladder), camera (the main one), k (view-model scale) } | null }; dt in seconds
   update(dt, state) {
-    const on = !!(state.swim || state.climb);
+    const on = !!(state.swim || state.climb || state.ledge);
     this.root.visible = on;
     if (!on) return;
+    if (state.ledge) {
+      // pulling yourself out over the edge: both hands flat on the floor just past the edge (worked out in the world)
+      const { c, camera, k } = state.ledge;
+      camera.updateMatrixWorld();
+      const sx = -c.dz, sz = c.dx;
+      for (const a of this.arms) {
+        const v = this.tmp.set(c.x0 + c.dx * 0.62 + sx * a.sd * 0.3, c.y1 + 0.03, c.z0 + c.dz * 0.62 + sz * a.sd * 0.3);
+        camera.worldToLocal(v);
+        const wx = v.x * k, wy = v.y * k, wz = v.z;
+        if (wz > -0.12) { this.place(a, a.sd * 0.3, -0.62, -0.25, a.sd * 0.34, -0.85, 0.05, 1, 0); continue; }
+        this.place(a, wx, wy, wz, a.sd * 0.34, Math.min(-0.6, wy - 0.45), 0.05, 1, 0);
+      }
+      return;
+    }
     if (state.swim) {
       // one stroke every ~1.5 s while moving, slow sculling when still
       const sp = Math.min(1, state.speed / 1.8);

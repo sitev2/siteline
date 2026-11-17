@@ -417,8 +417,10 @@ The only folder is `server/` (the optional home game server).
     steam hiss, catch unlock, drain rush, slide whoosh + rushing water, splashes, strokes, rubber, wet tile footsteps (`STEP.tile`).
     Interaction prompts only say how ("Hold E to turn the wheel", "Press E to pick it up"), never what to do.
   - Movement (game.js `poolWater` / `poolFloat` / `poolLadder`): walk 2.7 / sprint 4.5 as in the Backrooms, knee-deep water hardly slows
-    you, deep water = swimming at 80 % of a walk (head up, the camera bobs; falling in is a splash, never a landing), you climb out only at
-    ladders (push towards one) and the lane pool's steps. Jumping IS allowed here (normal jump). Phones: the jump button jumps; the run
+    you, deep water = swimming at 80 % of a walk (head up, the camera bobs; falling in is a splash, never a landing), you climb out at
+    ladders (push towards one), the lane pool's steps, or ANYWHERE over a pool's edge (owner's request; `Game.poolEdge`: swim up against the
+    side and keep pushing: hands on the edge, up and over in 0.8 s) except onto the three edges the order needs (`plan.noClimb`: the
+    channel's far bank, the grotto from the Great Pool, the apse's deck; `check_pool.mjs` models edge climbs and proves the order still holds). Jumping IS allowed here (normal jump). Phones: the jump button jumps; the run
     button (`#btn-inspect`, moved next to it in `pool-mode`) sprints while held (`input.runHeld`). No flashlight, no map, no task list, no hints
     (only the move keys for the first seconds). Others see you swim (breaststroke, frog kick) or climb (`animateModel` `swim` / `climb`).
   - `node check_pool.mjs [map]` walks and swims the whole map with no graphics: the start side is all reachable, nothing past the channel
