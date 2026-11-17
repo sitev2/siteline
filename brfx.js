@@ -842,6 +842,8 @@ export class BackroomsFX {
       const fog = g.scene.fog;
       if (fog) {
         if (!this.fogBase) this.fogBase = fog.color.clone();
+        // (each section of Level 0 has its own haze colour: it blends over as you go through)
+        if (this.built.fogAt) this.fogBase.lerp(this.built.fogAt(g.camera.position.x, g.camera.position.z), Math.min(1, dt * 1.5));
         fog.color.copy(this.fogBase).multiplyScalar(Math.max(0.015, Math.min(1, this.dim * 1.1)));
       }
     }

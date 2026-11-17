@@ -9,7 +9,7 @@ import { MonsterBrain, outerCorners } from './monster.js';
 import { ShifterBrain } from './shifter.js';
 import { GAR_LEVELS, garLevel } from './garmap.js';
 import { POOL } from './poolmap.js';
-import { BR_LEVELS, brLevel, brVariant, wallFace } from './brmap.js';
+import { BR_LEVELS, brLevel, brVariant, wallFace, brSection } from './brmap.js';
 import { cleanChat, CHAT_LIMIT } from './filter.js';
 
 const BR_LIVES = 3;            // Backrooms: lives each player has (a caught player comes back in the start room)
@@ -806,6 +806,7 @@ export class Server {
       doors: this.br && this.world ? this.world.doors.map(d => (d.broken ? 2 : d.open ? 1 : 0)) : undefined,     // 2 = kicked in
       notes: this.br ? this.notes : undefined,
       key: this.br && this.brKey ? (this.brKey.holder ? 1 : 0) : undefined,      // the red key isn't on its shelf
+      crossed: this.br && !this.gar && !this.pool && this.brCrossed ? 1 : undefined,      // someone has crossed the pit hall
       gar: this.gar && this.garSt ? { power: this.garSt.power, crank: r2(this.garSt.crank), batts: this.garSt.batts } : undefined,      // Level 1's order so far
       block: this.gar && this.world ? this.world.block : undefined,              // Level 1: where the shapeshifter is parked as a car
     };
@@ -1047,6 +1048,7 @@ export class Server {
     this.keySpot = plan.key ? spot(plan.key, 0.55) : null;      // where you stand to reach it
     this.switchSpots = (plan.switches || []).map(s => spot(s, 0.5));
     this.brKey = { holder: null };                  // null: on its shelf; a player id; 'used': the locked door is open
+    this.brCrossed = false;                         // someone has crossed the pit hall into section D
     this.switchDown = {};
     this.switchAt = this.switchSpots.map(() => -1e9);
     this.boost = null;                              // { climber, lifter, t0, given }
@@ -1223,6 +1225,12 @@ export class Server {
       while (tr.length > 30) tr.shift();
     }
     if (!this.cornerUsed && this.timer > 45 && now >= (this.cornerCheckAt || 0)) { this.cornerCheckAt = now + 200; this.cornerSnatch(now); }
+    // the pit hall has no door: its task is done once someone is across it, in section D (the task list ticks it off,
+    // and the monster's home moves on)
+    if (!this.brCrossed && this.humans().some(p => p.alive && !p.escaped && brSection(this.world.def.br, p.x, p.z) >= 3)) {
+      this.brCrossed = true;
+      this.broadcast({ t: 'crossed' });
+    }
     const holes = (this.world.def.br && this.world.def.br.holes) || [];
     for (const p of this.humans()) {
       if (!p.alive || p.escaped) continue;
@@ -1270,6 +1278,12 @@ export class Server {
   // -> the big pit room -> the lever room: both levers together open the exit room's door ('twin'). Once open they
   // stay open. Alone (one player left inside), each two-player part works for one: brSolo().
   brSolo() { return this.humans().filter(q => q.alive && !q.escaped).length < 2; }
+  // which section the players' current task is in (the monster's home, monster.js): 0 A until the heavy door is
+  // open, 1 B until the locked door is open, 2 C until someone has crossed the pit hall, then 3 D
+  brStage() {
+    const open = (l) => { const d = this.world.doors.find(o => o.lock === l); return !d || d.open; };
+    return !open('heavy') ? 0 : !open('red') ? 1 : !this.brCrossed ? 2 : 3;
+  }
 
   teamDoor(i, p) {
     const d = this.world.doors[i], now = performance.now();

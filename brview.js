@@ -5,7 +5,7 @@
 // bounced back off the yellow carpet, and darker corners. At runtime it costs almost nothing.
 import * as THREE from 'three';
 import { CELL, hash2 } from './world.js';
-import { BR, rng, wallFace } from './brmap.js';
+import { BR, rng, wallFace, brSection, inPitHall } from './brmap.js';
 
 const at = i => BR.border + i * BR.cell;
 
@@ -107,8 +107,9 @@ function wallpaperTexture(renderer) {
   return tex(c, renderer);
 }
 
-// damp mustard carpet (1 tile = 2 m)
-function carpetTexture(renderer) {
+// damp mustard carpet (1 tile = 2 m). `tint`: the section's own carpet colour (LOOKS): every pixel keeps its
+// shade relative to the mustard and takes on the new colour, so the pile, damp patches and fibres stay the same
+function carpetTexture(renderer, tint = null) {
   const S = 512, [c, ctx] = canvas(S), R = rng(23);
   ctx.fillStyle = '#9c8641';
   ctx.fillRect(0, 0, S, S);
@@ -123,6 +124,15 @@ function carpetTexture(renderer) {
   ctx.globalAlpha = 1;
   blotches(ctx, S, S, 7, 'rgba(70,55,20,1)', 0.16, R, 30, 110);     // damp patches
   blotches(ctx, S, S, 5, 'rgba(200,180,110,1)', 0.06, R, 40, 120);
+  if (tint) {
+    const img = ctx.getImageData(0, 0, S, S), d = img.data, base = [0x9c, 0x86, 0x41];
+    for (let i = 0; i < d.length; i += 4) {
+      // how light this pixel is next to the mustard, carried over to the new colour
+      const k = (d[i] / base[0] + d[i + 1] / base[1] + d[i + 2] / base[2]) / 3;
+      for (let ch = 0; ch < 3; ch++) d[i + ch] = Math.max(0, Math.min(255, tint[ch] * k));
+    }
+    ctx.putImageData(img, 0, 0);
+  }
   return tex(c, renderer);
 }
 
@@ -301,15 +311,27 @@ vec3 flashLight(vec3 P, vec3 N) {
 }
 
 // ---------- baked lighting ----------
-const LIGHT = [1.0, 0.95, 0.82];         // warm fluorescent
-const BOUNCE = [1.0, 0.9, 0.55];          // light bounced off yellow carpet and walls
+// Each section of Level 0 looks different, so you always know where you are (owner: the walls stay the same colour):
+// its own carpet and its own light (the panels, what they light, the light bounced about, the haze). A is the old look.
+//   light: the panels' colour; bounce: the light bounced off its carpet and walls; carpet: the carpet's colour
+//   (null = the old mustard); fog: the haze
+const LOOKS = [
+  { light: [1.0, 0.95, 0.82], bounce: [1.0, 0.9, 0.55], carpet: null, fog: [0x9a, 0x8f, 0x55] },                // A: warm white, mustard carpet
+  { light: [0.9, 0.98, 0.88], bounce: [0.86, 0.94, 0.6], carpet: [0x5c, 0x7a, 0x3e], fog: [0x86, 0x92, 0x5c] },   // B: greenish white, moss-green carpet
+  { light: [0.84, 0.92, 1.0], bounce: [0.84, 0.86, 0.74], carpet: [0x5d, 0x6c, 0x7e], fog: [0x80, 0x8a, 0x86] },   // C: cold blue-white, slate carpet
+  { light: [1.0, 0.84, 0.64], bounce: [1.0, 0.78, 0.5], carpet: [0x86, 0x3c, 0x34], fog: [0x9a, 0x7a, 0x52] },     // D: amber, maroon carpet
+];
+const LIGHT = LOOKS[0].light;            // warm fluorescent
+const BOUNCE = LOOKS[0].bounce;          // light bounced off yellow carpet and walls
 
 // the team doors' paint (they're the same doors, just coloured): red (the red key), steel (two push), yellow (two switches)
 // ('red' is the door the key opens: an ordinary door now, the owner asked for normal colours; it gets a brass lock plate)
 const LOCK_TINT = { red: new THREE.Color(0.82, 0.74, 0.66), heavy: new THREE.Color(1, 1, 1), twin: new THREE.Color(1, 1, 1) };
 
 export function buildBackroomsScene(world, renderer, gfx = {}) {
-  const plan = world.def.br, H = BR.ceiling, N = BR.cells, Wc = world.w, Dc = world.h;
+  const plan = world.def.br, H = BR.ceiling, Wc = world.w, Dc = world.h;
+  // which section's look a point has (0 A … 3 D)
+  const lookAt = (x, z) => { const s = brSection(plan, x, z); return LOOKS[s === 4 ? 3 : Math.max(0, s)]; };
   const group = new THREE.Group();
   const soft = gfx.effects !== 'low';               // three samples per panel (soft shadow edges) or one
   // full-height solid cells (walls, pillars, the outer edge)
@@ -325,14 +347,14 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
   // panels: one in the middle of every room, lengthwise along x; a few dead, a few flickering
   const R = rng(plan.seed * 13 + 5);
   const lights = [];
-  for (let z = 0; z < N; z++) for (let x = 0; x < N; x++) {
+  for (let z = 0; z < plan.D; z++) for (let x = 0; x < plan.W; x++) {
     const cx = at(x) + BR.cell / 2, cz = at(z) + BR.cell / 2;
     if (isSolid(Math.floor(cx / CELL), Math.floor(cz / CELL))) continue;
     const r = R();
     // dark areas: every light off (owner's request: no stuttering ones in there either)
     const dark = (plan.darkZones || []).some(d => x >= d.x && x < d.x + d.w && z >= d.z && z < d.z + d.d);
     const state = dark ? 'dead' : r < 0.06 ? 'dead' : r < 0.12 ? 'flicker' : 'on';
-    lights.push({ x: cx, z: cz, y: H - 0.02, ax: 'x', I: state === 'dead' ? 0 : state === 'flicker' ? 0.7 : 1, col: LIGHT, state, seed: R() });
+    lights.push({ x: cx, z: cz, y: H - 0.02, ax: 'x', I: state === 'dead' ? 0 : state === 'flicker' ? 0.7 : 1, col: lookAt(cx, cz).light, state, seed: R() });
   }
   // the exit glows green-white
   const door = world.exit;
@@ -430,9 +452,16 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     return out;
   };
   const bounce = blur(floorL, 5);
+  // the same, coloured by what it bounced off: each section's carpet and walls (LOOKS.bounce), blending where they meet
+  const tinted = new Float32Array(floorL.length);
+  for (let iz = 0; iz < FD; iz++) for (let ix = 0; ix < FW; ix++) {
+    const k = iz * FW + ix, b = lookAt(ix * CELL, iz * CELL).bounce;
+    for (let c = 0; c < 3; c++) tinted[k * 3 + c] = floorL[k * 3 + c] * b[c];
+  }
+  const bounceT = blur(tinted, 5);
   const bounceAt = (x, z, c) => {
     const ix = Math.max(0, Math.min(FW - 1, Math.round(x / CELL))), iz = Math.max(0, Math.min(FD - 1, Math.round(z / CELL)));
-    return bounce[(iz * FW + ix) * 3 + c];
+    return bounceT[(iz * FW + ix) * 3 + c];
   };
   // per-area tint so it isn't the same everywhere (low frequency grime)
   const grime = (x, z) => 0.9 + 0.12 * hash2(Math.floor(x / 3) + 101, Math.floor(z / 3) + 57) + 0.04 * hash2(Math.floor(x) + 7, Math.floor(z) + 3);
@@ -459,14 +488,42 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     return [Math.min(1.6, (r + AMB) * k), Math.min(1.6, (g + AMB) * k), Math.min(1.6, (b + AMB * 0.8) * k)];
   };
 
+  // On easy: a faint worn trail in the carpet along the way through, as if many feet had walked it (plan.guide: room
+  // after room, task by task; none across the pit hall or the small pit rooms: find your own way over the holes)
+  const wearD = new Float32Array(FW * FD).fill(9);
+  if (plan.guide) {
+    const mid = (r) => [at(r[0]) + 2.25, at(r[1]) + 2.25];
+    const holey = (r) => inPitHall(plan, r[0], r[1]) || plan.pitRooms.some(p => r[0] >= p.x && r[0] < p.x + p.w && r[1] >= p.z && r[1] < p.z + p.d);
+    for (let i = 0; i + 1 < plan.guide.length; i++) {
+      const a = plan.guide[i], b = plan.guide[i + 1];
+      if (holey(a) || holey(b)) continue;
+      const [ax, az] = mid(a), [bx, bz] = mid(b), dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz || 1;
+      for (let iz = Math.floor((Math.min(az, bz) - 1) / CELL); iz <= Math.ceil((Math.max(az, bz) + 1) / CELL); iz++) {
+        for (let ix = Math.floor((Math.min(ax, bx) - 1) / CELL); ix <= Math.ceil((Math.max(ax, bx) + 1) / CELL); ix++) {
+          if (ix < 0 || iz < 0 || ix >= FW || iz >= FD) continue;
+          const x = ix * CELL, z = iz * CELL, t = Math.max(0, Math.min(1, ((x - ax) * dx + (z - az) * dz) / l2));
+          const d = Math.hypot(x - ax - dx * t, z - az - dz * t), k = iz * FW + ix;
+          if (d < wearD[k]) wearD[k] = d;
+        }
+      }
+    }
+  }
+  const wear = (x, z) => {
+    const d = wearD[Math.round(z / CELL) * FW + Math.round(x / CELL)];
+    if (d >= 0.7) return 1;
+    const f = Math.min(1, (0.7 - d) / 0.45);
+    return 1 - 0.14 * f * f * (3 - 2 * f) * (0.75 + 0.5 * hash2(Math.round(x / CELL) + 3, Math.round(z / CELL) + 11));
+  };
+
   // ---------- floor (carpet) and ceiling ----------
   const fPos = [], fUV = [], fCol = [], cPos = [], cUV = [], cCol = [];
   for (let iz = 0; iz < FD; iz++) for (let ix = 0; ix < FW; ix++) {
     const x = ix * CELL, z = iz * CELL, k = iz * FW + ix;
     const gr = grime(x, z);
     fx_ = x; fz_ = z;
-    const fr = floorL[k * 3] + bounce[k * 3] * BOUNCE[0] * 0.35, fg = floorL[k * 3 + 1] + bounce[k * 3 + 1] * BOUNCE[1] * 0.35, fb = floorL[k * 3 + 2] + bounce[k * 3 + 2] * BOUNCE[2] * 0.35;
-    fPos.push(x, 0, z); fUV.push(x / 2, z / 2); fCol.push(...finish(fr, fg, fb, floorAO[k], gr));
+    const fr = floorL[k * 3] + bounceT[k * 3] * 0.35, fg = floorL[k * 3 + 1] + bounceT[k * 3 + 1] * 0.35, fb = floorL[k * 3 + 2] + bounceT[k * 3 + 2] * 0.35;
+    const worn = wear(x, z);
+    fPos.push(x, 0, z); fUV.push(x / 2, z / 2); fCol.push(...finish(fr * worn, fg * worn, fb * worn, floorAO[k], gr));
     // the ceiling only gets bounced light (panels shine down), plus a glow right around each lit panel
     let glow = 0;
     for (const i of near(x, z)) {
@@ -475,15 +532,16 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
       const dd = Math.hypot(Math.max(0, Math.abs(x - L.x) - 0.6), Math.max(0, Math.abs(z - L.z) - 0.3));
       if (dd < 1.4 && vis(x + 0.01, z + 0.01, L.x, L.z)) glow += (1 - dd / 1.4) ** 2 * 0.55 * L.I;
     }
-    const cr = bounce[k * 3] * 0.62 * BOUNCE[0] + glow, cg = bounce[k * 3 + 1] * 0.62 * BOUNCE[1] + glow * 0.97, cb = bounce[k * 3 + 2] * 0.62 * BOUNCE[2] + glow * 0.88;
+    const lc = lookAt(x, z).light, gk = [lc[0] / LIGHT[0], lc[1] / LIGHT[1], lc[2] / LIGHT[2]];
+    const cr = bounceT[k * 3] * 0.62 + glow * gk[0], cg = bounceT[k * 3 + 1] * 0.62 + glow * 0.97 * gk[1], cb = bounceT[k * 3 + 2] * 0.62 + glow * 0.88 * gk[2];
     cPos.push(x, H, z); cUV.push(x / 1.2, z / 1.2); cCol.push(...finish(cr, cg, cb, 0.55 + floorAO[k] * 0.45, gr));
   }
-  const fIdx = [], cIdx = [];
+  const fIdx = LOOKS.map(() => []), cIdx = [];       // (the floor: one mesh per section, each with its own carpet)
   for (let iz = 0; iz < Dc; iz++) for (let ix = 0; ix < Wc; ix++) {
     if (isSolid(ix, iz)) continue;
     const a = iz * FW + ix, b = a + 1, c = a + FW, d = c + 1;
     cIdx.push(a, b, d, a, d, c);
-    if (!isPit(ix, iz)) fIdx.push(a, c, d, a, d, b);
+    if (!isPit(ix, iz)) fIdx[LOOKS.indexOf(lookAt((ix + 0.5) * CELL, (iz + 0.5) * CELL))].push(a, c, d, a, d, b);
   }
   const mesh = (pos, uv, col, idx, material) => {
     const g = new THREE.BufferGeometry();
@@ -499,7 +557,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
   };
   const baked = (map) => addFlash(new THREE.MeshBasicMaterial({ map, vertexColors: true }));
   const surfaces = [];
-  surfaces.push(mesh(fPos, fUV, fCol, fIdx, baked(carpetTexture(renderer))));
+  LOOKS.forEach((look, i) => { if (fIdx[i].length) surfaces.push(mesh(fPos, fUV, fCol, fIdx[i], baked(carpetTexture(renderer, look.carpet)))); });
   const ceilMat = baked(ceilingTexture(renderer));
   surfaces.push(mesh(cPos, cUV, cCol, cIdx, ceilMat));
 
@@ -521,7 +579,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     fx_ = px; fz_ = pz;
     direct(px, Math.max(0.05, Math.min(H - 0.05, y)), pz, nx, 0, nz, tmp);
     const bk2 = 0.3 * (1 - y / H * 0.4), up = 0.12 * (y / H);
-    const r = tmp[0] + (bounceAt(px, pz, 0) * BOUNCE[0]) * (bk2 + up), g = tmp[1] + (bounceAt(px, pz, 1) * BOUNCE[1]) * (bk2 + up), b = tmp[2] + (bounceAt(px, pz, 2) * BOUNCE[2]) * (bk2 + up);
+    const r = tmp[0] + bounceAt(px, pz, 0) * (bk2 + up), g = tmp[1] + bounceAt(px, pz, 1) * (bk2 + up), b = tmp[2] + bounceAt(px, pz, 2) * (bk2 + up);
     const ao = corner * (y < 0.3 ? 0.72 + y : 1) * (y > H - 0.3 ? 0.8 + (H - y) * 0.6 : 1);
     return finish(r, g, b, Math.min(1, ao), gr);
   };
@@ -799,6 +857,12 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     if (!list.length) continue;
     const inst = new THREE.InstancedMesh(panelGeo, panelMats[st], list.length);
     list.forEach((L, i) => { m4.makeTranslation(L.x, H - 0.006, L.z); inst.setMatrixAt(i, m4); });
+    if (st !== 'dead') {
+      // each section's own light colour
+      const col = new THREE.Color();
+      list.forEach((L, i) => inst.setColorAt(i, col.setRGB(L.col[0] / LIGHT[0], L.col[1] / LIGHT[1], L.col[2] / LIGHT[2])));
+      inst.instanceColor.needsUpdate = true;
+    }
     if (st === 'dead') {
       // each one tinted by the baked light where it hangs (the same sum as lightAt, further down)
       const col = new THREE.Color();
@@ -1020,6 +1084,9 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     panelMats.on.color.setRGB(1.6 * k, 1.55 * k, 1.38 * k);
   };
 
+  // the haze takes the colour of the section you are in (brfx.js blends it and dims it in the dark)
+  const fogCols = LOOKS.map(l => new THREE.Color(l.fog[0] / 255, l.fog[1] / 255, l.fog[2] / 255));
+  group.userData.fogAt = (x, z) => fogCols[LOOKS.indexOf(lookAt(x, z))];
   const far = Math.min(gfx.viewDistance || 140, 60);
   const fog = new THREE.Fog('#9a8f55', 5, Math.max(30, far * 0.72));
   return { group, theme: { name: 'backrooms' }, fog, sky: null, sun: null, far };
