@@ -597,6 +597,7 @@ export class Game {
             setTimeout(() => { if (this.running) sfx.startAmbience('poolout', false, { x: this.me.pos.x, z: this.me.pos.z }, 30); }, 600);
             if (this.onEscape) this.onEscape(2);
           } else if (m.lift && this.gar) {
+            if (this.onEscape) this.onEscape(1);      // out of Level 1: the Poolrooms are unlocked for me
             // Level 1's ending: you step into the lift and turn round, its doors shut, it rides up, then the white
             const L = this.world.def.gar.lift;
             this.escapeScene = { t0: this.clock, x: this.me.pos.x, z: this.me.pos.z, yaw: this.me.yaw, pitch: this.me.pitch, lift: true, y: L.y, delay: 2.4, door: { x: (L.x0 + L.x1) / 2, z: (L.z0 + L.z1) / 2 - 0.3, nx: 0, nz: 1 } };
@@ -606,7 +607,7 @@ export class Game {
             this.escapeScene = { t0: this.clock, x: this.me.pos.x, z: this.me.pos.z, yaw: this.me.yaw, pitch: this.me.pitch, door: ex };
             document.getElementById('br-escape-time').textContent = `${fmtClock(m.time)} in the Backrooms`;
           } else this.hud.center('You escaped!', `${fmtClock(m.time)} in the Backrooms`, '#9dffb5', 5);
-        } else this.hud.center('', this.pool ? `${m.name} climbed out into the light` : `${m.name} found the exit and escaped!`, '#9dffb5', 3);
+        } else this.hud.center('', this.pool ? `${m.name} climbed out into the light` : this.gar ? `${m.name} took the lift` : `${m.name} found the exit and escaped!`, '#9dffb5', 3);
         return;
       case 'shot': return this.onRemoteShot(m);
       case 'swing': return this.onRemoteSwing(m);
@@ -2339,7 +2340,7 @@ export class Game {
     if (!me.alive && esc && esc.hatch && escT < 6.5 + (esc.delay || 0)) {
       // the Poolrooms: the last rungs, up into the white square of light
       const k = smoothstep(Math.min(1, escT / 2.2)), h = this.world.def.pool.exit.hatch;
-      x = esc.x; z = esc.z + (h.z - esc.z) * k * 0.6; y = esc.y + EYE + (h.y + 0.5 - esc.y - EYE) * k;
+      x = esc.x; z = esc.z + (h.z - esc.z) * k * 0.6; y = esc.y + EYE + (h.y - 0.2 - esc.y - EYE) * k;      // (up to just under the light)
       yaw = esc.yaw; pitch = esc.pitch + (1.3 - esc.pitch) * smoothstep(Math.min(1, escT / 1.2));
     } else if (!me.alive && esc && escT < 6.5 + (esc.delay || 0)) {
       // you are in the doorway: step into it, turn round for one last look back at the Backrooms, then the white

@@ -131,7 +131,9 @@ export class Server {
       if (rec) { this.brGone.delete(p.name.toLowerCase()); Object.assign(p, { lives: rec.lives, escaped: rec.escaped, escapeTime: rec.escapeTime, brDeath: rec.brDeath }); }
       this.send(id, this.startMsg());
       // someone who left and comes back is dead (they watch until the next try); only brand-new players start alive
-      if (this.phase === 'br' && !rec) this.later(0.3, () => this.brSpawn(p));
+      // (the Poolrooms: no joining mid-game. They watch the others until it is over, or until it starts again)
+      if (this.phase === 'br' && this.pool && !rec) { p.brDeath = 'late'; this.later(0.5, () => this.send(id, { t: 'toast', text: 'The others are already in the Poolrooms: you are watching them' })); }
+      else if (this.phase === 'br' && !rec) this.later(0.3, () => this.brSpawn(p));
       else if (rec) this.send(id, { t: 'toast', text: rec.escaped ? 'You already got out.' : 'You left this game, so you watch until it starts again.' });
     } else if (this.phase === 'dm') {
       // jump straight into a running deathmatch
@@ -302,7 +304,9 @@ export class Server {
         // the Backrooms level to start at (0 or 1), and whether this host may play Level 1 at all (their game
         // says so: while Level 1 is being tested, only the test account's does)
         if (typeof msg.l1 === 'boolean') { this.settings.l1 = msg.l1; if (!msg.l1) this.settings.stage = 0; }
-        if (msg.stage === 0 || (msg.stage === 1 && this.settings.l1)) this.settings.stage = msg.stage;
+        // the Poolrooms (Level 2): only if the host's game says they have escaped Level 1 (the host checks it)
+        if (typeof msg.l2 === 'boolean') { this.settings.l2 = msg.l2 && !!this.settings.l1; if (!this.settings.l2 && this.settings.stage === 2) this.settings.stage = 0; }
+        if (msg.stage === 0 || (msg.stage === 1 && this.settings.l1) || (msg.stage === 2 && this.settings.l2)) this.settings.stage = msg.stage;
         if (MAPS[msg.map]) this.settings.map = msg.map;
         this.broadcastRoster();
         return;
@@ -895,7 +899,7 @@ export class Server {
     if (cfg.kind === 'br') {
       this.settings.mode = 'br';
       this.settings.level = brLevel(cfg.level);
-      if (cfg.stage === 2) this.startPool(); else if (cfg.stage === 1) this.startGarage(); else this.startBackrooms();
+      if (cfg.stage === 2 && cfg.l2 !== false) this.startPool(); else if (cfg.stage === 1) this.startGarage(); else this.startBackrooms();
       return;
     }
     if (cfg.kind === 'dm') {
@@ -1028,6 +1032,7 @@ export class Server {
     this.brDone = false;
     this.pool = false;
     this.settings.map = 'backrooms';
+    this.run = []; this.levelAt = 0; this.levelEnd = null;      // (one run: each level's time, for "Run complete")
     // the maze's seed and the difficulty ("12345:hard"): a new maze every game
     this.variant = brVariant(1 + Math.floor(Math.random() * 2147483000), this.settings.level);
     this.world = new World(resolveMap('backrooms', this.variant));
@@ -1081,6 +1086,7 @@ export class Server {
     this.world = new World(resolveMap('garage', this.variant));
     this.round = (this.round || 0) + 1;
     if (!carry) this.timer = 0;
+    this.levelStart(carry, 0);
     this.bomb = this.freshBomb();
     this.drops.clear();
     for (const p of this.humans()) { if (fresh) p.lobbyTeam = p.team; this.brPrepare(p); this.brGone = null; p.kills = 0; p.deaths = 0; }
@@ -1107,7 +1113,8 @@ export class Server {
 
   // ---------- Level 2 of the Backrooms: the Poolrooms (poolmap.js, poolhost.js). No creature: only water, and falls ----------
   // carry: straight on from Level 1's lift, as one run (the clock keeps going, everyone is alive again)
-  startPool(carry = false) {
+  // (again: everyone died and the Poolrooms start over: the same level, its clock keeps going)
+  startPool(carry = false, again = false) {
     if (!this.humans().length) return;
     for (const id of [...this.bots.keys()]) { this.bots.delete(id); this.players.delete(id); }
     const fresh = !this.br;
@@ -1117,6 +1124,7 @@ export class Server {
     this.world = new World(resolveMap('pool', this.variant));
     this.round = (this.round || 0) + 1;
     if (!carry) this.timer = 0;
+    if (!again) this.levelStart(carry, 1);
     this.bomb = this.freshBomb();
     this.drops.clear();
     for (const p of this.humans()) { if (fresh) p.lobbyTeam = p.team; this.brPrepare(p); this.brGone = null; p.kills = 0; p.deaths = 0; }
@@ -1132,6 +1140,13 @@ export class Server {
   }
 
   poolTick() { if (this.poolHost) this.poolHost.tick(); }
+
+  // a new level of the Backrooms begins: carried on from the one before (its time goes in the run), or a run starts
+  levelStart(carry, prev) {
+    if (carry && this.run) this.run.push({ level: prev, time: Math.round((this.levelEnd ?? this.timer) - (this.levelAt || 0)) });
+    else this.run = [];
+    this.levelAt = this.timer; this.levelEnd = null;
+  }
 
   // the shapeshifter parked as a car is solid (and gone again when it breaks out): everyone's world is told
   setBlock(r) {
@@ -1502,7 +1517,14 @@ export class Server {
     if (!out && this.pool) {
       this.brDone = false;
       this.broadcast({ t: 'toast', text: 'Everyone is out. The Poolrooms start again…' });
-      this.later(5, () => { if (this.phase === 'br' && this.pool && this.humans().length) this.startPool(true); });
+      this.later(5, () => { if (this.phase === 'br' && this.pool && this.humans().length) this.startPool(true, true); });
+      return;
+    }
+    if (out) this.levelEnd = this.timer;          // (when the last one got out: this level's time in the run)
+    // Level 1 escaped (with Level 1 allowed here): the run carries straight on into the Poolrooms, everyone alive
+    // again, once the lift's ending has played
+    if (out && this.gar && (this.botCfg ? this.botCfg.l1 : this.settings.l1)) {
+      this.later(9.5, () => { if (this.phase === 'br' && this.gar && this.humans().length) this.startPool(true); });
       return;
     }
     if (out && !this.gar && !this.pool && (this.botCfg ? this.botCfg.l1 : this.settings.l1)) {
@@ -1547,6 +1569,7 @@ export class Server {
       // online the Backrooms takes 2 to 4 players (alone it is played from Practice: startBotGame)
       const n = this.humans().length;
       if (n < 2 || n > 4) { this.send(this.ownerId, { t: 'toast', text: n < 2 ? 'The Backrooms needs at least 2 players online. Alone, play it from Practice.' : 'The Backrooms takes 4 players at most.' }); return; }
+      if (this.settings.stage === 2 && this.settings.l2) return this.startPool();
       return this.settings.stage === 1 && this.settings.l1 ? this.startGarage() : this.startBackrooms();
     }
     if (this.settings.mode === 'dm' && !this.practice) return this.startDeathmatch();
@@ -1751,7 +1774,9 @@ export class Server {
     const stats = [...this.players.values()].filter(p => !p.dummy && !(this.br && p.bot))
       .map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, hs: p.hs, dmg: p.dmg }));
     if (this.br) for (const s of stats) { const p = this.players.get(s.id); s.escaped = !!(p && p.escaped); s.time = p && p.escapeTime; s.how = p && p.brDeath; }
-    this.broadcast({ t: 'over', winner, reason, score: this.score, stats, map: this.settings.map, mode: this.br ? 'br' : this.dm ? 'dm' : 'wingman', time: this.br ? Math.round(this.timer) : undefined });
+    // (the Backrooms: each level of this run and its time, for "Run complete")
+    const run = this.br ? [...(this.run || []), { level: this.pool ? 2 : this.gar ? 1 : 0, time: Math.round((this.levelEnd ?? this.timer) - (this.levelAt || 0)) }] : undefined;
+    this.broadcast({ t: 'over', winner, reason, score: this.score, stats, map: this.settings.map, mode: this.br ? 'br' : this.dm ? 'dm' : 'wingman', time: this.br ? Math.round(this.timer) : undefined, run, runTotal: this.br ? Math.round(this.levelEnd ?? this.timer) : undefined });      // (runTotal: the run's clock when the last one got out, rides between levels included)
   }
 
   toLobby() {

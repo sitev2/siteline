@@ -166,8 +166,8 @@ export async function reportMatch(stats) {
   return res;
 }
 
-// The Backrooms: remember on the account that this player has escaped Level 0 (Level 1 unlocked), so it follows
-// them to other devices. Quietly does nothing if the database hasn't got it yet (supabase.sql not re-run).
+// The Backrooms: remember on the account how far this player has got (1 escaped Level 0, 2 escaped Level 1, 3 escaped
+// the Poolrooms), so it follows them to other devices. Quietly does nothing if the database hasn't got it yet (supabase.sql not re-run).
 export async function unlockBrLevel(level) {
   if (!loggedIn() || ((profile.br_level | 0) >= level)) return;
   try {
