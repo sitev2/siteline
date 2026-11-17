@@ -108,31 +108,40 @@ function wallpaperTexture(renderer) {
 }
 
 // damp mustard carpet (1 tile = 2 m). `tint`: the section's own carpet colour (LOOKS): every pixel keeps its
-// shade relative to the mustard and takes on the new colour, so the pile, damp patches and fibres stay the same
+// shade relative to the mustard and takes on the new colour, so the pile, damp patches and fibres stay the same.
+// The mustard one is drawn once (it takes a while: over a second on a slow computer) and the others are copies of
+// its pixels, recoloured.
+let carpetPixels = null;
 function carpetTexture(renderer, tint = null) {
-  const S = 512, [c, ctx] = canvas(S), R = rng(23);
-  ctx.fillStyle = '#9c8641';
-  ctx.fillRect(0, 0, S, S);
-  noise(ctx, S, S, 60000, ['#7f6b31', '#b29b52', '#8d7838', '#a8914a', '#6f5d2a'], 0.55, R, 1.4);
-  // tufted fibres
-  ctx.lineWidth = 1;
-  for (let i = 0; i < 9000; i++) {
-    const x = R() * S, y = R() * S, a = R() * Math.PI * 2, l = 1.5 + R() * 2.5;
-    ctx.globalAlpha = 0.18; ctx.strokeStyle = R() < 0.5 ? '#c4ad62' : '#6a5826';
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke();
+  const S = 512, [c, ctx] = canvas(S);
+  if (!carpetPixels) {
+    const R = rng(23);
+    ctx.fillStyle = '#9c8641';
+    ctx.fillRect(0, 0, S, S);
+    noise(ctx, S, S, 60000, ['#7f6b31', '#b29b52', '#8d7838', '#a8914a', '#6f5d2a'], 0.55, R, 1.4);
+    // tufted fibres
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 9000; i++) {
+      const x = R() * S, y = R() * S, a = R() * Math.PI * 2, l = 1.5 + R() * 2.5;
+      ctx.globalAlpha = 0.18; ctx.strokeStyle = R() < 0.5 ? '#c4ad62' : '#6a5826';
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + Math.cos(a) * l, y + Math.sin(a) * l); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+    blotches(ctx, S, S, 7, 'rgba(70,55,20,1)', 0.16, R, 30, 110);     // damp patches
+    blotches(ctx, S, S, 5, 'rgba(200,180,110,1)', 0.06, R, 40, 120);
+    carpetPixels = ctx.getImageData(0, 0, S, S);
   }
-  ctx.globalAlpha = 1;
-  blotches(ctx, S, S, 7, 'rgba(70,55,20,1)', 0.16, R, 30, 110);     // damp patches
-  blotches(ctx, S, S, 5, 'rgba(200,180,110,1)', 0.06, R, 40, 120);
+  const img = ctx.createImageData(S, S), d = img.data;
+  d.set(carpetPixels.data);
   if (tint) {
-    const img = ctx.getImageData(0, 0, S, S), d = img.data, base = [0x9c, 0x86, 0x41];
+    const base = [0x9c, 0x86, 0x41];
     for (let i = 0; i < d.length; i += 4) {
       // how light this pixel is next to the mustard, carried over to the new colour
       const k = (d[i] / base[0] + d[i + 1] / base[1] + d[i + 2] / base[2]) / 3;
       for (let ch = 0; ch < 3; ch++) d[i + ch] = Math.max(0, Math.min(255, tint[ch] * k));
     }
-    ctx.putImageData(img, 0, 0);
   }
+  ctx.putImageData(img, 0, 0);
   return tex(c, renderer);
 }
 
@@ -512,7 +521,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
     const d = wearD[Math.round(z / CELL) * FW + Math.round(x / CELL)];
     if (d >= 0.7) return 1;
     const f = Math.min(1, (0.7 - d) / 0.45);
-    return 1 - 0.14 * f * f * (3 - 2 * f) * (0.75 + 0.5 * hash2(Math.round(x / CELL) + 3, Math.round(z / CELL) + 11));
+    return 1 - 0.2 * f * f * (3 - 2 * f) * (0.75 + 0.5 * hash2(Math.round(x / CELL) + 3, Math.round(z / CELL) + 11));
   };
 
   // ---------- floor (carpet) and ceiling ----------
