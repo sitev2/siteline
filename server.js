@@ -11,6 +11,8 @@ import { GAR_LEVELS, garLevel } from './garmap.js';
 import { POOL } from './poolmap.js';
 import { BR_LEVELS, brLevel, brVariant, wallFace } from './brmap.js';
 import { cleanChat, CHAT_LIMIT } from './filter.js';
+
+const BR_LIVES = 3;            // Backrooms: lives each player has (a caught player comes back in the start room)
 import {
   WEAPONS, EQUIPMENT, MONEY, STARTER_PISTOL, canTeamBuy, rawDamage, applyArmor, isArmored, penMetres, HITGROUPS,
   SPOON, hasSpoon, itemDef,
@@ -124,8 +126,10 @@ export class Server {
     } else if (this.br) {
       // a friend joins a running Backrooms game: they start in the starting room with nothing
       this.brPrepare(p);
+      const rec = this.brGone && this.brGone.get(p.name.toLowerCase());
+      if (rec) { this.brGone.delete(p.name.toLowerCase()); Object.assign(p, { lives: rec.lives, escaped: rec.escaped, escapeTime: rec.escapeTime, brDeath: rec.brDeath }); }
       this.send(id, this.startMsg());
-      if (this.phase === 'br') this.later(0.3, () => this.brSpawn(p));
+      if (this.phase === 'br' && p.lives > 0 && !p.escaped) this.later(0.3, () => this.brSpawn(p));
     } else if (this.phase === 'dm') {
       // jump straight into a running deathmatch
       p.team = 'ffa';
@@ -196,6 +200,11 @@ export class Server {
     }
     if (this.bomb.carrier === id && this.bomb.state === 'carried') this.dropBomb(p);
     this.rememberLeaver(p);
+    if (this.br && !p.bot && !p.dummy && this.phase === 'br') {
+      // (a dead player who leaves and comes back must not come back alive, and keeps the lives they had left)
+      if (!this.brGone) this.brGone = new Map();
+      this.brGone.set(p.name.toLowerCase(), { lives: p.lives ?? BR_LIVES, escaped: !!p.escaped, escapeTime: p.escapeTime, brDeath: p.brDeath });
+    }
     this.players.delete(id);
     if (id === this.ownerId) {
       const next = [...this.players.values()].find(q => !q.dummy && !q.bot);
@@ -728,7 +737,24 @@ export class Server {
       from: from ? from.map(r2) : null, part: part || 'chest', ...(extra || {}),
     });
     if (this.bomb.carrier === tgt.id && this.bomb.state === 'carried') this.dropBomb(tgt, this.throwSpot(tgt, 0.4, Math.PI));
-    if (this.br) { this.brCheck(); return; }
+    if (this.br) {
+      // the Backrooms: everyone has 3 lives; a caught player comes back in the start room after a few seconds
+      if (!tgt.dummy && !tgt.bot && tgt.id !== 'monster') {
+        tgt.lives = Math.max(0, (tgt.lives ?? BR_LIVES) - 1);
+        if (tgt.lives > 0) {
+          tgt.respawning = true;
+          this.send(tgt.id, { t: 'toast', text: `You will be back in a moment. Lives left: ${tgt.lives}` });
+          this.later(7, () => {
+            tgt.respawning = false;
+            if (this.phase !== 'br' || this.brDone || !this.players.has(tgt.id) || tgt.alive || tgt.escaped) return;
+            this.brSpawn(tgt);
+            this.send(tgt.id, { t: 'toast', text: `Back in the start room. Lives left: ${tgt.lives}` });
+          });
+        } else this.send(tgt.id, { t: 'toast', text: 'No lives left.' });
+      }
+      this.brCheck();
+      return;
+    }
     if (this.dm) {
       if (attacker && attacker !== tgt && attacker.kills >= RULES.dm.killLimit) this.dmOver('kills');
       else this.later(RULES.dm.respawn, () => { if (this.phase === 'dm') this.respawn(tgt); });
@@ -997,7 +1023,7 @@ export class Server {
     this.timer = 0;
     this.bomb = this.freshBomb();
     this.drops.clear();
-    for (const p of this.humans()) { p.lobbyTeam = p.team; this.brPrepare(p); p.kills = 0; p.deaths = 0; }
+    for (const p of this.humans()) { p.lobbyTeam = p.team; this.brPrepare(p); this.brGone = null; p.kills = 0; p.deaths = 0; }
     const m = this.world.spawns.def[0];
     const mp = {
       id: 'monster', name: 'It', team: 'monster', x: m.x, y: 0, z: m.z, yaw: 0, pitch: 0, w: 'none', hp: 100, alive: true,
@@ -1044,7 +1070,7 @@ export class Server {
     if (!carry) this.timer = 0;
     this.bomb = this.freshBomb();
     this.drops.clear();
-    for (const p of this.humans()) { if (fresh) p.lobbyTeam = p.team; this.brPrepare(p); p.kills = 0; p.deaths = 0; }
+    for (const p of this.humans()) { if (fresh) p.lobbyTeam = p.team; this.brPrepare(p); this.brGone = null; p.kills = 0; p.deaths = 0; }
     const m = this.world.def.gar.monster;
     const mp = {
       id: 'monster', name: 'It', team: 'monster', x: m.x, y: m.y, z: m.z, yaw: 0, pitch: 0, w: 's:true:lump:none', hp: 100, alive: true,
@@ -1081,7 +1107,7 @@ export class Server {
     if (!carry) this.timer = 0;
     this.bomb = this.freshBomb();
     this.drops.clear();
-    for (const p of this.humans()) { if (fresh) p.lobbyTeam = p.team; this.brPrepare(p); p.kills = 0; p.deaths = 0; }
+    for (const p of this.humans()) { if (fresh) p.lobbyTeam = p.team; this.brPrepare(p); this.brGone = null; p.kills = 0; p.deaths = 0; }
     this.doorAt = [];
     this.corners = null; this.cornerUsed = true;
     this.notes = []; this.noteSeq = 0;
@@ -1170,7 +1196,7 @@ export class Server {
   brPrepare(p) {
     Object.assign(p, {
       team: 'atk', w: 'none', inv: { primary: null, secondary: null }, ammo: {}, armor: 0, helmet: false, kit: false,
-      money: 0, alive: false, escaped: false, escapeTime: null, brDeath: null, use: false,
+      money: 0, alive: false, escaped: false, escapeTime: null, brDeath: null, use: false, lives: BR_LIVES, respawning: false,
     });
   }
 
@@ -1440,7 +1466,7 @@ export class Server {
   brCheck() {
     if (this.phase !== 'br' || this.brDone) return;
     const hs = this.humans();
-    if (!hs.length || hs.some(p => p.alive && !p.escaped)) return;
+    if (!hs.length || hs.some(p => (p.alive || p.respawning) && !p.escaped)) return;
     this.brDone = true;
     const out = hs.filter(p => p.escaped).length;
     // (when the last one out has just escaped, give their ending scene time to play: ~7 s; when the last one
