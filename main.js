@@ -1073,7 +1073,8 @@ function showBrOver(msg) {
   $('over-title').textContent = done ? 'Run complete' : msg.reason === 'all' ? (msg.stats.length > 1 ? 'Everyone escaped!' : 'You escaped!')
     : msg.reason === 'some' ? (me && me.escaped ? 'You escaped!' : 'Some of you escaped') : 'Nobody made it out';
   $('over-title').style.color = msg.winner === 'escaped' ? '#9dffb5' : '#ff6b4a';
-  const total = done ? msg.run.reduce((a, r) => a + (r.time | 0), 0) : msg.time;
+  // (the whole run: its clock when the last one got out — the same clock as everyone's own time below)
+  const total = done ? (msg.runTotal ?? msg.run.reduce((a, r) => a + (r.time | 0), 0)) : msg.time;
   $('over-score').innerHTML = `<span>${clock(total)}</span>`;
   const parts = [];
   if (done) {

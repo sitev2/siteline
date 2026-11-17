@@ -302,7 +302,7 @@ The only folder is `server/` (the optional home game server).
     turn round, the lift's own doors shut (`setLiftDoors`), it rides up, then the white "You got out." screen (`escapeScene.lift`,
     `delay`); the host waits 9.5 s before the results. The task list ticks the three steps. ONE explorer log (`LOGS[12]` in `brfx.js`)
     on the wall by the start. `node check_gar_order.mjs` plays the order with no graphics.
-  - Unlock and level flow. Escaping Level 0 yourself unlocks Level 1: `Game` calls `onEscape(0)` → `unlockLevel1()` in `main.js` saves
+  - Unlock and level flow. Escaping Level 0 yourself unlocks Level 1: `Game` calls `onEscape(0)` → `unlockBrLevel(1)` in `main.js` saves
     it on the device (localStorage `siteline-br-level`) and, logged in, on the account (`profiles.br_level`, only through the RPC
     `unlock_br_level` in `supabase.sql`; `syncUnlock()` on login copies it both ways; guests only have the device). Choosing Level 1:
     `#p-stage` (Practice) and `#lobby-stage` (lobby; the host's choice, `settings.stage`), shown only where Level 1 is allowed
@@ -317,9 +317,23 @@ The only folder is `server/` (the optional home game server).
     it vanishes for everyone and the taker's battery is full. Flickering tubes throw sparks and zap (`onSpark`).
   - STILL TO DO for Level 1: stage 8 only — a full test on a real phone and PC with real players (two-player run from Level 0's exit to
     the lift), then set `LEVEL1_OPEN = true` when the owner wants it public.
-- **Backrooms Level 2: the Poolrooms (being built: stages 1 and 2 of 3 done).** For now only the tester account (`test123`) can play it:
-  Practice → Backrooms → Level → "Level 2: the Poolrooms (being built)" (`cfg.stage === 2` → `Server.startPool()`). Still to do (stage 3):
-  the real unlock (escaping Level 1, device + account), the run-on from Level 1's lift, the lobby choice, the "escaped" tick, "Run complete".
+- **Backrooms Level 2: The Poolrooms (all three stages done).** The end of the Backrooms run for now (no Level 3). Who can reach it:
+  wherever Level 1 can be played (`level1Allowed()`: `LEVEL1_OPEN` or the tester account) — so today only `test123`, and everyone the day
+  `LEVEL1_OPEN` is set to true. Two ways in: (1) escaping Level 1 carries straight on into it as ONE run (`Server.brCheck` → `startPool(true)`
+  9.5 s after the last one takes the lift: same players and room, the clock keeps going, everyone alive again); (2) its own choice
+  "Level 2: The Poolrooms" in the Level chooser (Practice `#p-stage`, lobby `#lobby-stage`), locked ("escape Level 1 first") until the
+  chooser has escaped Level 1 (`level2Unlocked()`; the tester account can always pick it). The host checks it: the host's game sends
+  `{t:'settings', l2}` and `Server` only accepts stage 2 when `settings.l2` (Practice: `cfg.l2`). Escaping the Poolrooms earns a small
+  "✓ escaped" tick after its name (`stageName()`, `poolEscaped()`).
+  Progress (one number, `brProgress()` in main.js): 1 = escaped Level 0, 2 = escaped Level 1, 3 = escaped the Poolrooms. Saved on the
+  device (localStorage `siteline-br-level`, now the number) and on the account (`profiles.br_level` through the RPC `unlock_br_level`,
+  capped at 3 — it was 1 before, so the owner had to re-run `supabase.sql`); `syncUnlock()` copies the higher one both ways on login.
+  `Game.onEscape(n)` → `unlockBrLevel(n + 1)` (Level 0 → 1, the lift → 2, the hatch → 3).
+  "Run complete": the host keeps each level's time in the run (`levelStart()` / `this.run`, `levelEnd` = when the last one got out; a
+  restart after everyone died doesn't start a new level) and sends `run` + `runTotal` (the run's clock when the last one got out, rides
+  between levels included) with `over`; `showBrOver` shows "Run complete", each level's time, the whole run, then the players.
+  No joining mid-game: a friend who joins while the Poolrooms run watches (not spawned, `brDeath = 'late'`, "Joined to watch"); they
+  play from the next start (a restart after everyone died). Account stats are not reported. Online it takes 2–4 players like the rest.
   - `poolmap.js` — ONE fixed, hand-made layout (`resolveMap('pool', difficulty)`, theme `pool`, `world.def.pool` = the plan), 64 × 52 m:
     ground floor deck at `POOL.G` 3 m (pools go down from there; their water at `POOL.WY` 2.88), flooded rooms (knee-deep, floor `POOL.SH`),
     upper floor at `POOL.U` 10 m (7 m higher), roof underside `POOL.ROOF` 12.8. West side (start): lane hall (Picture B: slanted wall with

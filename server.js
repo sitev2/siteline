@@ -1722,7 +1722,7 @@ export class Server {
     if (this.br) for (const s of stats) { const p = this.players.get(s.id); s.escaped = !!(p && p.escaped); s.time = p && p.escapeTime; s.how = p && p.brDeath; }
     // (the Backrooms: each level of this run and its time, for "Run complete")
     const run = this.br ? [...(this.run || []), { level: this.pool ? 2 : this.gar ? 1 : 0, time: Math.round((this.levelEnd ?? this.timer) - (this.levelAt || 0)) }] : undefined;
-    this.broadcast({ t: 'over', winner, reason, score: this.score, stats, map: this.settings.map, mode: this.br ? 'br' : this.dm ? 'dm' : 'wingman', time: this.br ? Math.round(this.timer) : undefined, run });
+    this.broadcast({ t: 'over', winner, reason, score: this.score, stats, map: this.settings.map, mode: this.br ? 'br' : this.dm ? 'dm' : 'wingman', time: this.br ? Math.round(this.timer) : undefined, run, runTotal: this.br ? Math.round(this.levelEnd ?? this.timer) : undefined });      // (runTotal: the run's clock when the last one got out, rides between levels included)
   }
 
   toLobby() {
