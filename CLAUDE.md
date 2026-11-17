@@ -279,6 +279,10 @@ The only folder is `server/` (the optional home game server).
   no clue; stops to listen now and then). Hears sprinting (> 3.5 m/s) within `lv.hear` and walking within `lv.hearWalk`; catches on contact (`monsterKill`). The models in
   `models.js` are OUR OWN designs (the owner once asked for a known character from someone else's Backrooms videos; we declined to copy it).
   Sounds in `audio.js` (fluorescent buzz bed, clank/servo/slam, screech/grab). Account stats are not reported for this mode.
+- Backrooms lives (PR #77): in Level 0 and Level 1 everyone has 3 lives (`BR_LIVES` in `server.js`): caught or fallen, you are back in the
+  start room after 7 s; the game ends when everyone is out of lives, escaped or gone, and when everyone is dead the same level starts again
+  5 s after the results. Leaving and rejoining keeps your lives, and a dead player who rejoins stays dead (`brGone`). NOT in the Poolrooms:
+  there, when everyone is dead, the Poolrooms start again (`brCheck`, `check_pool.mjs`).
 - Backrooms online needs 2–4 players (owner's rule): the lobby's Start is off with fewer and says so, and `Server.startMatch` refuses too.
   Practice can still be played alone; Level 0's solo rules (`brSolo`) stay for solo Practice and for the last one alive. The HUD has no
   timer and no alive counter in the Backrooms (the top bar is hidden; only the task list shows).

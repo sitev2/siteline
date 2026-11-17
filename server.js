@@ -748,7 +748,8 @@ export class Server {
     if (this.bomb.carrier === tgt.id && this.bomb.state === 'carried') this.dropBomb(tgt, this.throwSpot(tgt, 0.4, Math.PI));
     if (this.br) {
       // the Backrooms: everyone has 3 lives; a caught player comes back in the start room after a few seconds
-      if (!tgt.dummy && !tgt.bot && tgt.id !== 'monster') {
+      // (not in the Poolrooms: there, when everyone is dead, the Poolrooms start again: brCheck)
+      if (!tgt.dummy && !tgt.bot && tgt.id !== 'monster' && !this.pool) {
         tgt.lives = Math.max(0, (tgt.lives ?? BR_LIVES) - 1);
         if (tgt.lives > 0) {
           tgt.respawning = true;
