@@ -1632,6 +1632,7 @@ export class Game {
     // hardly slows you, waist-deep a little more
     const pw = this.pool ? this.poolWater() : null;
     if (pw && this.poolLadder(dt, wx, wz, amount, pw)) return;
+    if (pw && this.poolEdge(dt, wx, wz, amount, pw)) return;
     const swim = !!(pw && pw.swim);
     const maxSpeed = pw ? (swim ? BR.walk * 0.8 : (this.sprinting() ? BR.sprint : BR.walk) * (pw.depth > 0.62 ? 0.8 : pw.depth > 0.05 ? 0.95 : 1))
       : this.br ? (this.sprinting() ? BR.sprint : BR.walk) * (wading ? 0.8 : 1)      // (Level 1's puddles slow you a little)
@@ -1744,6 +1745,41 @@ export class Game {
   }
   // a ladder: push towards it (from the water, or from a drained pool's floor) to climb; step off the deck at one
   // and you catch it; pull away to go down. Returns true while you are on one.
+  // Out over a pool's edge (owner's request: not only at the ladders): swim up against the side and keep pushing
+  // towards it, and you pull yourself up onto the floor beyond (hands on the edge, up, then over), in under a second.
+  // Not where the plan says no (poolmap.js noClimb). Returns true while you are climbing out.
+  poolEdge(dt, wx, wz, amount, pw) {
+    const me = this.me, W = this.world, P = W.def.pool;
+    let c = me.edgeClimb;
+    if (!c) {
+      if (!me.swim || amount < 0.5 || this.clock < (me.edgeFree || 0)) return false;
+      // the side has to be right in front of you (no more open water there)
+      const nx = me.pos.x + wx * (PLAYER_RADIUS + 0.22), nz = me.pos.z + wz * (PLAYER_RADIUS + 0.22);
+      if (W.bodyAt(nx, nz) && !W.blocked(nx, nz, 0.05, me.pos.y, 0.05, PLAYER_HEIGHT)) return false;
+      // and dry floor just beyond it, no higher than you can pull yourself up, with room to stand
+      for (const d of [0.7, 0.95, 1.2]) {
+        const x = me.pos.x + wx * d, z = me.pos.z + wz * d, g = W.groundAt(x, z, PLAYER_RADIUS, pw.y, 0.6), b = W.bodyAt(x, z);
+        if (g < pw.y - 0.05 || g - me.pos.y > 1.7 || (b && b.y > g + 0.05) || W.blocked(x, z, PLAYER_RADIUS, g, 0.1) || !P.climbOK(x, z)) continue;
+        c = me.edgeClimb = { t0: this.clock, x0: me.pos.x, y0: me.pos.y, z0: me.pos.z, x1: x, y1: g, z1: z, dx: wx, dz: wz, dur: 0.8 };
+        sfx.playPool('stroke', null, 0, 0.9, 1.2);
+        this.addRipple(me.pos.x, me.pos.z, 1.3);
+        break;
+      }
+      if (!c) return false;
+    }
+    const k = Math.min(1, (this.clock - c.t0) / c.dur);
+    // up first (pulling on the edge), then forward over it
+    const up = smoothstep(Math.min(1, k / 0.6)), fwd = smoothstep(Math.max(0, (k - 0.35) / 0.65));
+    me.pos.x = c.x0 + (c.x1 - c.x0) * fwd; me.pos.z = c.z0 + (c.z1 - c.z0) * fwd; me.pos.y = c.y0 + (c.y1 - c.y0) * up;
+    me.vel.x = me.vel.y = me.vel.z = 0; me.swim = false; me.onGround = false; me.airTime = 0; me.peakY = me.pos.y;
+    if (k >= 1) {
+      me.pos.x = c.x1; me.pos.y = c.y1; me.pos.z = c.z1; me.onGround = true; me.edgeClimb = null; me.edgeFree = this.clock + 0.4;
+      sfx.playStep({ surface: 'tile' });
+      return false;
+    }
+    return true;
+  }
+
   poolLadder(dt, wx, wz, amount, pw) {
     const me = this.me;
     let L = me.ladder || null;
@@ -2905,7 +2941,7 @@ export class Game {
     if (this.pool && this.poolHands) {
       const me = this.me;
       const k = Math.tan(this.vmCamera.fov * Math.PI / 360) / Math.tan(this.camera.fov * Math.PI / 360);      // (so a hand on a rail lines up with the rail)
-      this.poolHands.update(dt, { swim: me.alive && me.swim, speed: Math.hypot(me.vel.x, me.vel.z), climb: me.alive && me.ladder ? { eyeY: this.camera.position.y, L: me.ladder, camera: this.camera, k } : null });
+      this.poolHands.update(dt, { swim: me.alive && me.swim, speed: Math.hypot(me.vel.x, me.vel.z), climb: me.alive && me.ladder ? { eyeY: this.camera.position.y, L: me.ladder, camera: this.camera, k } : null, ledge: me.alive && me.edgeClimb ? { c: me.edgeClimb, camera: this.camera, k } : null });
       if (this.poolHands.root.visible) {
         if (this.viewModel) this.viewModel.visible = false;
         this.renderer.clearDepth();

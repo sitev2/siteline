@@ -276,6 +276,15 @@ function makePlan(level) {
   plan.drains = [[12.4, 46], [22.6, 34.2], [31, 48.8], [33.2, 44], [18, 29.2], [7.4, 24], [7.4, 36], [7.4, 45.9], [43.5, 31], [43.5, 40], [50, 23.2], [50, 42.6], [42.4, 18.4],
     [40, 48.5], [48, 48.5], [55, 48.5], [60.5, 33]].map(([x, z]) => ({ x, y: G, z }))
     .concat([[37, 26], [37, 38], [48.5, 9], [48.5, 18], [55, 18.8], [60.5, 28], [60.5, 40], [50, 45.5], [44, 6]].map(([x, z]) => ({ x, y: U, z })));
+  // You can pull yourself out of deep water anywhere along a pool's edge (owner's request), EXCEPT onto these:
+  // the channel's far bank (or you'd swim round the bridge), the grotto through its arches from the Great Pool
+  // (it is only for the green slide), and the little deck in front of the apse (the optional bridge's end).
+  plan.noClimb = [
+    { x0: 40.8, z0: 20, x1: 43, z1: 46.5 },           // the atrium side of the channel (only its first 2 m: the Great Pool's own edge is free)
+    { x0: 57.9, z0: 25.5, x1: 63, z1: 40.5 },         // the grotto
+    { x0: 2, z0: 7, x1: 9.2, z1: 10.05 },             // in front of the apse
+  ];
+  plan.climbOK = (x, z) => !plan.noClimb.some(r => x > r.x0 && x < r.x1 && z > r.z0 && z < r.z1);
   plan.start = { x: 55, y: G, z: 48.5, yaw: Math.PI / 2 };
   plan.lift = { x: 58.5, z: 48.5, y: G };                    // Level 1's lift doors, at the hallway's east end (shut)
   return plan;
