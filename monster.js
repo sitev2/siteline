@@ -2,7 +2,7 @@
 // It wanders the maze, listens for running footsteps, chases anyone it sees and kills on contact.
 // Walking is quiet; sprinting (Shift / the run button) is heard 11–16 m away (by difficulty), through walls.
 import { PLAYER_RADIUS, PLAYER_HEIGHT, EYE } from './world.js';
-import { BR, BR_LEVELS, brLevel } from './brmap.js';
+import { BR, BR_LEVELS, brLevel, brSection } from './brmap.js';
 
 // The fixed numbers. Everything that changes with the difficulty (how fast it chases: 5 / 10 / 15 %
 // faster than your sprint, how far it sees and hears, how quickly it loses you) is in BR_LEVELS in brmap.js.
@@ -28,8 +28,15 @@ const angTo = (from, to) => { let d = to - from; while (d > Math.PI) d -= Math.P
 //             then charges when you turn round or it is close enough
 //   pursue  — it just lost sight of you: it runs to where you were heading
 //   search  — it looks through the rooms around the last place it saw or heard you, stopping to listen
-//   wander  — nothing to go on: it roams, drifting towards where people are, and now and then stands
-//             dead still to listen
+//   wander  — nothing to go on: it roams its home section, drifting towards whoever is in it, and now and then
+//             stands dead still to listen
+//
+// Its home (owner's design): the section of the players' current task (Server.brStage: A until the heavy door is
+// open, then B until the locked door is open, then C until someone has crossed the pit hall, then D). It starts in A
+// and waits there. It never wanders into an earlier section on its own and never gets ahead of the players: when a
+// gate opens it walks through only once a player is past it (or right at it). It can't pass a shut gate. Players who
+// go back through an open gate can be chased back (it hears and sees them as anywhere, and crosses the pit hall on
+// the walkways like them), but once it has lost them it goes back to its home section and hunts there again.
 export class MonsterBrain {
   constructor(server, p) {
     this.s = server;
@@ -48,8 +55,10 @@ export class MonsterBrain {
     // a shut door on a route costs what kicking it in takes (KICK_TIME of running)
     // (a locked team door, red / heavy / switches, it can't kick in at all: a wall to it until the players open it)
     this.doorCost = (i) => { const d = this.doorOf[i] >= 0 && w.doors[this.doorOf[i]]; return d && !d.open ? (d.lock ? Infinity : KICK_TIME * this.chaseSpeed) : 0; };
-    // the maze is areas shut off from each other by gates until the players open them (brmap.js step 5b)
-    this.gates = ['heavy', 'red', 'twin'].map(l => w.doors.find(d => d.lock === l) || null);
+    // the sections are shut off from each other by gates until the players open them (brmap.js step 6): A|B the
+    // heavy door, B|C the locked door, C|D nothing (the pit hall), D|the exit room the lever door
+    this.gates = ['heavy', 'red', null, 'twin'].map(l => (l && w.doors.find(d => d.lock === l)) || null);
+    this.home = 0;                // the section it hunts in (see above)
     this.vel = { x: 0, y: 0, z: 0 };
     this.onGround = true;
     this.state = 'wait';
@@ -67,20 +76,33 @@ export class MonsterBrain {
 
   reset() { this.state = 'wait'; this.path = null; }
 
-  // Which shut-off part of the maze a spot is in: 0 the start area, 1 the key's, 2 everything past the locked door
-  // (the big pit room has no door), 3 the exit room. It can't get from one to another while the gate between is shut.
+  // Which section a spot is in: 0 A, 1 B, 2 C (with the pit hall), 3 D, 4 the exit room. It can't get from one to
+  // another while a gate between them is shut.
   region(x, z) {
-    const plan = this.world.def.br, zone = plan && plan.zone;
-    if (!zone) return 0;
-    const N = zone.length, rx = Math.max(0, Math.min(N - 1, Math.floor((x - BR.border) / BR.cell))), rz = Math.max(0, Math.min(N - 1, Math.floor((z - BR.border) / BR.cell)));
-    if (rx === plan.exit.x && rz === plan.exit.z) return 3;
-    const zn = zone[rz][rx];
-    return zn === 0 ? 0 : zn === 1 ? 1 : 2;
+    const s = brSection(this.world.def.br, x, z);
+    return s < 0 ? 0 : s;
   }
   canReach(x, z) {
     const a = this.region(this.p.x, this.p.z), b = this.region(x, z);
     for (let k = Math.min(a, b); k < Math.max(a, b); k++) { const g = this.gates[k]; if (g && !g.open) return false; }
     return true;
+  }
+  inHome(x, z) { const r = this.region(x, z); return r === this.home || (r === 4 && this.home === 3); }
+  // a section past its home (where it must never go ahead of the players)
+  ahead(x, z) { return Math.min(3, this.region(x, z)) > this.home; }
+  // its home moves on with the players' tasks, but never ahead of them: only once one of them is in a later
+  // section, or standing in the open gateway out of its home (going through)
+  updateHome() {
+    const stage = this.s.brStage ? this.s.brStage() : 3;
+    if (this.home >= stage) return;
+    const g = this.gates[this.home];
+    let furthest = -1;
+    for (const q of this.humans()) {
+      let r = Math.min(3, this.region(q.x, q.z));
+      if (g && g.open && Math.hypot(q.x - g.cx, q.z - g.cz) < 1.2) r = Math.max(r, this.home + 1);
+      furthest = Math.max(furthest, r);
+    }
+    if (furthest > this.home) this.home = Math.min(stage, furthest);
   }
 
   humans() { return [...this.s.players.values()].filter(q => !q.bot && !q.dummy && q.alive && !q.escaped); }
@@ -176,7 +198,7 @@ export class MonsterBrain {
   // a door banged somewhere: go and look if it's close enough to hear
   hearNoise(x, z, range) {
     const p = this.p;
-    if (this.state === 'chase' || this.state === 'wait' || Math.hypot(x - p.x, z - p.z) > range) return;
+    if (this.state === 'chase' || this.state === 'wait' || Math.hypot(x - p.x, z - p.z) > range || this.ahead(x, z)) return;
     this.last = { x, z, vx: 0, vz: 0, t: this.thinkAt, id: null };
     this.lastClue = this.thinkAt;
     this.state = 'search'; this.searchPts = []; this.pauseUntil = 0;
@@ -235,13 +257,16 @@ export class MonsterBrain {
     this.state = 'search';
     this.searchPts = [];
     if (!L) { this.state = 'wander'; return; }
+    // it lost them outside its home section (they went back): no searching there, it goes home
+    if (!this.inHome(L.x, L.z) || !this.inHome(this.p.x, this.p.z)) { this.state = 'wander'; this.goal = null; this.path = null; return; }
+    const lr = this.region(L.x, L.z);
     const sp = Math.hypot(L.vx, L.vz), fx = sp > 0.5 ? L.vx / sp : 0, fz = sp > 0.5 ? L.vz / sp : 0;
     const pts = [];
     for (let k = 0; k < 40 && pts.length < 12; k++) {
-      const i = nav.randomNode((x, y, z) => y < 0.1 && Math.hypot(x - L.x, z - L.z) < 11 && Math.hypot(x - L.x, z - L.z) > 2.5, 60);
+      const i = nav.randomNode((x, y, z) => y < 0.1 && Math.hypot(x - L.x, z - L.z) < 11 && Math.hypot(x - L.x, z - L.z) > 2.5 && this.region(x, z) === lr, 60);
       if (i < 0) continue;
       const x = nav.x[i], z = nav.z[i];
-      if (Math.hypot(x - L.x, z - L.z) > 11) continue;        // (randomNode gives any spot if none fits)
+      if (Math.hypot(x - L.x, z - L.z) > 11 || this.region(x, z) !== lr) continue;        // (randomNode gives any spot if none fits)
       const ahead = ((x - L.x) * fx + (z - L.z) * fz) / (Math.hypot(x - L.x, z - L.z) || 1);
       pts.push({ x, y: 0, z, score: ahead * 2 + Math.random() });
     }
@@ -255,6 +280,7 @@ export class MonsterBrain {
   // what it notices: who it can see, and footsteps it can hear
   think(now) {
     const p = this.p;
+    this.updateHome();
     let seen = null, seenD = Infinity, heard = null, heardD = Infinity;
     for (const q of this.humans()) {
       const d = Math.hypot(q.x - p.x, q.z - p.z);
@@ -313,6 +339,7 @@ export class MonsterBrain {
         let gx = L.x + L.vx * lead, gz = L.z + L.vz * lead;
         const i = this.nav.nearest(gx, 0, gz);
         if (i >= 0) { gx = this.nav.x[i]; gz = this.nav.z[i]; }
+        if (this.ahead(gx, gz) && !this.ahead(L.x, L.z)) { gx = L.x; gz = L.z; }      // (not on past its home on a guess)
         this.state = 'pursue'; this.goal = { x: gx, y: 0, z: gz }; this.target = null; this.path = null;
       }
     } else if (heard) {
@@ -340,6 +367,10 @@ export class MonsterBrain {
       if (this.state === 'wander' && now > this.listenAt) { this.listenAt = now + 14 + Math.random() * 14; this.pauseUntil = now + 1.8 + Math.random() * 1.6; }
       if (this.state === 'wander' && !this.goal) this.goal = this.wanderGoal(now);
     }
+    // never ahead of the players: past its home it only goes after someone it has seen there; otherwise it turns back
+    if (this.ahead(p.x, p.z) && !['chase', 'stalk', 'hangGo'].includes(this.state) && !(this.goal && this.inHome(this.goal.x, this.goal.z))) {
+      this.state = 'wander'; this.goal = this.wanderGoal(now); this.path = null;
+    }
     p.use = this.state === 'chase';     // clients: screeching, running animation
   }
 
@@ -360,7 +391,7 @@ export class MonsterBrain {
     for (const c of cands) {
       for (const [sx, sz] of [[-c.qx, -c.qz], [c.qx, -c.qz], [-c.qx, c.qz]]) {
         const mx = c.x + sx * 0.55, mz = c.z + sz * 0.55;
-        if (!nav.standable(mx, 0, mz) || w.isPit(mx, mz)) continue;
+        if (!nav.standable(mx, 0, mz) || w.isPit(mx, mz) || !this.inHome(mx, mz)) continue;       // (only in its home section)
         if (w.los(ex, ey, ez, mx, 1.4, mz) || w.los(ex, ey, ez, mx, 2.4, mz)) continue;       // all of it hidden
         for (let k = 0; k < 8; k++) {
           const a = k * Math.PI / 4, lx = Math.cos(a) * 0.65, lz = Math.sin(a) * 0.65;
@@ -376,7 +407,7 @@ export class MonsterBrain {
   }
 
   planPeek(now) {
-    const hs = this.humans();
+    const hs = this.humans().filter(q => this.inHome(q.x, q.z) && this.canReach(q.x, q.z));
     if (!hs.length) return;
     // it prefers whoever is furthest from everyone else
     const lonely = q => hs.reduce((m, o) => (o === q ? m : Math.min(m, Math.hypot(o.x - q.x, o.z - q.z))), 99);
@@ -432,22 +463,26 @@ export class MonsterBrain {
     let goal = null;
     if (t) {
       const i = nav.randomNode((x, y, z) => y < 0.1 && Math.hypot(x - p.x, z - p.z) < 14 && Math.hypot(x - t.x, z - t.z) > Math.hypot(p.x - t.x, p.z - t.z) + 2
-        && !this.world.los(t.x, t.y + 1.6, t.z, x, 1.4, z), 120);
-      if (i >= 0 && Math.hypot(nav.x[i] - t.x, nav.z[i] - t.z) > Math.hypot(p.x - t.x, p.z - t.z)) goal = { x: nav.x[i], y: 0, z: nav.z[i] };
+        && this.inHome(x, z) && !this.world.los(t.x, t.y + 1.6, t.z, x, 1.4, z), 120);
+      if (i >= 0 && this.inHome(nav.x[i], nav.z[i]) && Math.hypot(nav.x[i] - t.x, nav.z[i] - t.z) > Math.hypot(p.x - t.x, p.z - t.z)) goal = { x: nav.x[i], y: 0, z: nav.z[i] };
     }
     this.state = goal ? 'retreat' : 'wander';
     this.goal = goal;
     this.path = null;
   }
 
-  // somewhere to wander: towards where the players are (it can smell them), more surely the longer it has had nothing to go on
+  // somewhere to wander, always in its home section (outside it, this takes it home): towards the nearest player
+  // in there (it can smell them), more surely the longer it has had nothing to go on
   wanderGoal(now) {
-    const hs = this.humans(), nav = this.nav;
+    const p = this.p, nav = this.nav;
+    const hs = this.humans().filter(q => this.inHome(q.x, q.z) && this.canReach(q.x, q.z));
     const bored = Math.min(1, (now - this.lastClue) / 60);
-    const q = hs.length && Math.random() < 0.45 + bored * 0.4 ? hs[Math.floor(Math.random() * hs.length)] : null;
+    const near = hs.length ? hs.reduce((a, b) => (Math.hypot(b.x - p.x, b.z - p.z) < Math.hypot(a.x - p.x, a.z - p.z) ? b : a)) : null;
+    const q = near && Math.random() < 0.45 + bored * 0.4 ? near : null;
     const r = 24 - bored * 12;
-    const i = nav.randomNode((x, y, z) => y < 0.1 && (!q || Math.hypot(x - q.x, z - q.z) < r) && Math.hypot(x - this.p.x, z - this.p.z) > 8 && this.canReach(x, z));
-    return i >= 0 ? { x: nav.x[i], y: 0, z: nav.z[i] } : null;
+    const fits = (x, y, z) => y < 0.1 && this.inHome(x, z) && (!q || Math.hypot(x - q.x, z - q.z) < r) && Math.hypot(x - p.x, z - p.z) > 8 && this.canReach(x, z);
+    const i = nav.randomNode(fits);
+    return i >= 0 && fits(nav.x[i], nav.y[i], nav.z[i]) ? { x: nav.x[i], y: 0, z: nav.z[i] } : null;      // (randomNode gives any spot if none fits)
   }
 
   sees(q) {
