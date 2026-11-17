@@ -592,6 +592,7 @@ export class Game {
             setTimeout(() => { if (this.running) sfx.startAmbience('poolout', false, { x: this.me.pos.x, z: this.me.pos.z }, 30); }, 600);
             if (this.onEscape) this.onEscape(2);
           } else if (m.lift && this.gar) {
+            if (this.onEscape) this.onEscape(1);      // out of Level 1: the Poolrooms are unlocked for me
             // Level 1's ending: you step into the lift and turn round, its doors shut, it rides up, then the white
             const L = this.world.def.gar.lift;
             this.escapeScene = { t0: this.clock, x: this.me.pos.x, z: this.me.pos.z, yaw: this.me.yaw, pitch: this.me.pitch, lift: true, y: L.y, delay: 2.4, door: { x: (L.x0 + L.x1) / 2, z: (L.z0 + L.z1) / 2 - 0.3, nx: 0, nz: 1 } };

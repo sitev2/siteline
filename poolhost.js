@@ -49,7 +49,7 @@ export class PoolHost {
         const top = Math.max(...(p.poolYs || [p.y]).map(e => e[1] ?? e));
         // (landing in water at least waist deep saves you: a drained pool doesn't)
         const b = this.world.bodyAt(p.x, p.z), wet = b && b.y > p.y + 0.5;
-        if (Number(m.h) > FALL_KILL && top - p.y > FALL_KILL - 0.6 && !wet) this.S.kill(p, null, 'poolfall', false);
+        if (Number(m.h) > FALL_KILL && top - p.y > FALL_KILL - 0.6 && !wet) { p.brDeath = 'poolfall'; this.S.kill(p, null, 'poolfall', false); }
         return;
       }
       case 'slide': {
