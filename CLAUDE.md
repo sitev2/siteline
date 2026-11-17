@@ -340,9 +340,9 @@ The only folder is `server/` (the optional home game server).
     it vanishes for everyone and the taker's battery is full. Flickering tubes throw sparks and zap (`onSpark`).
   - STILL TO DO for Level 1: stage 8 only — a full test on a real phone and PC with real players (two-player run from Level 0's exit to
     the lift), then set `LEVEL1_OPEN = true` when the owner wants it public.
-- **Backrooms Level 2: the Poolrooms (being built: stage 1 of 3 done).** For now only the tester account (`test123`) can play it:
-  Practice → Backrooms → Level → "Level 2: the Poolrooms (being built)" (`cfg.stage === 2` → `Server.startPool()`). Stage 2 adds the puzzles,
-  slides, falls, floaties and the ending; stage 3 the real unlock (escaping Level 1), the run-on from Level 1, the lobby choice and "Run complete".
+- **Backrooms Level 2: the Poolrooms (being built: stages 1 and 2 of 3 done).** For now only the tester account (`test123`) can play it:
+  Practice → Backrooms → Level → "Level 2: the Poolrooms (being built)" (`cfg.stage === 2` → `Server.startPool()`). Still to do (stage 3):
+  the real unlock (escaping Level 1, device + account), the run-on from Level 1's lift, the lobby choice, the "escaped" tick, "Run complete".
   - `poolmap.js` — ONE fixed, hand-made layout (`resolveMap('pool', difficulty)`, theme `pool`, `world.def.pool` = the plan), 64 × 52 m:
     ground floor deck at `POOL.G` 3 m (pools go down from there; their water at `POOL.WY` 2.88), flooded rooms (knee-deep, floor `POOL.SH`),
     upper floor at `POOL.U` 10 m (7 m higher), roof underside `POOL.ROOF` 12.8. West side (start): lane hall (Picture B: slanted wall with
@@ -353,7 +353,7 @@ The only folder is `server/` (the optional home game server).
     New world hooks (also used by the host): `b.body(info)` + `b.wet(...)` = bodies of water with their own level (`world.bodies`,
     `world.bodyAt(x, z)`; `waterAt` answers from them), and `mapDef.solid(x, z, r, y, step, h)` = shapes that aren't boxes (round pillars,
     round rooms, the pools' smooth curved edges), checked in `World.blocked`. Pillars never stand in the water (checked).
-  - `poolview.js` (+ `poolfx.js` shaders) — the look: every surface's soft light is baked at load (white sky in windows/skylights + the
+  - `poolview.js` (+ `poolfx.js` shaders, `poolprops.js`: valve wheels, the drain stand + gauges, floaties, the hatch) — the look: every surface's soft light is baked at load (white sky in windows/skylights + the
     sun's landing patches as lamps, with shadows, blurred fill) and then adapted to how bright the place is overall (`EXPO`: bright halls
     turned down as a whole so sun patches still stand out); the low sun (fixed, `POOL.sun`) comes through ONE shadow picture taken at load.
     The 5 cm mosaic (and 6×6 sheet seams) is drawn by the tile shader (exact grout filtering: no shimmer), damp shiny floor near water,
@@ -362,8 +362,42 @@ The only folder is `server/` (the optional home game server).
     Light shafts + dust specks (Medium up), people's shadows in the sun (Medium up: a small second shadow picture, layer `castLayer`).
     Curved parts are built on top of the grid: rounded pool lips + overflow gutters, round pillars, arches/capsules (`shapedHole`), vaults,
     coves where ceilings curve into walls, the slanted window wall, steel ladders, round floor drains, coloured slide mouths.
-  - `poolplay.js` — your first-person arms (`PoolHands`: breaststroke while swimming, hand over hand on a ladder's rails) and `poolTint`
-    (people's parts under the surface are seen through the water).
+  - `poolplay.js` — your first-person arms (`PoolHands`: breaststroke while swimming, hand over hand on a ladder's rails), `poolTint`
+    (people's parts under the surface are seen through the water; `setWet`: a soaked suit is darker and shinier, dries over 90 s) and
+    `PoolClient` (the level on your screen: applies the host's `{t:'pool', s}` state, plays `{t:'pfx'}` events, the use target and hold-E
+    sends, throwing, the slide ride + its camera, floaties' bobbing, wet footprints that fade, steam hiss).
+  - THE ORDER (Claude's design; the owner asked for 4 water-based steps, no hints, no task list, no logs, no map). Host side: `poolhost.js`
+    (`PoolHost`, made in `Server.startPool`; runs in the host's browser and on the home server). Any one player can do each step.
+    1 the bridge: pressure plates (`plan.bridges[].plates`, 1 m squares of blue tiles that sink 3 cm) raise a tiled bridge across the deep
+      channel (`'need'`) while someone stands on one; alone (`brSolo`) it stays up `POOL_LEVELS.hold` s (9 / 7 / 5.5) after you step off.
+      It never rises onto a swimmer; sinking with someone on it drops them into the water (safe, they swim round). `setBridge()` in poolmap.js
+      adds/removes '_bridge' spans (host and players). A second, optional bridge (`'view'`) crosses the lane pool to the apse under its
+      light well (`plan.well`): only a view.
+    2 the steam: three valves (`plan.valves`: atrium wall, upstairs gallery on a post, the grotto — only reached by the GREEN slide), RED
+      handwheels on brass pipes (owner's request). HOLD E / the hand button (sent every 150 ms of real time, counts 0.4 s) turns one over
+      `POOL_LEVELS.turn` s (2 / 3 / 4); it stays where it is left; turning again goes back (undo). Each valve heats lanes of the Great Pool
+      (`POOL_LEVELS.lanes`, `hotLanes()`: a lane is hot when an odd number of open valves feed it). Easy: one lane each (all three open);
+      normal / hard: the upstairs valve must stay SHUT, the grotto's open. Soft wisps of steam rise off hot lanes (`steamMaterial`), and the
+      grotto's basin always steams a little; three gauges on the drain stand show each lane's heat.
+    3 the drain: every lane hot = the brass catch on the drain wheel swings away (`unlocked`); HOLD E turns it (`turn × 2.5` s, stays where
+      left; locked it rattles, no words). Then the Great Pool empties over 10 s for good (`DRAIN_SECS`, host sets `great.y`), revealing the
+      tunnel in its south wall.
+    4 the exit: through the tunnel, up the exit ladder in the shaft (`plan.exit`), out through the white hatch (feet ≥ `hatch.out`):
+      `{t:'escaped', hatch: 1}` → `Game.escapeScene.hatch` (you rise into the light, white "You got out.", the water sounds give way to wind
+      and birds: ambience `poolout`). Each player gets out on their own; the others see them climb into the light.
+    Falls: more than 6 m (`FALL_KILL`) onto a hard floor kills — your game sends `{t:'fell', h}` on landing, the host checks you really were
+    that high in the last 4 s and that you didn't land in water at least waist deep (a drained pool doesn't count) → kill weapon
+    `poolfall` (ragdoll, no blood, "You fell too far"). Everyone dead → the Poolrooms start again 5 s later (the run's clock keeps going).
+    Slides (`plan.slides`, `slideCurve()`): walk into a mouth on the slide platform → a ~5 s first-person ride down the tube (`RIDE_SECS`,
+    camera leans into the bends, dark inside with joints flashing by, light at the end), then you shoot out over the water (red → kidney
+    hall, blue → plunge pool, green → the grotto). The tubes run inside solid wall all the way (checked); the outlets are built along the
+    same path. Others: the rider vanishes into the tube (`{t:'slide'}`) and shoots out ~5 s later.
+    Floaties (`plan.floaties`: a red-and-white ring, a yellow one): host physics in `PoolHost.ringStep` (drift + bob on water, pushed by
+    swimmers, thrown arcs that bounce off walls and pillars, rest on floors, lost for good on the roof); E / hand button picks one up,
+    fire / the aim button (shown in `pool-ring` mode) throws it. Rubber squeak / thump sounds.
+    Sounds (all synthesised, `POOLS` + `playPool` in audio.js): plate clunk, stone grind (bridges), valve squeak + clank + pipe gurgle,
+    steam hiss, catch unlock, drain rush, slide whoosh + rushing water, splashes, strokes, rubber, wet tile footsteps (`STEP.tile`).
+    Interaction prompts only say how ("Hold E to turn the wheel", "Press E to pick it up"), never what to do.
   - Movement (game.js `poolWater` / `poolFloat` / `poolLadder`): walk 2.7 / sprint 4.5 as in the Backrooms, knee-deep water hardly slows
     you, deep water = swimming at 80 % of a walk (head up, the camera bobs; falling in is a splash, never a landing), you climb out only at
     ladders (push towards one) and the lane pool's steps. Jumping IS allowed here (normal jump). Phones: the jump button jumps; the run
@@ -372,6 +406,9 @@ The only folder is `server/` (the optional home game server).
   - `node check_pool.mjs [map]` walks and swims the whole map with no graphics: the start side is all reachable, nothing past the channel
     without the bridge, everything (both floors, every ladder, plate spot, valve spot, slide mouth) with it, the grotto only by the green
     slide and you can get out of it, nobody can get stuck anywhere, the exit only once the Great Pool is drained. `map` prints both floors.
+    It also checks every slide tube runs inside solid wall, and plays the whole order on the real host code with pretend players (1 and 2,
+    every difficulty): plates and bridges (solo hold, never onto a swimmer), wrong valves don't unlock, undo, the drain, the hatch, falls
+    (deadly onto floor, safe into water), floaties, slides, everyone dead = start again.
 - `check_map.mjs` — `node check_map.mjs outpost` / `node check_map.mjs quarry large` checks every area and spawn is reachable
 - `check_br.mjs` — `node check_br.mjs 300` (or `node check_br.mjs 300 0 hard` for one level; `node check_br.mjs 1 <seed>` prints a map) checks
   Level 0 layouts on the real floor: start, key, levers and exit reachable with every ordinary door shut; every room reachable; each gate the

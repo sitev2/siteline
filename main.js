@@ -975,6 +975,7 @@ function startGame(msg) {
     crossed: msg.crossed,
     block: msg.block,
     gar: msg.gar,
+    pool: msg.pool,
     onEscape: (stage) => { if (stage === 0) unlockLevel1(); },
     night: !!(msg.settings && msg.settings.night),
     settings,

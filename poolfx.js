@@ -468,3 +468,45 @@ export function glowMaterial() {
     transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
   });
 }
+
+// steam: soft wisps rising off hot water. Each particle belongs to a source (aSrc: 0–2 the Great Pool's lanes,
+// 3 the grotto's warm basin) and only shows as much as that source is hot (uHeat). It rises, spreads and fades.
+export function steamMaterial(U, pixelRatio) {
+  return new THREE.ShaderMaterial({
+    uniforms: { ...U, uHeat: { value: new THREE.Vector4(0, 0, 0, 0.35) }, uPx: { value: pixelRatio } },
+    vertexShader: /* glsl */`
+      attribute vec4 aSeed; attribute float aSrc;
+      uniform float uTime, uPx, uGreatY, uWaterY; uniform vec4 uHeat;
+      varying float vA; varying vec2 vSeed;
+      void main() {
+        float life = 5.5 + aSeed.w * 3.0, age = fract(uTime / life + aSeed.x);
+        float h = aSrc < 0.5 ? uHeat.x : aSrc < 1.5 ? uHeat.y : aSrc < 2.5 ? uHeat.z : uHeat.w;
+        float wy = aSrc < 2.5 ? uGreatY : uWaterY;
+        vec3 p = position;
+        p.y = wy + 0.05 + age * (1.1 + aSeed.y * 0.9);
+        p.x += sin(uTime * 0.31 + aSeed.z * 9.0) * 0.35 * age + age * 0.25;
+        p.z += cos(uTime * 0.27 + aSeed.y * 7.0) * 0.35 * age;
+        vec4 mv = viewMatrix * vec4(p, 1.0);
+        vA = h * sin(3.14159 * age) * smoothstep(0.3, 1.2, -mv.z) * (wy > 0.3 ? 1.0 : 0.0);
+        vSeed = aSeed.xy * 31.0 + vec2(age * 1.3, -age * 0.9);
+        // (a wisp 0.5–1.8 m across; never bigger than a quarter of the screen, and nothing at all where it isn't hot)
+        gl_PointSize = min(uPx * (0.5 + age * 1.3) * 330.0 / max(-mv.z, 0.5), 260.0 * uPx);
+        gl_Position = vA < 0.004 ? vec4(2.0, 2.0, 2.0, 1.0) : projectionMatrix * mv;
+      }`,
+    fragmentShader: /* glsl */`
+      varying float vA; varying vec2 vSeed;
+      float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float vn(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+        return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }
+      void main() {
+        vec2 d = gl_PointCoord - 0.5; float r = dot(d, d);
+        if (r > 0.25 || vA < 0.004) discard;
+        // a soft wisp, not a disc: broken up by drifting noise, thinner towards its edge
+        float n = vn(gl_PointCoord * 3.2 + vSeed) * 0.65 + vn(gl_PointCoord * 7.0 - vSeed) * 0.35;
+        float a = smoothstep(0.25, 0.0, r) * smoothstep(0.25, 0.75, n);
+        gl_FragColor = vec4(vec3(0.97, 0.97, 0.95), a * vA * 0.13);
+        #include <colorspace_fragment>
+      }`,
+    transparent: true, depthWrite: false,
+  });
+}
