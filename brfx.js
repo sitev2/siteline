@@ -445,14 +445,14 @@ export class BackroomsFX {
     const draw = (img) => { paintNote(canvas, note, img); tex.needsUpdate = true; };
     draw(null);
     if (note.img) { const im = new Image(); im.onload = () => draw(im); im.src = note.img; }
-    const light = this.built.lightAt ? Math.max(0.12, Math.min(1.1, this.built.lightAt(note.x, note.z))) : 1;
+    const light = this.built.lightAt ? Math.max(0.12, Math.min(1.1, this.built.lightAt(note.x, note.z, (note.y || 0) - (note.wall ? 1.35 : 0)))) : 1;
     const mat = addFlash(new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(light, light, light * 0.96) }));
     const size = note.size || (note.wall ? 0.3 : 0.32);
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(size, size), mat);
     const tilt = (((note.id * 37) % 11) - 5) * 0.03;      // the same slight angle on every screen
     mesh.rotation.order = 'YXZ';
     if (note.wall) { mesh.position.set(note.x, note.y, note.z); mesh.rotation.set(0, Math.atan2(note.nx, note.nz), tilt * 0.6); }
-    else { mesh.position.set(note.x, 0.006, note.z); mesh.rotation.set(-Math.PI / 2, note.yaw + tilt, 0); }
+    else { mesh.position.set(note.x, (note.y || 0) + 0.006, note.z); mesh.rotation.set(-Math.PI / 2, note.yaw + tilt, 0); }
     this.scene.add(mesh);
     this.notes.set(note.id, { note, mesh, canvas });
   }
@@ -543,9 +543,12 @@ export class BackroomsFX {
       spot = this.wallSpot();
       if (!spot) { $('note-msg').textContent = 'Face a wall to tape it up'; return; }
     } else {
+      // (the floor in front of you, whatever height it is at: Level 1's upper floor, the Poolrooms' decks)
       const fx = -Math.sin(me.yaw), fz = -Math.cos(me.yaw), x = me.pos.x + fx * 0.8, z = me.pos.z + fz * 0.8;
-      if (g.world.isPit(x, z) || g.world.blocked(x, z, 0.12, 0)) { $('note-msg').textContent = "There's no floor there"; return; }
-      spot = { x, y: 0, z, nx: 0, nz: 0 };
+      const gy = g.world.groundAt(x, z, 0.12, me.pos.y + 0.3, 0.6), wb = g.world.bodyAt && g.world.bodyAt(x, z);
+      if (g.world.isPit(x, z) || Math.abs(gy - me.pos.y) > 0.6 || g.world.blocked(x, z, 0.12, gy)) { $('note-msg').textContent = "There's no floor there"; return; }
+      if (wb && wb.y > gy + 0.05) { $('note-msg').textContent = 'Not in the water: find a dry floor'; return; }
+      spot = { x, y: gy, z, nx: 0, nz: 0 };
     }
     const img = this.drawn ? $('note-canvas').toDataURL('image/png') : '';
     g.transport.send({ t: 'note', x: spot.x, y: spot.y, z: spot.z, wall, nx: spot.nx, nz: spot.nz, yaw: me.yaw, text, img });
