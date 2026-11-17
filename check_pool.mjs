@@ -6,10 +6,20 @@
 //   - the grotto can only be reached by the green slide, and you can get out of it again;
 //   - no pillar stands in the water, every ladder works, the curved stair reaches the upper floor;
 //   - the way out is shut while the Great Pool is full and open once it is drained.
+//   - every slide's tube runs inside solid wall from its mouth to its outlet;
+//   - the order, played on the real host code with pretend players (1 and 2 of them, every difficulty): the plates
+//     raise the bridge (alone it stays up a while; never onto a swimmer), the valves heat the lanes, only the right
+//     valves unlock the drain (and the grotto's valve, only reached by the green slide, is always needed), the drain
+//     empties the Great Pool for good, the exit ladder takes you out through the hatch; long falls onto a hard floor
+//     kill (not into water), everyone dead = the Poolrooms start again; the floaties; the start message.
 // Usage: node check_pool.mjs [map]      (map: print both floors)
+let simNow = 0;
+const realNow = performance.now.bind(performance);
+globalThis.performance = { now: () => (globalThis.__sim ? simNow : realNow()) };
+globalThis.setInterval = () => 0;
 import { resolveMap } from './maps.js';
 import { World, CELL, STEP, PLAYER_RADIUS } from './world.js';
-import { POOL } from './poolmap.js';
+import { POOL, POOL_LEVELS, hotLanes, slideCurve } from './poolmap.js';
 
 const { G, U, WY } = POOL;
 let bad = 0;
@@ -163,6 +173,160 @@ for (const level of ['easy', 'normal', 'hard']) {
       }
     }
   }
+}
+
+// ---- the slides' tubes: inside solid wall all the way (only their two ends are open) ----
+{
+  const w = new World(resolveMap('pool', 'normal')), plan = w.def.pool;
+  const solidAt = (x, y, z) => w.cellSpans(Math.floor(x / CELL), Math.floor(z / CELL)).some(s => s.y0 <= y && s.y1 >= y);
+  for (const sl of plan.slides) {
+    const c = slideCurve(sl.path);
+    let worst = 0;
+    for (let i = 0; i < c.samples.length; i++) {
+      if (c.len[i] < 1.9 || c.len[i] > c.total - 2.2) continue;      // (its two open ends)
+      const [x, y, z] = c.samples[i], [x2, y2, z2] = c.samples[Math.min(c.samples.length - 1, i + 1)];
+      let tx = x2 - x, ty = y2 - y, tz = z2 - z; const tl = Math.hypot(tx, ty, tz) || 1; tx /= tl; ty /= tl; tz /= tl;
+      // a ring of points round the tube (radius 0.72: the tube is 0.7) must all be inside the wall
+      let ax = -tz, az = tx, ay = 0; const al = Math.hypot(ax, az) || 1; ax /= al; az /= al;
+      const bx = ty * az - tz * ay, by = tz * ax - tx * az, bz = tx * ay - ty * ax;
+      for (let k = 0; k < 8; k++) { const a = k * Math.PI / 4, cx = x + (ax * Math.cos(a) + bx * Math.sin(a)) * 0.72, cy = y + (ay * Math.cos(a) + by * Math.sin(a)) * 0.72, cz = z + (az * Math.cos(a) + bz * Math.sin(a)) * 0.72;
+        if (!solidAt(cx, cy, cz) || (w.solid && w.solid(cx, cz, 0.01, cy - 0.01, 0, 0.02))) { worst++; if (worst < 3) fail(`the ${sl.name} slide's tube comes out into a room at ${cx.toFixed(1)}, ${cy.toFixed(1)}, ${cz.toFixed(1)}`); } }
+    }
+    const e = sl.path[sl.path.length - 1], m = sl.path[0];
+    if (Math.hypot(m[0] - sl.mouth.x, m[2] - sl.mouth.z) > 0.6) fail(`the ${sl.name} slide's path doesn't start at its mouth`);
+    if (Math.hypot(e[0] - (sl.out.x + sl.out.nx * 1.2), e[2] - (sl.out.z + sl.out.nz * 1.2)) > 0.7) fail(`the ${sl.name} slide's path doesn't end at its outlet`);
+    console.log(`slide ${sl.name}: ${c.total.toFixed(1)} m of tube, ${(sl.path[0][1] - e[1]).toFixed(1)} m down`);
+  }
+}
+
+// ---- the order on the real host code ----
+globalThis.__sim = true;
+const { Server } = await import('./server.js');
+// the right valves for each level: the grotto's (3rd) is always needed, so the green slide is on the way
+for (const level of ['easy', 'normal', 'hard']) {
+  const good = [];
+  for (let m = 0; m < 8; m++) { const o = [!!(m & 1), !!(m & 2), !!(m & 4)]; if (hotLanes(level, o).every(Boolean)) good.push(o.map(Number).join('')); }
+  if (good.length !== 1) fail(`${level}: ${good.length} ways to heat every lane (should be exactly one)`);
+  else if (good[0][2] !== '1') fail(`${level}: the grotto's valve isn't needed`);
+}
+for (const level of ['easy', 'normal', 'hard']) for (const n of [1, 2]) {
+  const msgs = [];
+  const S = new Server({ send: (id, m) => { if (m.t !== 'snap' && m.t !== 'ping') msgs.push({ id, ...m }); }, practice: false, ownerId: 'a', localId: null });
+  S.addPlayer('a', 'Ann'); if (n > 1) S.addPlayer('b', 'Ben');
+  S.startBotGame({ kind: 'br', stage: 2, level });
+  const H = S.poolHost, plan = S.world.def.pool, a = S.players.get('a'), b = S.players.get('b'), Lv = POOL_LEVELS[level];
+  const tag = `${level}, ${n} player${n > 1 ? 's' : ''}`;
+  const ok = (c, t) => { if (!c) fail(`${tag}: ${t}`); };
+  ok(S.pool && H && a.alive && Math.abs(a.y - G) < 0.01, 'the Poolrooms did not start with the player on the ground floor');
+  ok(S.startMsg().pool && S.startMsg().pool.lv === WY, 'the start message does not carry the Poolrooms state');
+  const run = (secs, each) => { for (let t = 0; t < secs * 20; t++) { simNow += 50; if (each) each(); S.tick(); } };
+  const put = (p, x, y, z) => { p.x = x; p.y = y; p.z = z; };
+  const far = (p) => put(p, 55, G, 48.5);
+  far(a); if (b) far(b);
+  const br = plan.bridges[0], pl = br.plates[0], B = H.bridges[0];
+  const solidBridge = () => S.world.cellSpans(Math.floor(38 / CELL), Math.floor(33 / CELL)).some(s => s.m === '_bridge');
+  // ---- 1: the bridge ----
+  run(1); ok(!B.solid && !solidBridge(), 'the bridge was up before anyone stood on its plate');
+  if (b) { put(b, 38, WY - POOL.swim, 33); put(a, pl.x, G, pl.z); run(2.5); ok(!B.solid, 'the bridge came up under someone swimming there'); far(b); run(2); ok(B.solid && solidBridge(), 'the bridge did not come up once the swimmer moved away'); }
+  else { put(a, pl.x, G, pl.z); run(2); ok(B.solid && solidBridge(), 'the bridge did not come up'); }
+  ok(msgs.some(m => m.t === 'pfx' && m.k === 'plate' && m.on) && msgs.some(m => m.t === 'pfx' && m.k === 'bridge' && m.up), 'no plate clunk or bridge sound was sent');
+  // with the bridge up, the far side can be walked to (on the host's own world)
+  ok(explore(S.world, { x: pl.x, y: G, z: pl.z }).has(43.5, G, 33), 'the bridge, once up, does not lead to the far side');
+  // stepping off: with company it goes down at once; alone it waits a while
+  far(a); run(n > 1 ? 1.5 : Lv.hold - 1);
+  ok(n > 1 ? !B.solid : B.solid, n > 1 ? 'the bridge stayed up with nobody on the plate (two players)' : 'alone, the bridge went down too soon');
+  if (n === 1) { run(3); ok(!B.solid, 'alone, the bridge never went down'); }
+  // someone on it when it goes down: into the water (the host just takes it away; their game drops them in)
+  // ---- 2: the valves ----
+  const hold = (p, k, i, secs) => run(secs, () => S.receive(p.id, k === 'valve' ? { t: 'valve', i } : { t: 'drain' }));
+  const stand = (p, v) => put(p, v.x + v.nx * 0.7, v.y, v.z + v.nz * 0.7);
+  far(a); hold(a, 'valve', 0, 3); ok(H.valves[0].p === 0, 'a valve turned from far away');
+  const want = [0, 1, 2].map(i => (level === 'easy' ? true : i !== 1));
+  // the wrong one first (normal/hard: the upstairs valve), then undo it
+  if (level !== 'easy') {
+    stand(a, plan.valves[1]); hold(a, 'valve', 1, Lv.turn + 0.3);
+    ok(H.valves[1].open, `the upstairs valve did not open in ${Lv.turn} s`);
+    run(4); ok(H.heat.filter(h => h > 0.9).length === Lv.lanes[1].length, 'opening the upstairs valve did not heat its lanes');
+    hold(a, 'valve', 1, Lv.turn + 0.3); ok(!H.valves[1].open, 'the upstairs valve could not be turned back');
+    run(4); ok(H.heat.every(h => h < 0.1), 'the lanes stayed hot after the valve was turned back');
+  }
+  // the drain wheel won't turn yet
+  stand(a, plan.drain); hold(a, 'drain', 0, 3); ok(H.drainP === 0 && msgs.some(m => m.t === 'pfx' && m.k === 'stuck'), 'the drain wheel turned while the lanes were cold');
+  // half a turn, let go: it stays half open; then the rest
+  stand(a, plan.valves[0]); hold(a, 'valve', 0, Lv.turn / 2); run(1); const half = H.valves[0].p;
+  ok(half > 0.3 && half < 0.7 && !H.valves[0].open, `half a turn left the valve at ${half}`);
+  hold(a, 'valve', 0, Lv.turn / 2 + 0.4); ok(H.valves[0].open, 'the first valve did not open');
+  // (the grotto's valve: only reached by the green slide; the explore check above proves that)
+  const who = b || a; stand(who, plan.valves[2]); hold(who, 'valve', 2, Lv.turn + 0.3); ok(H.valves[2].open, 'the grotto valve did not open');
+  if (level === 'easy') { stand(a, plan.valves[1]); hold(a, 'valve', 1, Lv.turn + 0.3); }
+  ok(H.valves.map(v => v.open).join() === want.join(), `the valves are ${H.valves.map(v => v.open)}, wanted ${want}`);
+  run(4); ok(H.unlocked && H.heat.every(h => h > 0.9), 'the right valves did not heat every lane');
+  // ---- 3: the drain ----
+  stand(a, plan.drain); hold(a, 'drain', 0, Lv.turn * 2.5 + 0.5);
+  ok(H.drainAt && msgs.some(m => m.t === 'pfx' && m.k === 'drain'), 'the drain wheel did not open the plug');
+  run(5); ok(H.level < WY - 0.5 && H.level > 0.2, `half way through draining the water is at ${H.level}`);
+  run(6); ok(H.level === H.great.bottom && S.world.bodyAt(52, 33).y === H.great.bottom, 'the Great Pool did not empty');
+  // turning a valve back now changes nothing: drained pools stay empty
+  stand(a, plan.valves[0]); hold(a, 'valve', 0, Lv.turn + 0.3); run(5); ok(H.level === H.great.bottom, 'the Great Pool filled up again');
+  // the bottom, the tunnel and the exit ladder can now be reached (bridges up)
+  for (const q of plan.bridges) { const { setBridge } = await import('./poolmap.js'); setBridge(S.world, q, true); }
+  const ex = explore(S.world, plan.start);
+  ok(ex.has(52, 0, 45.5, 1) && ex.list.some(q => q.ix === -1), 'after draining, the exit ladder cannot be reached');
+  // ---- falls ----
+  const fall = (p, from, to, h) => { put(p, from[0], from[1], from[2]); run(1); put(p, to[0], to[1], to[2]); run(0.2); S.receive(p.id, { t: 'fell', h }); };
+  if (b) {
+    fall(b, [43, U, 21.5], [52, 0, 30], 10);                        // (from the gallery into the drained Great Pool: onto its floor)
+    ok(!b.alive, 'a 10 m fall onto the drained pool floor did not kill');
+    ok(msgs.some(m => m.t === 'kill' && m.victim === 'b' && m.w === 'poolfall'), 'the fall was not reported as a fall');
+  }
+  // ---- 4: out through the hatch ----
+  const sh = plan.exit.shaft;
+  put(a, (sh.x0 + sh.x1) / 2, plan.exit.hatch.out - 0.3, sh.z0 + 0.6); run(0.5); ok(!a.escaped, 'got out below the hatch');
+  a.y = plan.exit.hatch.out + 0.05; run(0.3);
+  ok(a.escaped && msgs.some(m => m.t === 'escaped' && m.hatch), 'the hatch did not let the player out');
+  run(12);
+  const over = msgs.find(m => m.t === 'over');
+  ok(over && over.winner === 'escaped' && over.map === 'pool', 'no result after the last one out');
+}
+// ---- falls into water save you; everyone dead = the Poolrooms start again; the floaties ----
+{
+  const msgs = [];
+  const S = new Server({ send: (id, m) => { if (m.t !== 'snap' && m.t !== 'ping') msgs.push({ id, ...m }); }, practice: false, ownerId: 'a', localId: null });
+  S.addPlayer('a', 'Ann'); S.addPlayer('b', 'Ben');
+  S.startBotGame({ kind: 'br', stage: 2, level: 'normal' });
+  const H = S.poolHost, a = S.players.get('a'), b = S.players.get('b');
+  const run = (secs, each) => { for (let t = 0; t < secs * 20; t++) { simNow += 50; if (each) each(); S.tick(); } };
+  const put = (p, x, y, z) => { p.x = x; p.y = y; p.z = z; };
+  const ok = (c, t) => { if (!c) fail(`falls / restart / floaties: ${t}`); };
+  // into the full Great Pool from the gallery: safe; onto the atrium deck from the gallery: dead
+  put(a, 50, U, 45.5); run(1); put(a, 52, WY - POOL.swim, 39); run(0.2); S.receive('a', { t: 'fell', h: 7 }); ok(a.alive, 'a fall into deep water killed');
+  put(a, 43, 3, 45); run(5); S.receive('a', { t: 'fell', h: 7 }); ok(a.alive, 'a fall from deck height counted as a long fall');
+  // floaties: pick up the yellow one from the water, throw it, it flies and lands somewhere sensible
+  const r = H.rings[1];
+  put(b, r.x + 3, WY - POOL.swim, r.z); S.receive('b', { t: 'ring' }); ok(!r.holder, 'a floatie was picked up from 3 m away');
+  put(b, r.x + 0.6, WY - POOL.swim, r.z); S.receive('b', { t: 'ring' }); ok(r.holder === 'b', 'the floatie could not be picked up');
+  run(0.5); ok(Math.hypot(r.x - b.x, r.z - b.z) < 0.01, 'a held floatie does not stay with its holder');
+  put(b, 44, G, 18); run(0.2); S.receive('b', { t: 'throw', yaw: Math.PI, pitch: 0.4 });
+  ok(r.mode === 'fly' && !r.holder, 'the floatie was not thrown');
+  run(6);
+  ok(['float', 'rest', 'lost'].includes(r.mode) && [r.x, r.y, r.z].every(Number.isFinite) && r.x > 0 && r.x < 64 && r.z > 0 && r.z < 52, `a thrown floatie ended up ${r.mode} at ${r.x}, ${r.y}, ${r.z}`);
+  ok(msgs.some(m => m.t === 'pfx' && (m.k === 'bump' || m.k === 'splash')), 'a thrown floatie made no sound when it landed');
+  // floating ones drift but stay in their pool
+  const f = H.rings[0], body = S.world.bodyAt(f.x, f.z);
+  run(60); ok(f.mode === 'float' && S.world.bodyAt(f.x, f.z) === body, 'the floating floatie drifted out of its pool');
+  // a slide: the others are told (and only from the mouth)
+  S.receive('a', { t: 'slide', i: 0 }); ok(!msgs.some(m => m.t === 'slide'), 'a slide was started far from its mouth');
+  const m0 = S.world.def.pool.slides[0].mouth; put(a, m0.x, U, m0.z + 0.5); S.receive('a', { t: 'slide', i: 0 });
+  ok(msgs.some(m => m.t === 'slide' && m.id === 'a' && m.i === 0), 'the others were not told about a slide');
+  // everyone dies: the Poolrooms start again (same run: the clock keeps going)
+  const t0 = S.timer;
+  for (const p of [a, b]) { put(p, 43, U, 21.5); }
+  run(1);
+  for (const p of [a, b]) { put(p, 43, G, 21.5); run(0.1); S.receive(p.id, { t: 'fell', h: 7 }); }
+  ok(!a.alive && !b.alive, 'the falls did not kill');
+  run(6);
+  ok(S.phase === 'br' && S.pool && a.alive && b.alive && S.poolHost !== H && S.timer >= t0, 'with everyone dead the Poolrooms did not start again');
+  ok(!msgs.some(m => m.t === 'over'), 'everyone dying ended the game instead of starting the Poolrooms again');
 }
 console.log(bad ? `${bad} problem(s)` : 'Level 2 Poolrooms: all checks passed');
 process.exit(bad ? 1 : 0);

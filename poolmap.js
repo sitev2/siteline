@@ -31,13 +31,23 @@ export const POOL = {
 const { G, U, WY, SH, ROOF } = POOL;
 const ROOFT = ROOF + 0.4;
 
-// What changes with the difficulty (stage 2 uses them): hold = seconds a bridge stays up after a lone player
-// steps off its plate; turn = seconds of holding to turn a valve; mixed = the valves heat more than one lane each.
+// What changes with the difficulty: hold = seconds a bridge stays up after a lone player steps off its plate;
+// turn = seconds of holding to turn a valve (the drain wheel takes twice as long); lanes = which of the Great
+// Pool's three lanes each valve heats. A lane is hot when an odd number of open valves feed it (a valve sends
+// hot water down its pipe, a second one into the same lane mixes it lukewarm again). All three lanes hot
+// unlocks the drain. Easy: one lane each (all three open). Normal and hard: the middle valve (upstairs) must
+// stay SHUT and the grotto's must be open (so the green slide is always on the way).
 export const POOL_LEVELS = {
-  easy: { hold: 9, turn: 2, mixed: false },
-  normal: { hold: 7, turn: 3, mixed: true },
-  hard: { hold: 5.5, turn: 4, mixed: true },
+  easy: { hold: 9, turn: 2, lanes: [[0], [1], [2]] },
+  normal: { hold: 7, turn: 3, lanes: [[0, 1], [1, 2], [2]] },
+  hard: { hold: 5.5, turn: 4, lanes: [[0, 2], [0, 1], [1]] },
 };
+// which lanes are hot with these valves open (open: [bool, bool, bool])
+export function hotLanes(level, open) {
+  const L = POOL_LEVELS[level] || POOL_LEVELS.normal, hot = [false, false, false];
+  open.forEach((o, i) => { if (o) for (const l of L.lanes[i]) hot[l] = !hot[l]; });
+  return hot;
+}
 export const poolLevel = v => brLevel(String(v == null ? '' : v).split(':').pop());
 
 // ---------- shapes ----------
@@ -230,21 +240,37 @@ function makePlan(level) {
     ladder(6, 5.6, 30), ladder(6, 5.6, 20),
   ];
   // the exit ladder: up the shaft at the end of the tunnel under the Great Pool, to the white hatch
-  plan.exit = { tunnel: { x0: 51, z0: 41, x1: 53, z1: 46.5, y0: 0, y1: 2.3 }, shaft: { x0: 51, z0: 44.5, x1: 53, z1: 46.5, y0: 0, y1: 8.5 }, ladder: { x: 52, z: 46.5, nx: 0, nz: 1, top: 8.5, bottom: 0, wall: true }, hatch: { x: 52, y: 8.5, z: 45.5 } };
+  // (top: as high as your feet get on it, with your head just under the hatch; out: feet this high = out through it)
+  plan.exit = { tunnel: { x0: 51, z0: 41, x1: 53, z1: 46.5, y0: 0, y1: 2.3 }, shaft: { x0: 51, z0: 44.5, x1: 53, z1: 46.5, y0: 0, y1: 8.5 }, ladder: { x: 52, z: 46.5, nx: 0, nz: 1, top: 6.6, bottom: 0, wall: true, rail: 8.4 }, hatch: { x: 52, y: 8.5, z: 45.5, out: 6.45 } };
+  // the two floaties (only for fun): a red-and-white ring and a yellow one, floating when the level starts
+  plan.floaties = [{ name: 'red', x: 21.5, z: 45.4, color: '#d83a2e', stripe: '#f4f1ea' }, { name: 'yellow', x: 44.6, z: 13.6, color: '#f2c227', stripe: null }];
+  // the optional bridge leads to the apse: a round room under a tall light well (a nice view, and nothing else)
+  plan.well = { x0: 4.5, z0: 3.9, x1: 6.5, z1: 5.9 };
   // ---- stage 2's things, placed now so the rooms fit them ----
   // pressure plates and the bridges they raise (need: the one on the way; view: the optional one to the apse)
+  // (plates: 1 m squares of blue tiles, 4 cm proud of the floor; they sink 3 cm when stood on)
+  plan.plate = { half: 0.5, h: 0.04 };
   plan.bridges = [
-    { name: 'need', x0: 35, z0: 32, x1: 41, z1: 34, plates: [{ x: 33.2, z: 33 }, { x: 43, z: 33 }] },
-    { name: 'view', x0: 6.4, z0: 10, x1: 8.4, z1: 16.2, plates: [{ x: 7.6, z: 18 }, { x: 4, z: 9 }] },
+    { name: 'need', x0: 34.5, z0: 32, x1: 41.5, z1: 34, plates: [{ x: 33.2, z: 33 }, { x: 43, z: 33 }] },
+    { name: 'view', x0: 6.5, z0: 9.5, x1: 8.5, z1: 16.5, plates: [{ x: 7.6, z: 18.2 }, { x: 4, z: 9 }] },
   ];
   // the three brass valves (v1 on the atrium's north wall, v2 upstairs on the west gallery, v3 in the grotto)
   plan.valves = [{ x: 49, y: G, z: 21, nx: 0, nz: 1 }, { x: 39.4, y: U, z: 33, nx: -1, nz: 0, post: true }, { x: 62.5, y: G, z: 34, nx: -1, nz: 0 }];
-  plan.drain = { x: 45.4, y: G, z: 33, nx: -1, nz: 0, pool: 4 };              // the big wheel and its gauge, by the Great Pool
-  // the slides: three mouths in the slide platform's north wall; where each lets you out
+  plan.drain = { x: 45.4, y: G, z: 35.5, nx: -1, nz: 0, pool: 4 };            // the big wheel and its three gauges, by the Great Pool
+  plan.lanes = [[46, 50], [50, 54], [54, 58]].map(([x0, x1]) => ({ x0, x1, z0: 25.6, z1: 40.4 }));      // the Great Pool's lanes
+  plan.grottoSteam = { x0: 58.7, z0: 26.2, x1: 62.3, z1: 29.3 };              // the grotto's warm basin: it always steams a little
+  // the slides: three mouths in the slide platform's north wall; where each lets you out. path: the middle of the
+  // tube from the mouth to the outlet, all of it inside solid wall (so it is only ever seen from the inside)
   plan.slides = [
-    { name: 'red', color: '#d8402f', mouth: { x: 42.45, y: U + 0.95, z: 3 }, out: { x: 20, y: WY + 1.3, z: 28, nx: 0, nz: 1 } },
-    { name: 'blue', color: '#2f6fd8', mouth: { x: 44.25, y: U + 0.95, z: 3 }, out: { x: 45, y: WY + 1.2, z: 9, nx: 0, nz: 1 } },
-    { name: 'green', color: '#3aa95a', mouth: { x: 46.05, y: U + 0.95, z: 3 }, out: { x: 60.5, y: G + 0.75, z: 26, nx: 0, nz: 1 } },
+    { name: 'red', color: '#d8402f', mouth: { x: 42.45, y: U + 0.95, z: 3 }, out: { x: 20, y: WY + 1.3, z: 28, nx: 0, nz: 1 },
+      path: [[42.45, 10.95, 3.4], [42.45, 10.6, 2.45], [42.2, 9.3, 2.35], [41, 8.6, 2.45], [38.5, 9.1, 3.6], [35.5, 9.4, 5.4], [32, 9.7, 6.4], [29, 9.5, 8.6], [27.6, 9.3, 11.6],
+        [25, 9.1, 14], [23.4, 8.9, 17.4], [21.2, 8.7, 20], [20.6, 8.3, 23.4], [20.2, 7.3, 26.1], [20, 5.6, 26.9], [20, 4.45, 27.5], [20, 4.18, 28.2], [20, 4.06, 29.2]] },
+    { name: 'blue', color: '#2f6fd8', mouth: { x: 44.25, y: U + 0.95, z: 3 }, out: { x: 45, y: WY + 1.2, z: 9, nx: 0, nz: 1 },
+      path: [[44.25, 10.95, 3.4], [44.25, 10.6, 2.45], [44.5, 9.4, 2.35], [45.4, 8.8, 3.1], [46.1, 8.3, 5], [45.3, 7.8, 6.9], [43.4, 7.3, 7.3], [42.4, 6.8, 5.5],
+        [43.2, 6.2, 3.4], [45.4, 5.6, 3.5], [46.1, 5.1, 5.4], [45.6, 4.6, 7.4], [45.1, 4.3, 8.4], [45, 4.08, 9.2], [45, 3.96, 10.2]] },
+    { name: 'green', color: '#3aa95a', mouth: { x: 46.05, y: U + 0.95, z: 3 }, out: { x: 60.5, y: G + 0.75, z: 26, nx: 0, nz: 1 },
+      path: [[46.05, 10.95, 3.4], [46.05, 10.6, 2.45], [46.1, 9.3, 2.3], [46.9, 8.5, 2.35], [47.8, 8.1, 2.45], [48.6, 8, 2.6], [51, 7.4, 2.4], [53.5, 7.2, 3], [56, 6.9, 2.3], [59, 6.5, 2.6], [61.6, 6.1, 4.2],
+        [62.3, 5.8, 7], [62.25, 5.5, 10], [62.4, 5.2, 13], [61.7, 4.9, 16], [62.3, 4.6, 19.2], [62, 4.3, 22], [61.3, 4, 24.3], [60.7, 3.82, 25.5], [60.5, 3.75, 26.2], [60.5, 3.68, 27.2]] },
   ];
   // small round steel drains in the dry floor
   plan.drains = [[12.4, 46], [22.6, 34.2], [31, 48.8], [33.2, 44], [18, 29.2], [7.4, 24], [7.4, 36], [7.4, 45.9], [43.5, 31], [43.5, 40], [50, 23.2], [50, 42.6], [42.4, 18.4],
@@ -334,7 +360,14 @@ export function poolMap(variant) {
           s(0, 0.5, G); s(0.5, 1, SH + (G - SH) / 2);
         }
       }
-      { const s = plan.slant; air(1.5, 9.5, 2, 45.6, s.windows[0].y0 - 0.2, s.windows[0].y1 + 0.2); }      // (one slot behind the slanted wall's windows)
+      { const s = plan.slant; air(1.5, 9.5, 2, 45.6, s.windows[0].y0 - 0.2, s.windows[0].y1 + 0.2); b.add(1.5, 9.5, 2, 45.6, s.windows[0].y0 - 0.2, s.windows[0].y1 + 0.2, '_glass'); }      // (one slot behind the slanted wall's windows, glazed)
+      // windows to the outside are glazed: nobody (and no floatie) gets out through one
+      for (const o of plan.openings) if (o.out) { const r = o.axis === 'x' ? [o.a0, o.u0, o.a1, o.u1] : [o.u0, o.a0, o.u1, o.a1]; b.add(r[0], r[1], r[2], r[3], o.y0, o.y1, '_glass'); }
+      // the light well over the apse
+      { const w = plan.well; air(w.x0, w.z0, w.x1, w.z1, G + 4, 99); }
+      // the valves' pipes and the drain wheel's stand (small solid posts)
+      { const v = plan.valves[1]; b.add(v.x + 0.05, v.z - 0.2, v.x + 0.5, v.z + 0.2, U, ROOF, '_pipe'); }
+      { const d = plan.drain; b.add(d.x - 0.05, d.z - 0.25, d.x + 0.45, d.z + 0.25, G, G + 1.2, '_pipe'); }
       for (const s of plan.skylights) air(s.x0, s.z0, s.x1, s.z1, ROOF, 99);
       // ---- round rooms ----
       for (const o of plan.rings) {
@@ -387,4 +420,36 @@ export function poolMap(variant) {
       b.spawn('def', plan.start.x, plan.start.z, 0);
     },
   };
+}
+
+// A slide's path made smooth (Catmull-Rom through its points), measured along its length so a ride moves evenly:
+// at(s) for s = 0 … 1 gives [x, y, z]; total = its length in metres. The same on every computer (no three.js).
+export function slideCurve(pts) {
+  const P = (i) => pts[Math.max(0, Math.min(pts.length - 1, i))];
+  const seg = (i, t) => {
+    const p0 = P(i - 1), p1 = P(i), p2 = P(i + 1), p3 = P(i + 2), t2 = t * t, t3 = t2 * t;
+    return [0, 1, 2].map(k => 0.5 * (2 * p1[k] + (-p0[k] + p2[k]) * t + (2 * p0[k] - 5 * p1[k] + 4 * p2[k] - p3[k]) * t2 + (-p0[k] + 3 * p1[k] - 3 * p2[k] + p3[k]) * t3));
+  };
+  const N = 20, samples = [], len = [0];
+  for (let i = 0; i < pts.length - 1; i++) for (let k = 0; k < N; k++) samples.push(seg(i, k / N));
+  samples.push(pts[pts.length - 1].slice());
+  for (let i = 1; i < samples.length; i++) len.push(len[i - 1] + Math.hypot(samples[i][0] - samples[i - 1][0], samples[i][1] - samples[i - 1][1], samples[i][2] - samples[i - 1][2]));
+  const total = len[len.length - 1];
+  const at = (s) => {
+    const d = Math.max(0, Math.min(1, s)) * total;
+    let lo = 0, hi = len.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (len[m] < d) lo = m; else hi = m; }
+    const f = len[hi] > len[lo] ? (d - len[lo]) / (len[hi] - len[lo]) : 0, a = samples[lo], b = samples[hi];
+    return [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f];
+  };
+  return { at, total, samples, len };
+}
+
+// put a bridge up (solid: a tiled slab you can walk on, at deck height) or take it away. Host and players alike.
+export function setBridge(world, br, solid) {
+  for (let iz = Math.round(br.z0 * 2); iz < Math.round(br.z1 * 2); iz++) for (let ix = Math.round(br.x0 * 2); ix < Math.round(br.x1 * 2); ix++) {
+    const i = iz * world.w + ix, list = world.spans[i].filter(s => s.m !== '_bridge');
+    if (solid) { list.push({ y0: G - 0.3, y1: G, m: '_bridge', pen: false, prop: -1 }); list.sort((a, b) => a.y0 - b.y0); }
+    world.spans[i] = list;
+  }
 }

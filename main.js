@@ -974,6 +974,7 @@ function startGame(msg) {
     key: msg.key,
     block: msg.block,
     gar: msg.gar,
+    pool: msg.pool,
     onEscape: (stage) => { if (stage === 0) unlockLevel1(); },
     night: !!(msg.settings && msg.settings.night),
     settings,

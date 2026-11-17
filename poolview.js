@@ -9,8 +9,9 @@
 import * as THREE from 'three';
 import { CELL } from './world.js';
 import { rng } from './brmap.js';
-import { POOL, towerH } from './poolmap.js';
-import { poolUniforms, tileMaterial, waterMaterial, shaftMaterial, dustMaterial, chromeMaterial, plainMaterial, glowMaterial, MAX_RIPPLES } from './poolfx.js';
+import { POOL, towerH, slideCurve } from './poolmap.js';
+import { makeValve, makeDrain, makeFloatie, makeHatch } from './poolprops.js';
+import { poolUniforms, tileMaterial, waterMaterial, shaftMaterial, dustMaterial, chromeMaterial, plainMaterial, glowMaterial, steamMaterial, MAX_RIPPLES } from './poolfx.js';
 
 const { G, U, WY, SH, ROOF } = POOL;
 const ROOFT = ROOF + 0.4;
@@ -110,6 +111,9 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     else aperture([at, yc, uc], [-o.out, 0, 0], [0, 0, hu], [0, hy, 0], o.shape);
   }
   { const s = plan.slant; for (const w of s.windows) aperture([s.x - 0.1, (w.y0 + w.y1) / 2, w.z], [1, 0, 0], [0, 0, w.w / 2], [0, (w.y1 - w.y0) / 2, 0], 'capsule'); }
+  { const w = plan.well; aperture([(w.x0 + w.x1) / 2, ROOF + 0.2, (w.z0 + w.z1) / 2], [0, -1, 0], [(w.x1 - w.x0) / 2, 0, 0], [0, 0, (w.z1 - w.z0) / 2], 'rect'); }
+  // the exit hatch: a square of white light at the top of the shaft
+  { const h = plan.exit.hatch; addEmit(h.x, h.y - 0.08, h.z, 0, -1, 0, SKY.map(v => v * 1.6), true); }
   for (const v of vpl.values()) {
     if (v.w < 0.02) continue;
     const k = v.w / Math.PI * 3.2;
@@ -876,7 +880,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
 
   // ================= small things: ladders, drains, the lift's doors, the slides' mouths =================
   // (each is merged into one mesh per material; lit by the light where it stands)
-  const merged = { chrome: [], plain: [] };
+  const merged = { chrome: [], plain: [], cap: [] };
   const lightAir = (x, y, z) => { const f = sample(probe, x, y, z), g2 = sample(fill, x, y, z); return [f[0] * 1.2 + g2[0] * 0.8 + 0.08, f[1] * 1.2 + g2[1] * 0.8 + 0.08, f[2] * 1.2 + g2[2] * 0.8 + 0.08]; };
   const put = (set, geo, x, y, z, color = null, m4 = null) => {
     const g = geo.index ? geo.toNonIndexed() : geo;
@@ -931,13 +935,23 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     const m = s.mouth;
     put('plain', new THREE.TorusGeometry(0.76, 0.08, 8, 28), m.x, m.y, m.z + 1, s.color, new THREE.Matrix4().setPosition(m.x, m.y, m.z + 0.03));
     put('plain', new THREE.CircleGeometry(0.75, 28), m.x, m.y, m.z + 1, '#07080a', new THREE.Matrix4().setPosition(m.x, m.y, m.z + 0.012));
-    const o = s.out, len = 1.5, q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(o.nx, -0.18, o.nz).normalize());
-    const mid = new THREE.Vector3(o.x + o.nx * (len / 2 - 0.3), o.y + 0.05, o.z + o.nz * (len / 2 - 0.3));
-    const m4 = new THREE.Matrix4().compose(mid, q, new THREE.Vector3(1, 1, 1));
-    put('plain', new THREE.CylinderGeometry(0.8, 0.8, len, 24, 1, true), mid.x, mid.y, mid.z + 0.5, s.color, m4);
-    put('plain', new THREE.CylinderGeometry(0.74, 0.74, len, 24, 1, true).scale(-1, 1, 1), mid.x, mid.y, mid.z + 0.5, '#101214', m4);
-    const ringM = new THREE.Matrix4().compose(new THREE.Vector3(o.x + o.nx * (len - 0.3), o.y + 0.05 - 0.18 * (len / 2), o.z + o.nz * (len - 0.3)), q.clone().multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2)), new THREE.Vector3(1, 1, 1));
-    put('plain', new THREE.TorusGeometry(0.77, 0.045, 8, 28), mid.x, mid.y, mid.z + 0.5, s.color, ringM);
+    // the outlet: the last part of the slide's own path, from just inside the wall to its open end (so the tube you
+    // ride in lines up with it exactly)
+    const o = s.out, c = slideCurve(s.path), wallD = (q) => (q[0] - o.x) * o.nx + (q[2] - o.z) * o.nz;
+    let s0 = 1, sw = 1;
+    for (let k = 400; k >= 0; k--) { const t = k / 400, d = wallD(c.at(t)); if (d > -0.25) s0 = t; if (d > 0.015) sw = t; if (d < -0.3) break; }
+    class Part extends THREE.Curve { constructor(a, b) { super(); this.a = a; this.b = b; } getPoint(t, v = new THREE.Vector3()) { const q = c.at(this.a + (this.b - this.a) * t); return v.set(q[0], q[1], q[2]); } }
+    const part = new Part(s0, 1), segs = Q === 0 ? 16 : 24;
+    put('plain', new THREE.TubeGeometry(part, 8, 0.8, segs, false), o.x, o.y, o.z + 0.5, s.color);
+    put('plain', new THREE.TubeGeometry(part, 8, 0.72, segs, false), o.x, o.y, o.z + 0.5, new THREE.Color(s.color).multiplyScalar(0.3));
+    const along = (t) => { const a = c.at(Math.max(0, t - 0.003)), b = c.at(Math.min(1, t + 0.003)); return new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]).normalize(); };
+    // where it goes into the wall: dark (the tube carries on in there). One-sided: from inside, on a ride, you see through it
+    // (flat on the wall, an oval: the sloping tube meets the wall in one)
+    { const p = c.at(sw), t = along(sw), cosA = Math.max(0.4, t.x * o.nx + t.z * o.nz), cq = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(o.nx, 0, o.nz));
+      put('cap', new THREE.CircleGeometry(0.73, segs), p[0], p[1], p[2] + 0.5, '#0b0c0e', new THREE.Matrix4().compose(new THREE.Vector3(p[0], p[1], p[2]), cq, new THREE.Vector3(1, 1 / cosA, 1))); }
+    // a rolled lip round its open end
+    { const p = c.at(1), rq = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), along(0.999));
+      put('plain', new THREE.TorusGeometry(0.77, 0.045, 8, 28), p[0], p[1], p[2] + 0.5, s.color, new THREE.Matrix4().compose(new THREE.Vector3(p[0], p[1], p[2]), rq, new THREE.Vector3(1, 1, 1))); }
   }
   const mergeGeo = (list) => {
     let n = 0; for (const g of list) n += g.attributes.position.count;
@@ -956,6 +970,106 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   const chromeMat = chromeMaterial(UNI), plainMat = plainMaterial(UNI, { side: THREE.DoubleSide });
   if (merged.chrome.length) group.add(new THREE.Mesh(mergeGeo(merged.chrome), chromeMat));
   if (merged.plain.length) group.add(new THREE.Mesh(mergeGeo(merged.plain), plainMat));
+  if (merged.cap.length) group.add(new THREE.Mesh(mergeGeo(merged.cap), plainMaterial(UNI, { shiny: 0 })));
+
+  // ================= the order's things: plates, bridges, valves, the drain, steam, the hatch, the slides' insides, floaties =================
+  const movers = new THREE.Group();
+  group.add(movers);
+  // a tiled box (top and sides) built with the baked light where it stands, as its own mesh so it can move
+  const tiledBox = (x0, z0, x1, z1, y0, y1, finTop, finSide, wk) => {
+    const B = new Buf();
+    const P = (x, y, z, nx, ny, nz, u, v, fin) => V(B, x, y, z, nx, ny, nz, u, v, fin, wk);
+    quad(B, P(x0, y1, z0, 0, 1, 0, x0, z0, finTop), P(x1, y1, z0, 0, 1, 0, x1, z0, finTop), P(x1, y1, z1, 0, 1, 0, x1, z1, finTop), P(x0, y1, z1, 0, 1, 0, x0, z1, finTop), 0, 1, 0);
+    for (const [nx, nz, ax, az, bx, bz] of [[0, -1, x0, z0, x1, z0], [0, 1, x1, z1, x0, z1], [-1, 0, x0, z1, x0, z0], [1, 0, x1, z0, x1, z1]]) {
+      const u0 = nx ? az : ax, u1 = nx ? bz : bx;
+      quad(B, P(ax, y0, az, nx, 0, nz, u0, y0, finSide), P(bx, y0, bz, nx, 0, nz, u1, y0, finSide), P(bx, y1, bz, nx, 0, nz, u1, y1, finSide), P(ax, y1, az, nx, 0, nz, u0, y1, finSide), nx, 0, nz);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(B.pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(B.nor, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(B.uv, 2)); g.setAttribute('aLight', new THREE.Float32BufferAttribute(B.light, 3));
+    g.setAttribute('aGlint', new THREE.Float32BufferAttribute(B.glint, 3)); g.setAttribute('aFx', new THREE.Float32BufferAttribute(B.fx, 4));
+    g.setIndex(B.idx); g.computeBoundingSphere();
+    const m = new THREE.Mesh(g, tileMat); movers.add(m);
+    return m;
+  };
+  // pressure plates: slightly raised squares of blue tiles that sink when stood on
+  const plates = plan.bridges.map(br => br.plates.map(p => { const h = plan.plate.half; const m = tiledBox(p.x - h, p.z - h, p.x + h, p.z + h, G - 0.05, G + plan.plate.h, FIN.blue, FIN.blue, 0); m.userData.k = 0; return m; }));
+  // bridges: a tiled slab with pale blue edges, hidden under the water until it rises
+  const BRIDGE_LOW = -1.25;
+  const bridges = plan.bridges.map(br => { const m = tiledBox(br.x0, br.z0, br.x1, br.z1, G - 0.3, G, FIN.cream, FIN.blue, 1); m.position.y = BRIDGE_LOW; m.userData.up = 0; return m; });
+  ud.setPlate = (b, j, on) => { const m = plates[b] && plates[b][j]; if (m) m.userData.want = on ? 1 : 0; };
+  ud.setBridge = (b, up) => { const m = bridges[b]; if (m) m.userData.want = up; };
+  // valves and the drain
+  const valves = plan.valves.map(v => { const o = makeValve(!!v.post, v.post ? POOL.ROOF - v.y : 3.2); o.root.position.set(v.x, v.y, v.z); o.root.rotation.y = Math.atan2(v.nx, v.nz); movers.add(o.root); return o; });
+  ud.setValve = (i, p) => { const o = valves[i]; if (o) o.wheel.userData.want = p * Math.PI * 2 * 3; };
+  const drain = makeDrain();
+  drain.root.position.set(plan.drain.x, plan.drain.y, plan.drain.z); drain.root.rotation.y = Math.atan2(plan.drain.nx, plan.drain.nz);
+  movers.add(drain.root);
+  ud.setDrain = (p) => { drain.wheel.userData.want = p * Math.PI * 2 * 4; };
+  ud.setGauges = (heat) => { for (let k = 0; k < 3; k++) drain.needles[k].userData.want = heat[k]; };
+  ud.setUnlocked = (on) => { drain.lock.userData.want = on ? 1 : 0; };
+  ud.jiggleDrain = () => { drain.wheel.userData.jiggle = 0.35; };
+  // steam over the Great Pool's lanes and the grotto's basin
+  const steam = (() => {
+    const pos = [], seed = [], src = [], per = Q === 0 ? 50 : 130;
+    const add = (r, k, n) => { for (let i = 0; i < n; i++) { pos.push(r.x0 + R() * (r.x1 - r.x0), 0, r.z0 + R() * (r.z1 - r.z0)); seed.push(R(), R(), R(), R()); src.push(k); } };
+    plan.lanes.forEach((l, k) => add(l, k, per));
+    add(plan.grottoSteam, 3, Math.round(per * 0.45));
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('aSeed', new THREE.Float32BufferAttribute(seed, 4)); g.setAttribute('aSrc', new THREE.Float32BufferAttribute(src, 1));
+    const m = new THREE.Points(g, steamMaterial(UNI, renderer.getPixelRatio())); m.frustumCulled = false; m.renderOrder = 9;
+    group.add(m);
+    return m;
+  })();
+  ud.setHeat = (h) => { const v = steam.material.uniforms.uHeat.value; v.x = h[0]; v.y = h[1]; v.z = h[2]; };
+  // the exit hatch
+  { const h = makeHatch(); h.position.set(plan.exit.hatch.x, plan.exit.hatch.y - 0.01, plan.exit.hatch.z); movers.add(h); }
+  // the slides from the inside: dark tubes, faint seams going by, light at both ends (only drawn during a ride)
+  const tubes = plan.slides.map(sl => {
+    const c = slideCurve(sl.path), N = Math.max(40, Math.round(c.total / 0.25)), RS = 18, rad = 0.7;
+    const pos = [], col = [], idx = [], base = new THREE.Color(sl.color);
+    let prevN = null;
+    for (let i = 0; i <= N; i++) {
+      const s = i / N, p = c.at(s), q = c.at(Math.min(1, s + 0.002)), q0 = c.at(Math.max(0, s - 0.002));
+      const T = new THREE.Vector3(q[0] - q0[0], q[1] - q0[1], q[2] - q0[2]).normalize();
+      // (a frame that turns as little as it can along the curve)
+      let Nn = prevN ? prevN.clone().sub(T.clone().multiplyScalar(prevN.dot(T))).normalize() : new THREE.Vector3(0, 1, 0).sub(T.clone().multiplyScalar(T.y)).normalize();
+      prevN = Nn; const Bn = new THREE.Vector3().crossVectors(T, Nn);
+      const d = s * c.total, ends = Math.max(Math.exp(-d / 1.6), Math.exp(-(c.total - d) / 2.4));
+      const seam = Math.abs((d % 1.2) - 0.6) > 0.54 ? 3.2 : 1;          // (the joints between the tube's sections flash by)
+      for (let k = 0; k <= RS; k++) {
+        const a = k / RS * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+        pos.push(p[0] + (Nn.x * ca + Bn.x * sa) * rad, p[1] + (Nn.y * ca + Bn.y * sa) * rad, p[2] + (Nn.z * ca + Bn.z * sa) * rad);
+        const floor = Math.max(0, -ca) ** 6;            // (a wet sheen along the bottom)
+        const stripe = Math.abs(((k / RS) * 6) % 1 - 0.5) < 0.06 ? 1.6 : 1;      // (six faint lines along it)
+        const k2 = 0.08 * seam * stripe + ends * 1.1 + floor * 0.08;
+        col.push(base.r * k2 + ends * 0.6 + floor * 0.05, base.g * k2 + ends * 0.6 + floor * 0.06, base.b * k2 + ends * 0.58 + floor * 0.07);
+      }
+    }
+    for (let i = 0; i < N; i++) for (let k = 0; k < RS; k++) { const a = i * (RS + 1) + k, b = a + RS + 1; idx.push(a, b, a + 1, b, b + 1, a + 1); }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); g.setIndex(idx);
+    g.computeBoundingSphere();
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+    m.visible = false; m.frustumCulled = false;
+    group.add(m);
+    return m;
+  });
+  ud.setTube = (i, on) => { for (let k = 0; k < tubes.length; k++) tubes[k].visible = on && k === i; };
+  // the floaties
+  ud.floaties = plan.floaties.map(f => { const m = makeFloatie(f.color, f.stripe); m.position.set(f.x, WY, f.z); movers.add(m); return m; });
+  // everything that eases towards where the host says it should be
+  const ease = (cur, want, k) => cur + (want - cur) * Math.min(1, k);
+  const moversStep = (dt) => {
+    for (const row of plates) for (const m of row) { m.userData.k = ease(m.userData.k, m.userData.want || 0, dt * 14); m.position.y = -0.03 * m.userData.k; }
+    for (const m of bridges) { m.userData.up = ease(m.userData.up, m.userData.want || 0, dt * 6); m.position.y = BRIDGE_LOW * (1 - m.userData.up); }
+    for (const o of valves) o.wheel.rotation.z = ease(o.wheel.rotation.z, -(o.wheel.userData.want || 0), dt * 8);
+    const jg = drain.wheel.userData.jiggle || 0;
+    drain.wheel.rotation.z = ease(drain.wheel.rotation.z, -(drain.wheel.userData.want || 0), dt * 6) + (jg > 0 ? Math.sin(jg * 60) * 0.04 * jg : 0);
+    drain.wheel.userData.jiggle = Math.max(0, jg - dt);
+    for (const nd of drain.needles) nd.rotation.z = ease(nd.rotation.z, Math.PI * 0.75 - (nd.userData.want || 0) * Math.PI * 1.5, dt * 3);
+    drain.lock.rotation.z = ease(drain.lock.rotation.z, (drain.lock.userData.want || 0) * 1.9, dt * 5);      // (swings up and away from the wheel)
+  };
 
   // ================= the sun's beams, the dust in them, the glow of the windows =================
   const fxGroup = new THREE.Group();
@@ -1044,6 +1158,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   };
   ud.update = (dt, dread, cam) => {
     UNI.uTime.value += dt;
+    moversStep(dt);
     // is the camera standing in a patch of sun? (people near you are then lit by it too)
     sunT -= dt;
     if (sunT <= 0 && cam) { sunT = 0.25; inSun = ud.sunAt(cam.x, cam.y - 0.5, cam.z); }
@@ -1053,7 +1168,8 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   const mirror = Q >= 1 ? { rt: null, cam: new THREE.PerspectiveCamera(), plane: new THREE.Plane(new THREE.Vector3(0, 1, 0), -(WY - 0.03)), scale: Q === 1 ? 0.5 : 0.7 } : null;
   const dyn = Q >= 1 ? { rt: mkDepthRT(1024), cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 10) } : null;
   if (dyn) UNI.uDyn.value = dyn.rt.depthTexture;
-  ud.castLayer = 3;                                         // things on this layer throw a shadow in the sun (people)
+  ud.castLayer = 3;                                         // things on this layer throw a shadow in the sun (people, floaties)
+  for (const f of ud.floaties) f.traverse(o => o.layers.enable(3));
   const frustum = new THREE.Frustum(), pm = new THREE.Matrix4(), size = new THREE.Vector2();
   const vTmp = new THREE.Vector3(), tTmp = new THREE.Vector3(), q4 = new THREE.Matrix4(), clr = new THREE.Color();
   ud.preRender = (rend, scene, camera) => {

@@ -373,6 +373,8 @@ const STEP = {
   hard: (x, sr) => { noiseHit(x, sr, 0, 'lowpass', 700, 0.7, 0.012, 1); thump(x, sr, 0, 150, 100, 0.02, 0.5); noiseHit(x, sr, 0.045, 'bandpass', 2200, 2, 0.008, 0.6); },
   metal: (x, sr) => { thump(x, sr, 0, 140, 90, 0.03, 0.8); partials(x, sr, 0, [[420 + Math.random() * 40, 0.3, 0.07], [1030, 0.2, 0.05], [1870, 0.12, 0.035], [2950, 0.08, 0.025]], 1); noiseHit(x, sr, 0, 'bandpass', 3000, 2, 0.006, 0.5); },
   wood: (x, sr) => { thump(x, sr, 0, 210, 170, 0.05, 0.7); partials(x, sr, 0, [[430, 0.3, 0.035], [910, 0.12, 0.02]], 1); noiseHit(x, sr, 0, 'bandpass', 900, 1.5, 0.02, 0.5); },
+  // wet tiles (the Poolrooms): a bare-ish slap of a damp boot sole on glazed tiles
+  tile: (x, sr) => { noiseHit(x, sr, 0, 'highpass', 1800, 0.8, 0.006, 0.9); noiseHit(x, sr, 0, 'bandpass', 1100, 1.2, 0.02, 0.8); thump(x, sr, 0, 170, 110, 0.02, 0.45); noiseHit(x, sr, 0.03, 'bandpass', 3200, 2, 0.01, 0.25); },
   // wading: a sloshing push through the water, a splash, droplets and bubbles
   water: (x, sr) => {
     noiseHit(x, sr, 0, 'lowpass', 650, 0.7, 0.09, 0.9, 0.03);
@@ -723,6 +725,64 @@ const BRS = {
   // three knocks on the other side of a wall
   knock: () => buf(1.3, (x, sr) => { for (const at of [0, 0.32, 0.64]) { thump(x, sr, at, 170, 110, 0.07, 1); noiseHit(x, sr, at, 'lowpass', 700, 0.7, 0.03, 0.5); } normalize(x, 0.7); }),
 };
+// ---------- the Poolrooms ----------
+const POOLS = {
+  // a pressure plate going down (or up): a dull stone clunk
+  clunk: () => buf(0.5, (x, sr) => { thump(x, sr, 0, 140, 70, 0.08, 1, 1.5); noiseHit(x, sr, 0, 'lowpass', 600, 0.7, 0.03, 0.6); click(x, sr, 0, 1500, 2, 0.3); normalize(x, 0.8); }),
+  // a tiled bridge rising out of (or sinking into) the water: a deep stone grind, water pouring off it
+  grind: () => buf(1.6, (x, sr) => {
+    for (let i = 0; i < x.length; i++) { const t = i / sr, e = Math.min(1, t / 0.15) * Math.min(1, (1.5 - t) / 0.3); x[i] += rnd() * 0.25 * Math.max(0, e) * (0.6 + 0.4 * Math.sin(t * 37)); }
+    biquad(x, 'lowpass', 240, 1.2, sr);
+    thump(x, sr, 0, 70, 50, 0.4, 0.5); sweepNoise(x, sr, 0.2, 1.3, 1600, 900, 0.8, 0.35, 0.5); bubbles(x, sr, 0.3, 1.1, 14, 0.25);
+    normalize(x, 0.8);
+  }),
+  // turning a big brass valve: a stiff metal squeak and the ratchet inside
+  squeak: () => buf(0.7, (x, sr) => {
+    const f = 900 + Math.random() * 400;
+    for (let i = 0; i < 0.5 * sr; i++) { const t = i / sr, e = Math.sin(Math.PI * t / 0.5); x[i] += Math.sin(6.283 * (f + 180 * Math.sin(t * 23)) * t) * 0.25 * e * (0.7 + 0.3 * Math.sin(t * 90)); }
+    for (let k = 0; k < 4; k++) click(x, sr, 0.05 + k * 0.13, 2200, 4, 0.35);
+    normalize(x, 0.5);
+  }),
+  // the valve reaching its end: a clank down the pipe, and water gurgling through
+  clank: () => buf(1.8, (x, sr) => { thump(x, sr, 0, 160, 90, 0.06, 0.8); partials(x, sr, 0, [[420, 0.3, 0.4], [1130, 0.15, 0.25], [2010, 0.08, 0.15]], 1); bubbles(x, sr, 0.2, 1.4, 34, 0.6); sweepNoise(x, sr, 0.2, 1.4, 300, 700, 2, 0.4, 0.5); normalize(x, 0.7); }),
+  // a pipe gurgling (hot water on its way)
+  gurgle: () => buf(1.6, (x, sr) => { bubbles(x, sr, 0, 1.4, 40, 0.8); sweepNoise(x, sr, 0, 1.5, 250, 600, 2.5, 0.45, 0.5); normalize(x, 0.55); }),
+  // steam: a soft hiss off hot water
+  hiss: () => buf(2.4, (x, sr) => { for (let i = 0; i < x.length; i++) { const t = i / sr; x[i] = rnd() * Math.min(1, t / 0.6, (2.4 - t) / 0.6) * (0.8 + 0.2 * Math.sin(t * 3.1)); } biquad(x, 'highpass', 2600, 0.7, sr); biquad(x, 'lowpass', 7000, 0.7, sr); normalize(x, 0.3); }),
+  // the drain wheel won't turn: it rattles against its catch
+  rattle: () => buf(0.5, (x, sr) => { for (let k = 0; k < 5; k++) { click(x, sr, k * 0.06, 1400 + Math.random() * 800, 3, 0.6); thump(x, sr, k * 0.06, 220, 160, 0.02, 0.3); } normalize(x, 0.6); }),
+  // the catch dropping away: a heavy brass clunk
+  unlock: () => buf(0.9, (x, sr) => { thump(x, sr, 0, 120, 60, 0.15, 1, 2); partials(x, sr, 0, [[310, 0.4, 0.5], [780, 0.25, 0.3], [1490, 0.12, 0.2]], 1); click(x, sr, 0, 1800, 2, 0.4); normalize(x, 0.85); }),
+  // the plug opening: ten seconds of rushing water swirling away, and a deep gurgle at the end
+  drain: () => buf(11, (x, sr) => {
+    for (let i = 0; i < x.length; i++) { const t = i / sr, e = Math.min(1, t / 1.2) * Math.min(1, Math.max(0, (10.5 - t) / 2.5)); x[i] = rnd() * e * (0.7 + 0.3 * Math.sin(t * 2.3)); }
+    biquad(x, 'lowpass', 900, 0.8, sr);
+    thump(x, sr, 0, 60, 40, 1.2, 0.6); bubbles(x, sr, 0.5, 9.5, 220, 0.5); bubbles(x, sr, 8.5, 2.2, 60, 0.9);
+    normalize(x, 0.85);
+  }),
+  // into a slide: a rising whoosh
+  whoosh: () => buf(0.8, (x, sr) => { sweepNoise(x, sr, 0, 0.7, 400, 2800, 1.2, 1, 0.6); thump(x, sr, 0, 90, 60, 0.12, 0.4); normalize(x, 0.7); }),
+  // rushing water all the way down the tube (about five seconds)
+  rush: () => buf(5.4, (x, sr) => {
+    for (let i = 0; i < x.length; i++) { const t = i / sr, e = Math.min(1, t / 0.3) * Math.min(1, (5.4 - t) / 0.4); x[i] = rnd() * e * (0.75 + 0.25 * Math.sin(t * 7.3) * Math.sin(t * 2.1)); }
+    biquad(x, 'bandpass', 1300, 0.5, sr); bubbles(x, sr, 0, 5.2, 120, 0.4);
+    normalize(x, 0.7);
+  }),
+  // a body (or a floatie) hitting water: a big splash
+  splash: () => buf(1.3, (x, sr) => { noiseHit(x, sr, 0, 'lowpass', 900, 0.7, 0.12, 1, 0.005); noiseHit(x, sr, 0.02, 'bandpass', 2400, 0.8, 0.15, 0.8, 0.01); grains(x, sr, 0.08, 0.9, 70, 3800, 1.2, 0.8); bubbles(x, sr, 0.1, 0.9, 30, 0.4); thump(x, sr, 0, 90, 55, 0.1, 0.6); normalize(x, 0.9); }),
+  // a swimming stroke: hands through the water, a little slosh
+  stroke: () => buf(0.7, (x, sr) => { sweepNoise(x, sr, 0, 0.45, 700, 1500, 1.2, 0.7, 0.5); grains(x, sr, 0.1, 0.45, 22, 3200, 1.2, 0.5); bubbles(x, sr, 0.15, 0.4, 8, 0.3); normalize(x, 0.5); }),
+  // a floatie: a rubbery squeak, or a hollow thump when it hits something
+  rubber: () => buf(0.35, (x, sr) => { const f = 700 + Math.random() * 500; for (let i = 0; i < 0.22 * sr; i++) { const t = i / sr; x[i] += Math.sin(6.283 * (f + 900 * t) * t) * Math.exp(-t * 14) * 0.6; } thump(x, sr, 0, 180, 120, 0.05, 0.5); normalize(x, 0.6); }),
+  bonk: () => buf(0.4, (x, sr) => { thump(x, sr, 0, 210, 140, 0.07, 1); noiseHit(x, sr, 0, 'bandpass', 700, 1, 0.03, 0.4); normalize(x, 0.7); }),
+};
+export function playPool(kind, pos = null, occ = 0, gain = 1, rate = 1) {
+  if (!ctx || !POOLS[kind]) return;
+  const key = `pool:${kind}#${Math.floor(Math.random() * 2)}`;
+  if (!cache.has(key)) cache.set(key, POOLS[kind]());
+  play(cache.get(key), { pos, gain, rate, ref: pos ? 3 : 1, roll: 0.9, air: 50, occ, wet: 0.55, important: kind === 'drain' || kind === 'rush' || kind === 'whoosh' });
+}
+
 export function playBR(kind, pos = null, occ = 0, gain = 1) {
   const key = `br:${kind}#${Math.floor(Math.random() * 2)}`;
   if (!cache.has(key)) cache.set(key, BRS[kind]());
@@ -818,6 +878,7 @@ const AMB = {
   backrooms: { buzz: 1, events: ['thud', 'creak', 'thud', 'clank'] },    // the endless fluorescent buzz
   garage: { hum: 1.3, buzz: 0.3, events: ['thud', 'creak', 'clank', 'hiss'] },      // a low electrical hum, the sodium lamps' buzz
   pool: { hum: 0.35, water: 0.3, lap: 0.5, events: ['drip', 'drip', 'drip'] },      // the Poolrooms: a soft air hum, water lapping, drips
+  poolout: { wind: 0.4, windTone: 520, events: ['bird', 'bird', 'bird', 'gust'] },   // out through the hatch: soft wind and birds
 };
 function ambienceBed(a, night) {
   const secs = 10;
