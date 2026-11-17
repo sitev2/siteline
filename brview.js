@@ -317,9 +317,9 @@ vec3 flashLight(vec3 P, vec3 N) {
 //   (null = the old mustard); fog: the haze
 const LOOKS = [
   { light: [1.0, 0.95, 0.82], bounce: [1.0, 0.9, 0.55], carpet: null, fog: [0x9a, 0x8f, 0x55] },                // A: warm white, mustard carpet
-  { light: [0.9, 0.98, 0.88], bounce: [0.86, 0.94, 0.6], carpet: [0x5c, 0x7a, 0x3e], fog: [0x86, 0x92, 0x5c] },   // B: greenish white, moss-green carpet
-  { light: [0.84, 0.92, 1.0], bounce: [0.84, 0.86, 0.74], carpet: [0x5d, 0x6c, 0x7e], fog: [0x80, 0x8a, 0x86] },   // C: cold blue-white, slate carpet
-  { light: [1.0, 0.84, 0.64], bounce: [1.0, 0.78, 0.5], carpet: [0x86, 0x3c, 0x34], fog: [0x9a, 0x7a, 0x52] },     // D: amber, maroon carpet
+  { light: [0.9, 0.98, 0.88], bounce: [0.9, 0.93, 0.6], carpet: [0x56, 0x64, 0x42], fog: [0x86, 0x90, 0x5e] },    // B: greenish white, dull moss-green carpet
+  { light: [0.86, 0.93, 1.0], bounce: [0.86, 0.87, 0.72], carpet: [0x5c, 0x66, 0x72], fog: [0x82, 0x89, 0x84] },   // C: cold blue-white, slate-grey carpet
+  { light: [1.0, 0.85, 0.66], bounce: [1.0, 0.8, 0.52], carpet: [0x7c, 0x3a, 0x33], fog: [0x9a, 0x7c, 0x54] },     // D: amber, maroon carpet
 ];
 const LIGHT = LOOKS[0].light;            // warm fluorescent
 const BOUNCE = LOOKS[0].bounce;          // light bounced off yellow carpet and walls
