@@ -1,15 +1,17 @@
-// The Poolrooms' moving things, built in code (no image files): brass valve wheels on their pipes, the drain's big
+// The Poolrooms' moving things, built in code (no image files): red valve wheels on brass pipes, the drain's big
 // wheel with three temperature gauges, the two floaties, the exit hatch. poolview.js places them.
 import * as THREE from 'three';
 
 // (not too metallic: on Low there are no reflections, and full metal would come out nearly black)
 const brass = () => new THREE.MeshStandardMaterial({ color: '#d2a24c', metalness: 0.45, roughness: 0.32 });
 const pipeMat = () => new THREE.MeshStandardMaterial({ color: '#b98d58', metalness: 0.4, roughness: 0.45 });
+// the valves' handwheels are painted red (owner's choice)
+const wheelPaint = () => new THREE.MeshStandardMaterial({ color: '#c3271d', metalness: 0.15, roughness: 0.42 });
 const darkMat = () => new THREE.MeshStandardMaterial({ color: '#2a2622', metalness: 0.4, roughness: 0.6 });
 
 // a wheel of radius r facing +z (its axle along z): rim, spokes, hub, and a handle knob on the rim
 export function wheelGeometry(r, spokes = 5) {
-  const g = new THREE.Group(), m = brass();
+  const g = new THREE.Group(), m = wheelPaint();
   const rim = new THREE.Mesh(new THREE.TorusGeometry(r, r * 0.085, 10, 36), m);
   g.add(rim);
   for (let k = 0; k < spokes; k++) {
@@ -88,7 +90,7 @@ export function makeDrain() {
   wheel.position.set(0, 1.12, 0.2); root.add(wheel);
   // a heavy brass catch across the wheel: it drops away when every lane is hot
   const lock = new THREE.Group();
-  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.62, 0.06), brass()); bar.position.set(0, -0.2, 0);
+  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.42, 0.045), brass()); bar.position.set(0, -0.17, 0);
   lock.add(bar);
   lock.position.set(0.3, 1.32, 0.3);
   root.add(lock);

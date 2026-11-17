@@ -880,7 +880,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
 
   // ================= small things: ladders, drains, the lift's doors, the slides' mouths =================
   // (each is merged into one mesh per material; lit by the light where it stands)
-  const merged = { chrome: [], plain: [] };
+  const merged = { chrome: [], plain: [], cap: [] };
   const lightAir = (x, y, z) => { const f = sample(probe, x, y, z), g2 = sample(fill, x, y, z); return [f[0] * 1.2 + g2[0] * 0.8 + 0.08, f[1] * 1.2 + g2[1] * 0.8 + 0.08, f[2] * 1.2 + g2[2] * 0.8 + 0.08]; };
   const put = (set, geo, x, y, z, color = null, m4 = null) => {
     const g = geo.index ? geo.toNonIndexed() : geo;
@@ -935,13 +935,23 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     const m = s.mouth;
     put('plain', new THREE.TorusGeometry(0.76, 0.08, 8, 28), m.x, m.y, m.z + 1, s.color, new THREE.Matrix4().setPosition(m.x, m.y, m.z + 0.03));
     put('plain', new THREE.CircleGeometry(0.75, 28), m.x, m.y, m.z + 1, '#07080a', new THREE.Matrix4().setPosition(m.x, m.y, m.z + 0.012));
-    const o = s.out, len = 1.5, q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(o.nx, -0.18, o.nz).normalize());
-    const mid = new THREE.Vector3(o.x + o.nx * (len / 2 - 0.3), o.y + 0.05, o.z + o.nz * (len / 2 - 0.3));
-    const m4 = new THREE.Matrix4().compose(mid, q, new THREE.Vector3(1, 1, 1));
-    put('plain', new THREE.CylinderGeometry(0.8, 0.8, len, 24, 1, true), mid.x, mid.y, mid.z + 0.5, s.color, m4);
-    put('plain', new THREE.CylinderGeometry(0.74, 0.74, len, 24, 1, true).scale(-1, 1, 1), mid.x, mid.y, mid.z + 0.5, '#101214', m4);
-    const ringM = new THREE.Matrix4().compose(new THREE.Vector3(o.x + o.nx * (len - 0.3), o.y + 0.05 - 0.18 * (len / 2), o.z + o.nz * (len - 0.3)), q.clone().multiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), Math.PI / 2)), new THREE.Vector3(1, 1, 1));
-    put('plain', new THREE.TorusGeometry(0.77, 0.045, 8, 28), mid.x, mid.y, mid.z + 0.5, s.color, ringM);
+    // the outlet: the last part of the slide's own path, from just inside the wall to its open end (so the tube you
+    // ride in lines up with it exactly)
+    const o = s.out, c = slideCurve(s.path), wallD = (q) => (q[0] - o.x) * o.nx + (q[2] - o.z) * o.nz;
+    let s0 = 1, sw = 1;
+    for (let k = 400; k >= 0; k--) { const t = k / 400, d = wallD(c.at(t)); if (d > -0.25) s0 = t; if (d > 0.015) sw = t; if (d < -0.3) break; }
+    class Part extends THREE.Curve { constructor(a, b) { super(); this.a = a; this.b = b; } getPoint(t, v = new THREE.Vector3()) { const q = c.at(this.a + (this.b - this.a) * t); return v.set(q[0], q[1], q[2]); } }
+    const part = new Part(s0, 1), segs = Q === 0 ? 16 : 24;
+    put('plain', new THREE.TubeGeometry(part, 8, 0.8, segs, false), o.x, o.y, o.z + 0.5, s.color);
+    put('plain', new THREE.TubeGeometry(part, 8, 0.72, segs, false), o.x, o.y, o.z + 0.5, new THREE.Color(s.color).multiplyScalar(0.3));
+    const along = (t) => { const a = c.at(Math.max(0, t - 0.003)), b = c.at(Math.min(1, t + 0.003)); return new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]).normalize(); };
+    // where it goes into the wall: dark (the tube carries on in there). One-sided: from inside, on a ride, you see through it
+    // (flat on the wall, an oval: the sloping tube meets the wall in one)
+    { const p = c.at(sw), t = along(sw), cosA = Math.max(0.4, t.x * o.nx + t.z * o.nz), cq = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(o.nx, 0, o.nz));
+      put('cap', new THREE.CircleGeometry(0.73, segs), p[0], p[1], p[2] + 0.5, '#0b0c0e', new THREE.Matrix4().compose(new THREE.Vector3(p[0], p[1], p[2]), cq, new THREE.Vector3(1, 1 / cosA, 1))); }
+    // a rolled lip round its open end
+    { const p = c.at(1), rq = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), along(0.999));
+      put('plain', new THREE.TorusGeometry(0.77, 0.045, 8, 28), p[0], p[1], p[2] + 0.5, s.color, new THREE.Matrix4().compose(new THREE.Vector3(p[0], p[1], p[2]), rq, new THREE.Vector3(1, 1, 1))); }
   }
   const mergeGeo = (list) => {
     let n = 0; for (const g of list) n += g.attributes.position.count;
@@ -960,6 +970,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   const chromeMat = chromeMaterial(UNI), plainMat = plainMaterial(UNI, { side: THREE.DoubleSide });
   if (merged.chrome.length) group.add(new THREE.Mesh(mergeGeo(merged.chrome), chromeMat));
   if (merged.plain.length) group.add(new THREE.Mesh(mergeGeo(merged.plain), plainMat));
+  if (merged.cap.length) group.add(new THREE.Mesh(mergeGeo(merged.cap), plainMaterial(UNI, { shiny: 0 })));
 
   // ================= the order's things: plates, bridges, valves, the drain, steam, the hatch, the slides' insides, floaties =================
   const movers = new THREE.Group();
@@ -1000,7 +1011,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   ud.jiggleDrain = () => { drain.wheel.userData.jiggle = 0.35; };
   // steam over the Great Pool's lanes and the grotto's basin
   const steam = (() => {
-    const pos = [], seed = [], src = [], per = Q === 0 ? 40 : 90;
+    const pos = [], seed = [], src = [], per = Q === 0 ? 50 : 130;
     const add = (r, k, n) => { for (let i = 0; i < n; i++) { pos.push(r.x0 + R() * (r.x1 - r.x0), 0, r.z0 + R() * (r.z1 - r.z0)); seed.push(R(), R(), R(), R()); src.push(k); } };
     plan.lanes.forEach((l, k) => add(l, k, per));
     add(plan.grottoSteam, 3, Math.round(per * 0.45));
@@ -1025,12 +1036,13 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       let Nn = prevN ? prevN.clone().sub(T.clone().multiplyScalar(prevN.dot(T))).normalize() : new THREE.Vector3(0, 1, 0).sub(T.clone().multiplyScalar(T.y)).normalize();
       prevN = Nn; const Bn = new THREE.Vector3().crossVectors(T, Nn);
       const d = s * c.total, ends = Math.max(Math.exp(-d / 1.6), Math.exp(-(c.total - d) / 2.4));
-      const seam = Math.abs((d % 1.2) - 0.6) > 0.56 ? 1.8 : 1;
+      const seam = Math.abs((d % 1.2) - 0.6) > 0.54 ? 3.2 : 1;          // (the joints between the tube's sections flash by)
       for (let k = 0; k <= RS; k++) {
         const a = k / RS * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
         pos.push(p[0] + (Nn.x * ca + Bn.x * sa) * rad, p[1] + (Nn.y * ca + Bn.y * sa) * rad, p[2] + (Nn.z * ca + Bn.z * sa) * rad);
         const floor = Math.max(0, -ca) ** 6;            // (a wet sheen along the bottom)
-        const k2 = 0.05 * seam + ends * 1.1 + floor * 0.06;
+        const stripe = Math.abs(((k / RS) * 6) % 1 - 0.5) < 0.06 ? 1.6 : 1;      // (six faint lines along it)
+        const k2 = 0.08 * seam * stripe + ends * 1.1 + floor * 0.08;
         col.push(base.r * k2 + ends * 0.6 + floor * 0.05, base.g * k2 + ends * 0.6 + floor * 0.06, base.b * k2 + ends * 0.58 + floor * 0.07);
       }
     }

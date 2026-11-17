@@ -293,7 +293,9 @@ export class PoolClient {
     const g = this.g, me = g.me, ud = this.ud, now = g.clock;
     // the Great Pool's water, easing to where the host says
     if (Math.abs(this.wantLevel - this.level) > 1e-3) {
-      this.level += Math.max(-dt * 0.6, Math.min(dt * 0.6, this.wantLevel - this.level));
+      // (the host sends it ten times a second: just smooth out the steps, whatever the frame rate)
+      this.level += (this.wantLevel - this.level) * Math.min(1, dt * 10);
+      if (Math.abs(this.wantLevel - this.level) < 0.002) this.level = this.wantLevel;
       this.great.y = this.level; ud.setWater('great', this.level);
     }
     // holding E at a valve or the drain wheel: the host is told several times a second (real time)
