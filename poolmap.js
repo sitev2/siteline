@@ -212,7 +212,7 @@ function makePlan(level) {
     { name: 'hallway', x0: 35.5, z0: 47, x1: 58.5, z1: 50, y0: G, y1: G + 3.4, wall: 'tile', ceil: 'smooth', cove: 0.5 },
     { name: 'atrium', x0: 41, z0: 21, x1: 58, z1: 44, y0: 0, y1: ROOF, wall: 'tile', ceil: 'smooth' },
     { name: 'slidehall', x0: 41.5, z0: 9, x1: 47, z1: 19.5, y0: 0, y1: ROOF, wall: 'tile', ceil: 'smooth' },
-    { name: 'lobby', x0: 54.5, z0: 15, x1: 56.5, z1: 20, y0: G, y1: G + 3, wall: 'tile', ceil: 'tile', vault: 'z', spring: G + 2 },
+    { name: 'lobby', x0: 54.5, z0: 15.5, x1: 56.5, z1: 20, y0: G, y1: G + 3, wall: 'tile', ceil: 'tile', vault: 'z', spring: G + 2 },
     { name: 'grotto', x0: 58.5, z0: 26, x1: 62.5, z1: 40, y0: 0, y1: G + 3.6, wall: 'tile', ceil: 'tile', vault: 'z', spring: G + 2.6 },
     { name: 'exit', x0: 51, z0: 41, x1: 53, z1: 46.5, y0: 0, y1: 8.5, wall: 'tile', ceil: 'tile' },
     { name: 'upstairs', x0: 30, z0: 2, x1: 63, z1: 48, y0: U, y1: ROOF, wall: 'tile', ceil: 'smooth', cove: 0.45 },
