@@ -286,7 +286,7 @@ The only folder is `server/` (the optional home game server).
 - Backrooms online needs 2–4 players (owner's rule): the lobby's Start is off with fewer and says so, and `Server.startMatch` refuses too.
   Practice can still be played alone; Level 0's solo rules (`brSolo`) stay for solo Practice and for the last one alive. The HUD has no
   timer and no alive counter in the Backrooms (the top bar is hidden; only the task list shows).
-- **Backrooms Level 1: the garage (test account only).** `LEVEL1_OPEN = false` in `main.js`: only `LEVEL1_TESTERS` (`test123`)
+- **Backrooms Level 1: the garage (test account only).** `LEVEL1_OPEN = true` in `main.js` (owner made Levels 1 and 2 public; set false to limit them to `LEVEL1_TESTERS` (`test123`) again)
   get a "Level" choice (Practice and lobby) and the run-on from Level 0's exit. Nobody else can reach it (`Server.startGarage()`).
   DONE: everything in the owner's brief except stage 8 (the final real-device test and hand-over).
   - `garmap.js` — ONE fixed layout (`resolveMap('garage', difficulty)`, theme `garage`, `world.def.gar` = the plan): 64 × 52 m, two floors

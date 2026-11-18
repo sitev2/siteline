@@ -29,7 +29,7 @@ const BACKROOMS_OPEN = true;
 const BACKROOMS_TESTERS = ['test123'];
 // Level 1 of the Backrooms (the garage) is still being built: only its tester account sees it, as a Level choice
 // in Practice. Set LEVEL1_OPEN to true to show it to everyone.
-const LEVEL1_OPEN = false;
+const LEVEL1_OPEN = true;
 const LEVEL1_TESTERS = ['test123'];
 // How far you have got in the Backrooms: 1 = escaped Level 0 (Level 1 unlocked), 2 = escaped Level 1 (the
 // Poolrooms unlocked), 3 = escaped the Poolrooms (a tick in the menu). Remembered on this device, and on the account
