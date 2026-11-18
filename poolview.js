@@ -774,7 +774,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   }
 
   // ---- turn the buffers into meshes ----
-  const tileMat = tileMaterial(UNI, Q);
+  const tileMat = tileMaterial(UNI, Q, { side: THREE.DoubleSide });      // both sides: some curved parts were built facing one way only and showed see-through from the other
   const casters = new THREE.Group();
   let tris = 0, verts = 0;
   for (const B of chunks.values()) {
@@ -970,7 +970,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   const chromeMat = chromeMaterial(UNI), plainMat = plainMaterial(UNI, { side: THREE.DoubleSide });
   if (merged.chrome.length) group.add(new THREE.Mesh(mergeGeo(merged.chrome), chromeMat));
   if (merged.plain.length) group.add(new THREE.Mesh(mergeGeo(merged.plain), plainMat));
-  if (merged.cap.length) group.add(new THREE.Mesh(mergeGeo(merged.cap), plainMaterial(UNI, { shiny: 0 })));
+  if (merged.cap.length) group.add(new THREE.Mesh(mergeGeo(merged.cap), plainMaterial(UNI, { shiny: 0, side: THREE.DoubleSide })));
 
   // ================= the order's things: plates, bridges, valves, the drain, steam, the hatch, the slides' insides, floaties =================
   const movers = new THREE.Group();
