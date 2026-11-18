@@ -550,6 +550,9 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     }
     if (o.core) cylinder(o.x, o.z, o.core, o.y0, o.y1, FIN.white, 0);
   }
+  // the floor in the tower's top doorway, between the corridor and the stair's landing (the landing is drawn only up to the
+  // round wall, and the doorway's own cells are invisible stair collision, so a strip there was left open: you saw down the stairwell)
+  { const g = plan.rings[0].gaps[1]; flat(g.x0, g.z0, g.x1 - 0.4, g.z1, g.y0, 1, FIN.cream, 0); flat(g.x0, g.z0, g.x1 - 0.4, g.z1, g.y0 - 0.35, -1, FIN.cream, 0); }
   {
     const T = plan.tower, RAD = Math.PI / 180;
     const at = (th, r) => [T.x + Math.cos((th + 90) * RAD) * r, T.z + Math.sin((th + 90) * RAD) * r];
