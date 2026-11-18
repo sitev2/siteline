@@ -175,6 +175,9 @@ function makePlan(level) {
   for (const x of [14.2, 18.9, 23.6, 28.3, 33]) O.push({ axis: 'z', a0: 50, a1: 50.5, u0: x - 0.8, u1: x + 0.8, y0: G + 0.5, y1: G + 3.5, shape: 'arch', out: 1 });
   for (let x = 37.6; x < 57; x += 3.1) O.push({ axis: 'z', a0: 50, a1: 50.5, u0: x - 0.6, u1: x + 0.6, y0: G + 0.9, y1: G + 2.9, shape: 'arch', out: 1 });
   for (const x of [13, 20.5, 28]) O.push({ axis: 'z', a0: 1.5, a1: 2, u0: x, u1: x + 4, y0: G + 2.0, y1: G + 3.0, shape: 'capsule', out: -1 });
+  // the wall is cut on a 0.5 m grid: snap every opening to it, or the drawn arch and the real hole don't line up
+  const snap = v => Math.round(v * 2) / 2;
+  for (const o of O) { o.u0 = snap(o.u0); o.u1 = snap(o.u1); }
   plan.openings = O;
   // the lane hall's slanted west wall and its row of tall capsule windows (Picture B)
   plan.slant = { x: 2, lean: 0.9, z0: 8, z1: 47, y0: G, y1: G + 4.6, windows: [] };
@@ -316,7 +319,9 @@ export function poolMap(variant) {
         if (d2 > (o.R + 1.2) * (o.R + 1.2) || y + height <= o.y0 || y >= o.y1) continue;
         if (o.core && d2 < (o.core + r) * (o.core + r)) return true;
         if (d2 > (o.R - r) * (o.R - r)) {
-          if (!o.gaps.some(g => x > g.x0 + r * 0.6 && x < g.x1 - r * 0.6 && z > g.z0 - 0.6 && z < g.z1 + 0.6 && y >= g.y0 - 0.3 && y < g.y1)
+          if (!o.gaps.some(g => (g.z1 - g.z0 > g.x1 - g.x0      // a gap facing east/west (wider in z): you pass through it along x
+              ? z > g.z0 + r * 0.6 && z < g.z1 - r * 0.6 && x > g.x0 - 0.6 && x < g.x1 + 0.6
+              : x > g.x0 + r * 0.6 && x < g.x1 - r * 0.6 && z > g.z0 - 0.6 && z < g.z1 + 0.6) && y >= g.y0 - 0.3 && y < g.y1)
             && d2 < (o.R + 0.6) * (o.R + 0.6)) return true;
         }
       }
