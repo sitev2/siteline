@@ -1228,6 +1228,19 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   ud.debugMirror = () => mirror && mirror.rt;
   ud.dispose = () => { shadowRT.dispose(); if (dyn) dyn.rt.dispose(); if (mirror && mirror.rt) mirror.rt.dispose(); };
 
-  renderer.setClearColor(0xffffff, 1);                      // the sky in every window: blown-out white
+  // The sky: a white card just outside each window / skylight. Everything else clears to tile colour, so a small gap
+  // between two pieces of wall reads as shaded tile instead of a bright white slit.
+  {
+    const sky = new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide, fog: false, toneMapped: false });
+    const card = (w, h, x, y, z, ry, rx) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), sky); m.position.set(x, y, z); m.rotation.set(rx || 0, ry || 0, 0); group.add(m); };
+    for (const o of plan.openings) if (o.out) {
+      const w = o.u1 - o.u0 + 1, h = o.y1 - o.y0 + 1, u = (o.u0 + o.u1) / 2, y = (o.y0 + o.y1) / 2;
+      const d = o.out > 0 ? o.a1 + 0.6 : o.a0 - 0.6;
+      if (o.axis === 'z') card(w, h, u, y, d); else card(w, h, d, y, u, Math.PI / 2);
+    }
+    { const sw = plan.slant.windows; card(sw[sw.length - 1].z - sw[0].z + 4, 5, 0.9, (sw[0].y0 + sw[0].y1) / 2, (sw[0].z + sw[sw.length - 1].z) / 2, Math.PI / 2); }
+    for (const r of [...plan.skylights, plan.well]) card(r.x1 - r.x0 + 1, r.z1 - r.z0 + 1, (r.x0 + r.x1) / 2, ROOFT + 1, (r.z0 + r.z1) / 2, 0, -Math.PI / 2);
+  }
+  renderer.setClearColor(0x9a917f, 1);                      // gaps read as shaded tile; the white sky is the cards above
   return { group, theme: { name: 'pool' }, fog: null, sky: null, sun: null, far: Math.min(gfx.viewDistance || 140, 110) };
 }
