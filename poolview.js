@@ -334,11 +334,11 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     for (const s of spans) {
       if (!drawn(s)) continue;
       // top
-      if (s.y1 < ROOFT - 0.01 && !spans.some(t => t !== s && t.y0 <= s.y1 + 0.001 && t.y1 > s.y1 + 0.001)) {
+      if (s.y1 < ROOFT - 0.01 && !spans.some(t => t !== s && drawn(t) && t.y0 <= s.y1 + 0.001 && t.y1 > s.y1 + 0.001)) {
         if (!(edge[iz * Wc + ix] && Math.abs(s.y1 - G) < 0.01)) flat(x0, z0, x1, z1, s.y1, 1, s.m === 'pillar' ? FIN.white : FIN.cream, s.y1 < WY ? wk : 0);
       }
       // underside
-      if (s.y0 > 0.01 && !spans.some(t => t !== s && t.y1 >= s.y0 - 0.001 && t.y0 < s.y0 - 0.001)) {
+      if (s.y0 > 0.01 && !spans.some(t => t !== s && drawn(t) && t.y1 >= s.y0 - 0.001 && t.y0 < s.y0 - 0.001)) {
         const r = roomAt(cx, s.y0 - 0.1, cz);
         flat(x0, z0, x1, z1, s.y0, -1, r && r.ceil === 'smooth' ? FIN.smooth : FIN.cream, 0);
       }
