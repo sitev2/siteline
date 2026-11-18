@@ -509,7 +509,10 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   for (const o of plan.rings) {
     const gaps = o.gaps.map(g => {
       const gx = (g.x0 + g.x1) / 2, gz = (g.z0 + g.z1) / 2, w = Math.abs(gx - o.x) > Math.abs(gz - o.z) ? g.z1 - g.z0 : g.x1 - g.x0;
-      return { th: Math.atan2(gz - o.z, gx - o.x), half: Math.asin(Math.min(0.99, w / 2 / o.R)), a: w / 2, y0: g.y0, top: g.y1 - 0.02 };
+      const th = Math.atan2(gz - o.z, gx - o.x), c = Math.cos(th), sn = Math.sin(th);
+      // how far the cut goes out past the round wall (the arch's underside stops there instead of jutting into the room beyond)
+      const reach = Math.max(...[[g.x0, gz], [g.x1, gz], [gx, g.z0], [gx, g.z1]].map(([x, z]) => (x - o.x) * c + (z - o.z) * sn)) - o.R + 0.02;
+      return { th, half: Math.asin(Math.min(0.99, w / 2 / o.R)), a: w / 2, y0: g.y0, top: g.y1 - 0.02, depth: Math.max(0.1, reach) };
     });
     // the bottom of the wall at an angle: the floor, or the arch over a way through
     const yBot = (t) => {
@@ -532,7 +535,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     }
     // the arch's underside, out through the thickness of the wall
     for (const g of gaps) {
-      const dx = Math.cos(g.th), dz = Math.sin(g.th), tx = -dz, tz = dx, depth = 1.3;
+      const dx = Math.cos(g.th), dz = Math.sin(g.th), tx = -dz, tz = dx, depth = g.depth;
       for (let k = 0; k < 12; k++) {
         const s0 = -g.a + g.a * 2 * k / 12, s1 = -g.a + g.a * 2 * (k + 1) / 12;
         const P = (s, out) => {
