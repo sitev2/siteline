@@ -534,7 +534,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       cylinder(o.x, o.z, o.R, o.y0, o.y1, FIN.cream, 0, true, ta, tb, 1, yBot);
     }
     // the arch's underside, out through the thickness of the wall
-    for (const g of gaps) {
+    for (const g of (o.name === 'tower' ? [] : gaps)) {      // (the tower's doorways: their arch is drawn by the walls round them; this one hung into the tower)
       const dx = Math.cos(g.th), dz = Math.sin(g.th), tx = -dz, tz = dx, depth = g.depth;
       for (let k = 0; k < 12; k++) {
         const s0 = -g.a + g.a * 2 * k / 12, s1 = -g.a + g.a * 2 * (k + 1) / 12;
@@ -648,7 +648,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   }
   // the way from the stair tower's top out to the corridor: an arch in the corridor's wall
   { const g = plan.rings[0].gaps[1], o = { shape: 'arch', fin: FIN.cream, uAt: u => g.z0 + u, vAt: v => g.y0 + v };
-    shapedHole(o, g.z1 - g.z0, g.y1 - g.y0 - 0.02, (u, v, d) => [d, g.y0 + v, g.z0 + u], [[50, [-1, 0, 0]]], 50, 50.9); }
+    shapedHole(o, g.z1 - g.z0, g.y1 - g.y0 - 0.02, (u, v, d) => [d, g.y0 + v, g.z0 + u], [[50, [-1, 0, 0]]], 50, 50.45); }      // (only through the wall: deeper, it hung into the tower)
   // round skylights: the ceiling round the circle, and the circle's edge up through the roof
   for (const s of plan.skylights) {
     if (!s.round) continue;
