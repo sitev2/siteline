@@ -1857,7 +1857,8 @@ export class Game {
       me.landPen = Math.min(2, 1 + fall * 0.3);
     }
     this.vmLand = Math.min(1, 0.4 + fall * 0.25);
-    if (fall > 0.4 && !this.input.walk) sfx.playLand({ surface: this.surfaceAt(me.pos.x, me.pos.y, me.pos.z), hard: Math.min(1, fall / 3) });
+    // (the Poolrooms: only a real drop thumps — its stairs' small steps banged on every step)
+    if (fall > (this.pool ? 1.2 : 0.4) && !this.input.walk) sfx.playLand({ surface: this.surfaceAt(me.pos.x, me.pos.y, me.pos.z), hard: Math.min(1, fall / 3) });
   }
 
   updateWeapon(dt, frozen) {
@@ -2273,7 +2274,7 @@ export class Game {
       else if (r.fallFrom != null && vy > -0.3) {
         const fall = r.fallFrom - r.rp.y;
         r.fallFrom = null;
-        if (fall > 0.5 && d < 30) sfx.playLand({ pos: { x: r.rp.x, y: r.rp.y + 0.05, z: r.rp.z }, surface: this.surfaceAt(r.rp.x, r.rp.y, r.rp.z), hard: Math.min(1, fall / 3), occ: this.occlusion(r.rp.x, r.rp.y + 0.3, r.rp.z) });
+        if (fall > (this.pool ? 1.2 : 0.5) && d < 30) sfx.playLand({ pos: { x: r.rp.x, y: r.rp.y + 0.05, z: r.rp.z }, surface: this.surfaceAt(r.rp.x, r.rp.y, r.rp.z), hard: Math.min(1, fall / 3), occ: this.occlusion(r.rp.x, r.rp.y + 0.3, r.rp.z) });
       }
     }
   }
