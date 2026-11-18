@@ -165,7 +165,7 @@ function makePlan(level) {
     arch('x', x - 0.5, x, 22.5, 25.5, SH, G + 2.5, { only: 1, noSoffit: true, noCut: true });
     arch('x', x + 2.5, x + 3, 22.5, 25.5, SH, G + 2.5, { only: -1, noSoffit: true, noCut: true });
   }
-  for (const z of [4, 9, 14]) arch('x', 34, 34.5, z, z + 2, SH, G + 2.2);      // the dark dead ends
+  for (const z of [4, 9, 14]) arch('x', 34, 34.5, z, z + 2, SH, G + 2.3);      // (as high as the dead end's ceiling: lower left a dark slot over the arch)      // the dark dead ends
   arch('x', 35, 35.5, 47.2, 49.8, G, G + 3.1);              // start hallway → kidney hall
   arch('z', 19.5, 21, 43, 45.5, G, G + 2.9);               // slide hall ↔ atrium
   arch('z', 20, 21, 54.5, 56.5, G, G + 2.7);               // atrium ↔ the stair tower's lobby
