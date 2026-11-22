@@ -94,6 +94,7 @@ input[type=range] { width: 100%; accent-color: var(--accent); }
 .join-row, .practice-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
 #code { text-transform: uppercase; letter-spacing: .25em; font: 700 1.05rem var(--display); min-width: 0; }
 .practice-row .ghost { text-align: left; }
+.version { text-align: center; font-size: 11px; letter-spacing: .06em; color: rgba(255,255,255,.4); margin-top: -6px; user-select: none; }
 .menu-links { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; }
 /* game server wake-up (server mode only: free cloud hosts sleep when nobody plays) */
 .server-wake { display: grid; grid-template-columns: auto 1fr auto; gap: 10px; align-items: center; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: rgba(255,255,255,.04); }

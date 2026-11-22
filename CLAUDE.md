@@ -13,7 +13,7 @@ The only folder is `server/` (the optional home game server).
 
 - `index.html`, `style.css` — page, menus, HUD, touch controls. A small script at the top of `index.html` loads `style.css`, `main.js`
   and every game module with `?v=<page publish time>` (`document.lastModified`, import map), so an update never mixes new and saved
-  old files (that crashed to a black screen). **Add every new game .js file to its `files` list.**
+  old files (that crashed to a black screen). **Add every new game .js file to its `files` list.** The same script fills the small "Version 2026.11.22 · 19:40 UTC" line at the bottom of the home page (`#version`, owner's request) from that publish time, so nobody has to bump a number.
 - `main.js` — menus, lobby, hosting/joining, starting games
 - `game.js` — 3D client: movement, shooting, effects, HUD updates
 - `server.js` — match rules (rounds, halftime swap, bomb, damage, hit checks). Runs in the
