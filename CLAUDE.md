@@ -384,7 +384,7 @@ The only folder is `server/` (the optional home game server).
     (people's parts under the surface are seen through the water; `setWet`: a soaked suit is darker and shinier, dries over 90 s) and
     `PoolClient` (the level on your screen: applies the host's `{t:'pool', s}` state, plays `{t:'pfx'}` events, the use target and hold-E
     sends, throwing, the slide ride + its camera, floaties' bobbing, wet footprints that fade, steam hiss).
-  - THE ORDER (Claude's design; the owner asked for 4 water-based steps, no hints, no task list, no logs, no map). Host side: `poolhost.js`
+  - THE ORDER (Claude's design; the owner asked for 4 water-based steps, no hints, no logs, no map; later he asked for the side task list: Cross the channel / Heat the Great Pool / Drain the Great Pool / Get out, ticked from `PoolClient.done` in `poolplay.js` and kept ticked, names only, no how-to). Host side: `poolhost.js`
     (`PoolHost`, made in `Server.startPool`; runs in the host's browser and on the home server). Any one player can do each step.
     1 the bridge: pressure plates (`plan.bridges[].plates`, 1 m squares of blue tiles that sink 3 cm) raise a tiled bridge across the deep
       channel (`'need'`) while someone stands on one; alone (`brSolo`) it stays up `POOL_LEVELS.hold` s (9 / 7 / 5.5) after you step off.
@@ -421,7 +421,7 @@ The only folder is `server/` (the optional home game server).
     ladders (push towards one) or the lane pool's steps ONLY — climbing out over a pool's edge is OFF (owner's later request; `EDGE_CLIMB = false` in `Game.move`, the code below is kept unused; `Game.poolUnstick` moves you to the nearest free water if you fall in right by a pool's side or a wall — you used to land inside the edge and could not swim; `Game.poolEdge`: swim up against the
     side and keep pushing: hands on the edge, up and over in 0.8 s) except onto the three edges the order needs (`plan.noClimb`: the
     channel's far bank, the grotto from the Great Pool, the apse's deck; `check_pool.mjs` models edge climbs and proves the order still holds). Jumping IS allowed here (normal jump). Phones: the jump button jumps; the run
-    button (`#btn-inspect`, moved next to it in `pool-mode`) sprints while held (`input.runHeld`). No flashlight, no map, no task list, no hints
+    button (`#btn-inspect`, moved next to it in `pool-mode`) sprints while held (`input.runHeld`). No flashlight, no map, no hints (the task list at the left shows the four steps)
     (only the move keys for the first seconds). Others see you swim (breaststroke, frog kick) or climb (`animateModel` `swim` / `climb`).
   - `node check_pool.mjs [map]` walks and swims the whole map with no graphics: the start side is all reachable, nothing past the channel
     without the bridge, everything (both floors, every ladder, plate spot, valve spot, slide mouth) with it, the grotto only by the green
