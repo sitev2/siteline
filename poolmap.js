@@ -430,7 +430,8 @@ export function poolMap(variant) {
       for (const s of plan.shallows) b.wet(shallow, s.x0, s.z0, s.x1, s.z1);
       // ---- the way out: a tunnel under the Great Pool's south deck, and the shaft with the exit ladder ----
       { const e = plan.exit; air(e.tunnel.x0, e.tunnel.z0, e.tunnel.x1, e.tunnel.z1, e.tunnel.y0, e.tunnel.y1); air(e.shaft.x0, e.shaft.z0, e.shaft.x1, e.shaft.z1, e.shaft.y0, e.shaft.y1); }
-      for (const [dx, dz] of [[0, -0.7], [0, 0.7], [1.4, -0.7], [1.4, 0.7]]) b.spawn('atk', plan.start.x + dx, plan.start.z + dz, plan.start.yaw);
+      // six spots (online it takes up to 6 players: RULES.br)
+      for (const [dx, dz] of [[0, -0.7], [0, 0.7], [1.4, -0.7], [1.4, 0.7], [-1.4, -0.7], [-1.4, 0.7]]) b.spawn('atk', plan.start.x + dx, plan.start.z + dz, plan.start.yaw);
       b.spawn('def', plan.start.x, plan.start.z, 0);
     },
   };

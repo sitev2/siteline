@@ -50,7 +50,7 @@ export const CONFIG = {
   // in SUPABASE.md. Leave both empty for guest-only play.
   supabaseUrl: 'https://jignmwagssltldjbswgq.supabase.co',
   supabaseAnonKey: 'sb_publishable_rJbvid44mJsPkGubIZZYBg_o6pGas39',
-  maxPlayers: 4,     // wingman: 2 v 2
+  maxPlayers: 4,     // wingman: 2 v 2 (deathmatch and the Backrooms take more: RULES.dm / RULES.br, Server.roomMax())
   debug: params.has('debug'),
 };
 
@@ -73,6 +73,8 @@ export const RULES = {
   blastLethal: 14.3,
   blastMax: 44.2,
   blastArmor: 0.5,
-  // deathmatch: free-for-all for 2–4 players, first to killLimit or timeLimit seconds
-  dm: { killLimit: 30, timeLimit: 600, respawn: 1, minPlayers: 2, maxPlayers: 4 },
+  // deathmatch: free-for-all for 2–6 players, first to killLimit or timeLimit seconds
+  dm: { killLimit: 30, timeLimit: 600, respawn: 1, minPlayers: 2, maxPlayers: 6 },
+  // the Backrooms online: 2–6 players together (alone it is played from Practice)
+  br: { minPlayers: 2, maxPlayers: 6 },
 };

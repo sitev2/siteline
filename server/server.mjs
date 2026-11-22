@@ -56,8 +56,9 @@ function closeRoom(room) {
 }
 
 function joinRoom(ws, room, name) {
-  if (room.game.humans().length >= CONFIG.maxPlayers) {      // real people only (the Backrooms monster doesn't count)
-    send(ws, { t: 'error', text: `That room is full (${CONFIG.maxPlayers} players max).` });
+  const max = room.game.roomMax ? room.game.roomMax() : CONFIG.maxPlayers;   // 4 for 2v2, 6 for deathmatch and the Backrooms
+  if (room.game.humans().length >= max) {      // real people only (the Backrooms monster doesn't count)
+    send(ws, { t: 'error', text: `That room is full (${max} players max).` });
     return;
   }
   const id = `p${nextId++}`;

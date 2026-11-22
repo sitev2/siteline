@@ -85,8 +85,9 @@ function describe(err) {
 export class HostNet {
   // logKind: 'host' logs from the start; 'invite' (a practice game's quiet invite room) only starts a log
   // when something goes wrong or a friend tries to join, so practice games don't fill the log
-  constructor({ onJoin, onMessage, onLeave, onError, logKind = 'host' }) {
-    Object.assign(this, { onJoin, onMessage, onLeave, onError, logKind });
+  // capacity(): how many people the room takes now, the host included (default CONFIG.maxPlayers)
+  constructor({ onJoin, onMessage, onLeave, onError, capacity, logKind = 'host' }) {
+    Object.assign(this, { onJoin, onMessage, onLeave, onError, capacity, logKind });
     this.conns = new Map();
     this.peer = null;
     this.code = null;
@@ -151,7 +152,7 @@ export class HostNet {
     conn.on('data', (msg) => {
       if (!msg || typeof msg !== 'object') return;
       if (msg.t === 'hello') {
-        if (this.conns.size >= CONFIG.maxPlayers - 1) {
+        if (this.conns.size >= (this.capacity ? this.capacity() : CONFIG.maxPlayers) - 1) {
           this.note(`${who}: room full, turned away`);
           conn.send({ t: 'full' });
           setTimeout(() => conn.close(), 300);

@@ -3,7 +3,7 @@
 // owns health, armour, money, the bomb, rounds and score, and broadcasts snapshots.
 import { World, CELL, EYE, blastField, blastDamage } from './world.js';
 import { MAPS, resolveMap, mapsFor, isDmMap, dmVariant } from './maps.js';
-import { RULES } from './config.js';
+import { RULES, CONFIG } from './config.js';
 import { NavGrid, BotBrain, BOT_NAMES } from './bots.js';
 import { MonsterBrain, outerCorners } from './monster.js';
 import { ShifterBrain } from './shifter.js';
@@ -92,6 +92,14 @@ export class Server {
   sideOf(squad) { return (squad === 0) !== this.swapped ? 'atk' : 'def'; }
   updateScore() {
     this.score = { atk: this.squadScore[this.squadOf('atk')], def: this.squadScore[this.squadOf('def')] };
+  }
+
+  // how many real people this room takes right now: 4 for 2v2, more for deathmatch and the Backrooms
+  // (HostNet and the home server turn the next one away)
+  roomMax() {
+    if (this.br || this.settings.mode === 'br') return RULES.br.maxPlayers;
+    if (this.dm || this.settings.mode === 'dm') return RULES.dm.maxPlayers;
+    return CONFIG.maxPlayers;
   }
 
   humanCount() { let n = 0; for (const p of this.players.values()) if (!p.dummy) n++; return n; }
@@ -1228,7 +1236,7 @@ export class Server {
     });
   }
 
-  brSpawn(p, i = Math.floor(Math.random() * 4)) {
+  brSpawn(p, i = Math.floor(Math.random() * this.world.spawns.atk.length)) {
     if (!this.players.has(p.id) || this.phase !== 'br') return;
     const s = this.world.spawns.atk[i % this.world.spawns.atk.length];
     const y = this.gar ? this.world.def.gar.start.y : this.pool ? POOL.G : 0;
@@ -1567,15 +1575,20 @@ export class Server {
   startMatch() {
     if (this.phase !== 'lobby') return;
     if (this.settings.mode === 'br' && !this.practice) {
-      // online the Backrooms takes 2 to 4 players (alone it is played from Practice: startBotGame)
-      const n = this.humans().length;
-      if (n < 2 || n > 4) { this.send(this.ownerId, { t: 'toast', text: n < 2 ? 'The Backrooms needs at least 2 players online. Alone, play it from Practice.' : 'The Backrooms takes 4 players at most.' }); return; }
+      // online the Backrooms takes 2 to 6 players (alone it is played from Practice: startBotGame)
+      const n = this.humans().length, B = RULES.br;
+      if (n < B.minPlayers || n > B.maxPlayers) { this.send(this.ownerId, { t: 'toast', text: n < B.minPlayers ? 'The Backrooms needs at least 2 players online. Alone, play it from Practice.' : `The Backrooms takes ${B.maxPlayers} players at most.` }); return; }
       if (this.settings.stage === 2 && this.settings.l2) return this.startPool();
       return this.settings.stage === 1 && this.settings.l1 ? this.startGarage() : this.startBackrooms();
     }
     if (this.settings.mode === 'dm' && !this.practice) return this.startDeathmatch();
     this.dm = false;
     this.variant = null;
+    if (!this.practice && this.humanCount() > CONFIG.maxPlayers) {
+      // a room filled for deathmatch or the Backrooms, then switched to 2v2
+      this.send(this.ownerId, { t: 'toast', text: `2v2 takes ${CONFIG.maxPlayers} players at most.` });
+      return;
+    }
     if (!this.practice && (this.teamCount('atk') === 0 || this.teamCount('def') === 0)) {
       this.send(this.ownerId, { t: 'toast', text: 'You need at least one player on each team.' });
       return;
