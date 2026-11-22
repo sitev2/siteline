@@ -2641,7 +2641,16 @@ export class Game {
     const alive = { atk: 0, def: 0 };
     for (const r of this.remotes.values()) if (r.alive && !r.dummy) alive[r.team]++;
     if (me.alive) alive[me.team]++;
-    if (this.pool) hud.setBackrooms([]);       // (no list of steps in the Poolrooms: you work it out by looking)
+    if (this.pool) {
+      // the Poolrooms' four steps (owner's request: a list on the side like the other levels; short, no how-to)
+      const dn = (this.poolc && this.poolc.done) || {};
+      hud.setBackrooms([
+        { text: 'Cross the channel', done: !!dn.bridge },
+        { text: 'Heat the Great Pool', done: !!dn.heat },
+        { text: 'Drain the Great Pool', done: !!dn.drain },
+        { text: 'Get out', done: !!me.escaped },
+      ]);
+    }
     else if (this.gar) {
       // Level 1's three steps (stage 7 will tick them off)
       const sh = (this.world.doors || []).find(d => d.lock === 'shutter');

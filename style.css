@@ -266,7 +266,6 @@ body:not(.is-host) .host-only { display: none !important; }
 #br-tasks { display: none; top: 50%; transform: translateY(-50%); left: calc(max(16px, 1.3vw) + var(--sal)); max-width: 50vw;
   font-size: max(10px, 1.75vh); pointer-events: none; text-shadow: 0 .07em .14em rgba(0,0,0,.9), 0 0 .55em rgba(0,0,0,.55); }
 body.br-mode #br-tasks { display: block; }
-body.pool-mode #br-tasks { display: none; }
 /* "Run complete": each level's time, then the whole run in bold, above the players */
 #over-stats .run-levels { margin-bottom: 14px; }
 #over-stats .run-levels .run-total td { font-weight: 700; border-top: 1px solid rgba(255,255,255,.25); color: #9dffb5; }      /* the Poolrooms: nothing on screen tells you what to do */

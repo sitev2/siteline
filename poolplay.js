@@ -190,6 +190,11 @@ export class PoolClient {
       this.lastValveP[i] = p;
     });
     ud.setHeat(s.h); ud.setGauges(s.h); ud.setUnlocked(!!s.u); ud.setDrain(s.d);
+    // finished steps for the task list stay ticked (a bridge sinks again, a valve can be turned back)
+    const dn = this.done || (this.done = { bridge: false, heat: false, drain: false });
+    if (s.b[0] >= 0.98) dn.bridge = true;
+    if (s.u) dn.heat = true;
+    if (s.dr) dn.drain = true;
     this.wantLevel = s.lv;
     if (!this.s) this.level = s.lv;          // (the first one: no easing)
     s.r.forEach((q, i) => { const r = this.rings[i]; if (!r) return; r.tx = q[0]; r.ty = q[1]; r.tz = q[2]; r.holder = q[3]; r.mode = q[4]; if (!this.s) { r.x = q[0]; r.y = q[1]; r.z = q[2]; } });
