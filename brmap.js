@@ -742,7 +742,8 @@ function mazeDef(seed, level) {
       // players start in their corner room (facing into it, east), the monster in its own
       const sx = at(plan.start.x) + C / 2, sz = at(plan.start.z) + C / 2;
       const face = Math.atan2(-1, plan.start.z ? 1 : -1);
-      for (const [dx, dz] of [[-0.8, -0.8], [0.8, -0.8], [-0.8, 0.8], [0.8, 0.8]]) b.spawn('atk', sx + dx, sz + dz, face);
+      // six spots (online it takes up to 6 players: RULES.br)
+      for (const [dx, dz] of [[-0.8, -0.8], [0.8, -0.8], [-0.8, 0.8], [0.8, 0.8], [0, -0.8], [0, 0.8]]) b.spawn('atk', sx + dx, sz + dz, face);
       b.spawn('def', at(plan.monster.x) + C / 2, at(plan.monster.z) + C / 2, 0);
       // the exit door: on the inside of the exit room's wall facing its way in (the faces of room x's walls are at
       // at(x) + 0.5 and at(x + 1): a wall fills the half metre after its room line)

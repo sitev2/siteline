@@ -103,7 +103,8 @@ The only folder is `server/` (the optional home game server).
   Upstairs floor H 3.2 m; barrel → truck (bed 1.3, cab 2.4) → balcony jump route (tested in game).
 - Maps: 2v2 `outpost`, `foundry`, `frostline`, `canal`, `flame` (one bomb site each, plus `dm` spawns for 3-player deathmatch);
   deathmatch `quarry`, `railyard` (`mode: 'dm'`, small/large variants via `build(b, size)`; `resolveMap()` in `maps.js`)
-- Deathmatch rules: `RULES.dm` in `config.js`; server phase `'dm'`, everyone on team `'ffa'` during the match
+- Deathmatch rules: `RULES.dm` in `config.js` (2–6 players, owner's request; 3 = a 2v2 map, 2 = small, 4–6 = large, which has 16 spawns;
+  Practice allows up to 5 bots); server phase `'dm'`, everyone on team `'ffa'` during the match
 - The Backrooms (`settings.mode = 'br'`; server phase `'br'`, `this.br`): **public** (the owner made it public after testing):
   `BACKROOMS_OPEN = true` in `main.js`. Setting it to false hides the lobby and Practice buttons from everyone but the test accounts
   (`BACKROOMS_TESTERS` = `test123`; `backroomsAllowed()` / `hideBackrooms()`, re-checked on login/logout). 1–4 players co-op,
@@ -283,7 +284,10 @@ The only folder is `server/` (the optional home game server).
   start room after 7 s; the game ends when everyone is out of lives, escaped or gone, and when everyone is dead the same level starts again
   5 s after the results. Leaving and rejoining keeps your lives, and a dead player who rejoins stays dead (`brGone`). NOT in the Poolrooms:
   there, when everyone is dead, the Poolrooms start again (`brCheck`, `check_pool.mjs`).
-- Backrooms online needs 2–4 players (owner's rule): the lobby's Start is off with fewer and says so, and `Server.startMatch` refuses too.
+- Backrooms online takes 2–6 players (owner's rule; was 2–4): `RULES.br` in `config.js`. The lobby's Start is off outside that and says so, and `Server.startMatch` refuses too.
+  Room size depends on the mode: `Server.roomMax()` (6 for the Backrooms and deathmatch, `CONFIG.maxPlayers` 4 for 2v2) — `HostNet` (`capacity`)
+  and `server/server.mjs` turn the next joiner away; a room of 5–6 switched to 2v2 can't start ("2v2 takes 4 players at most").
+  Every Backrooms level has 6 start spots (`brmap.js`, `garmap.js`, `poolmap.js`).
   Practice can still be played alone; Level 0's solo rules (`brSolo`) stay for solo Practice and for the last one alive. The HUD has no
   timer and no alive counter in the Backrooms (the top bar is hidden; only the task list shows).
 - **Backrooms Level 1: the garage (test account only).** `LEVEL1_OPEN = true` in `main.js` (owner made Levels 1 and 2 public; set false to limit them to `LEVEL1_TESTERS` (`test123`) again)
@@ -360,7 +364,7 @@ The only folder is `server/` (the optional home game server).
   restart after everyone died doesn't start a new level) and sends `run` + `runTotal` (the run's clock when the last one got out, rides
   between levels included) with `over`; `showBrOver` shows "Run complete", each level's time, the whole run, then the players.
   No joining mid-game: a friend who joins while the Poolrooms run watches (not spawned, `brDeath = 'late'`, "Joined to watch"); they
-  play from the next start (a restart after everyone died). Account stats are not reported. Online it takes 2–4 players like the rest.
+  play from the next start (a restart after everyone died). Account stats are not reported. Online it takes 2–6 players like the rest.
   - `poolmap.js` — ONE fixed, hand-made layout (`resolveMap('pool', difficulty)`, theme `pool`, `world.def.pool` = the plan), 64 × 52 m:
     ground floor deck at `POOL.G` 3 m (pools go down from there; their water at `POOL.WY` 2.88), flooded rooms (knee-deep, floor `POOL.SH`),
     upper floor at `POOL.U` 10 m (7 m higher), roof underside `POOL.ROOF` 12.8. West side (start): lane hall (Picture B: slanted wall with

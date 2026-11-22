@@ -482,6 +482,7 @@ async function hostGame() {
   app.server = makeLocalServer(false);
   app.hostNet = new HostNet({
     onJoin: (id, n) => app.server && app.server.addPlayer(id, n),
+    capacity: () => (app.server ? app.server.roomMax() : CONFIG.maxPlayers),
     onMessage: (id, m) => app.server && app.server.receive(id, m),
     onLeave: (id) => app.server && app.server.removePlayer(id),
     onError: (e) => toast(e),
@@ -571,6 +572,7 @@ async function openInviteRoom() {
   if (CONFIG.serverUrl) return;
   const net = new HostNet({
     onJoin: (id, n) => app.server && app.server.addPlayer(id, n),
+    capacity: () => (app.server ? app.server.roomMax() : CONFIG.maxPlayers),
     onMessage: (id, m) => app.server && app.server.receive(id, m),
     onLeave: (id) => app.server && app.server.removePlayer(id),
     onError: () => {},
@@ -619,7 +621,7 @@ function renderPracticeMenu() {
   for (const b of document.querySelectorAll('.pmode-btn')) b.classList.toggle('selected', b.dataset.pmode === P.kind);
   const count = P.kind === 'dm' ? P.dmCount : P.count;
   const slider = $('p-count');
-  slider.max = P.kind === 'dm' ? 3 : 8;
+  slider.max = P.kind === 'dm' ? RULES.dm.maxPlayers - 1 : 8;
   slider.value = count;
   $('p-count-out').textContent = count;
   const maps = practiceMaps(P.kind, count);
@@ -784,7 +786,7 @@ function renderMapCards() {
     const sz = b.querySelector('.map-size');
     if (sz) {
       const v = dmVariant(n), [w, d] = MAPS[b.dataset.map].sizes[v];
-      sz.textContent = n === 2 || n === 4 ? `${v === 'large' ? 'Large' : 'Small'} version for ${n} players (${w} × ${d} m)` : 'Small for 2 players, large for 4';
+      sz.textContent = n >= 2 && n !== 3 && n <= RULES.dm.maxPlayers ? `${v === 'large' ? 'Large' : 'Small'} version for ${n} players (${w} × ${d} m)` : `Small for 2 players, large for 4 to ${RULES.dm.maxPlayers}`;
     }
   }
 }
@@ -864,17 +866,18 @@ function renderLobby() {
   const counts = { atk: app.roster.filter(p => p.team === 'atk').length, def: app.roster.filter(p => p.team === 'def').length };
   const D = RULES.dm;
   $('match-rules').innerHTML = br
-    ? (app.lobby.stage === 2 && app.lobby.l2 ? '<b>The Backrooms, Level 2: The Poolrooms</b> · 2–4 players together · bright tiled halls and still water · nothing lives here'
-      : app.lobby.stage === 1 && app.lobby.l1 ? '<b>The Backrooms, Level 1</b> · 2–4 players together · the garage · fix the power, crank the shutter, take the lift'
-      : '<b>The Backrooms</b> · 2–4 players together · a new random maze every game · no guns · find the exit before it finds you')
-    : dm ? `<b>Deathmatch</b> · everyone for themselves · first to <b>${D.killLimit}</b> kills or <b>${D.timeLimit / 60}</b> minutes · ${n === 3 ? 'played on a 2v2 map with 3 players' : 'small map for 2, large for 4'}`
+    ? (app.lobby.stage === 2 && app.lobby.l2 ? '<b>The Backrooms, Level 2: The Poolrooms</b> · 2–6 players together · bright tiled halls and still water · nothing lives here'
+      : app.lobby.stage === 1 && app.lobby.l1 ? '<b>The Backrooms, Level 1</b> · 2–6 players together · the garage · fix the power, crank the shutter, take the lift'
+      : '<b>The Backrooms</b> · 2–6 players together · a new random maze every game · no guns · find the exit before it finds you')
+    : dm ? `<b>Deathmatch</b> · everyone for themselves · first to <b>${D.killLimit}</b> kills or <b>${D.timeLimit / 60}</b> minutes · ${n === 3 ? 'played on a 2v2 map with 3 players' : 'small map for 2, large for 4 to ${D.maxPlayers}'}`
     : '<b>2v2</b> · first to <b>9</b> · sides swap after round <b>8</b> · 8–8 is a draw';
   let note, ready;
   if (br) {
     // online it takes at least two (alone, play it from Practice)
-    ready = n >= 2 && n <= 4;
-    note = !isLeader() ? (n < 2 ? 'The Backrooms needs 2 to 4 players. Waiting for one more…' : 'Waiting for the host to start…')
-      : n < 2 ? 'The Backrooms needs 2 to 4 players online. Share the room code or invite link (to play alone, use Practice).'
+    const B = RULES.br;
+    ready = n >= B.minPlayers && n <= B.maxPlayers;
+    note = !isLeader() ? (n < 2 ? `The Backrooms needs 2 to ${B.maxPlayers} players. Waiting for one more…` : 'Waiting for the host to start…')
+      : n < 2 ? `The Backrooms needs 2 to ${B.maxPlayers} players online. Share the room code or invite link (to play alone, use Practice).`
         : `${n} players ready. Friends can also join after it has started.`;
   } else if (dm) {
     ready = n >= D.minPlayers && n <= D.maxPlayers;
@@ -882,9 +885,10 @@ function renderLobby() {
       : n < D.minPlayers ? `Deathmatch needs ${D.minPlayers} to ${D.maxPlayers} players. Share the room code or invite link.`
         : `${n} players ready. Start when everyone's in.`;
   } else {
-    ready = counts.atk > 0 && counts.def > 0;
+    ready = counts.atk > 0 && counts.def > 0 && n <= CONFIG.maxPlayers;
     if (isLeader()) {
       note = n < 2 ? 'Share the room code or invite link with a friend or three. You need at least one player on each team.'
+        : n > CONFIG.maxPlayers ? `2v2 takes ${CONFIG.maxPlayers} players at most (${n} are here). Pick deathmatch or the Backrooms, or ask someone to leave.`
         : !ready ? 'Each team needs at least one player.' : `${n} players ready. Start when everyone's in.`;
     } else note = 'Waiting for the host to start the match…';
   }

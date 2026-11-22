@@ -212,7 +212,8 @@ export function garageMap(variant) {
       // cars: solid, too high to climb
       for (const c of plan.cars) { const y = floorY(c.f); b.add(c.x - 1, c.z - 2.25, c.x + 1, c.z + 2.25, y, y + GAR.car.h, '_car'); }
       for (const p of plan.puddles) b.water(p.x0, p.z0, p.x1, p.z1, 0.03);
-      for (const [dx, dz] of [[-0.8, -0.8], [0.8, -0.8], [-0.8, 0.8], [0.8, 0.8]]) b.spawn('atk', plan.start.x + dx, plan.start.z + dz, plan.start.yaw);
+      // six spots (online it takes up to 6 players: RULES.br)
+      for (const [dx, dz] of [[-0.8, -0.8], [0.8, -0.8], [-0.8, 0.8], [0.8, 0.8], [-0.8, 0], [0.8, 0]]) b.spawn('atk', plan.start.x + dx, plan.start.z + dz, plan.start.yaw);
       b.spawn('def', plan.monster.x, plan.monster.z, 0);
     },
   };
