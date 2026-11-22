@@ -2646,8 +2646,8 @@ export class Game {
       const dn = (this.poolc && this.poolc.done) || {};
       hud.setBackrooms([
         { text: 'Cross the channel', done: !!dn.bridge },
-        { text: 'Heat the Great Pool', done: !!dn.heat },
-        { text: 'Drain the Great Pool', done: !!dn.drain },
+        { text: 'Heat the pool', done: !!dn.heat },
+        { text: 'Drain the pool', done: !!dn.drain },
         { text: 'Get out', done: !!me.escaped },
       ]);
     }
