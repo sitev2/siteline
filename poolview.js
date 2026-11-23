@@ -891,6 +891,76 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     }
   }
 
+  // ---- trim (Medium and up): a rounded cove skirting where walls stand on floors (the way pools are tiled: no dirt
+  //      trap at the join, and it hides the hard line there), and a slim white frame round each square skylight ----
+  if (Q >= 1) {
+    const SR = 0.1, NS = 4;                                   // the skirting's radius, and steps round its curve
+    const drawnSpan = (ix, iz, y0, y1) => { const sp = spansAt(ix, iz); return !!sp && sp.some(q => drawn(q) && q.y0 <= y0 && q.y1 >= y1); };
+    const openAbove = (ix, iz, y) => { const sp = spansAt(ix, iz); return !!sp && !sp.some(q => q.y0 < y + 1.2 && q.y1 > y + 0.005); };
+    const inRing = (x, y, z) => plan.rings.some(o => y > o.y0 - 0.1 && y < o.y1 && Math.hypot(x - o.x, z - o.z) < o.R + 0.45);
+    const wallAt = (ix, iz, fy) => drawnSpan(ix, iz, fy + 0.02, fy + 0.3);         // (a real wall: steps and plates are lower)
+    for (let iz = 3; iz < Dc - 3; iz++) for (let ix = 3; ix < Wc; ix++) {
+      if (outdoors(ix, iz) || plan.poolGrid[iz * Wc + ix] >= 0 || edge[iz * Wc + ix]) continue;
+      const sp = spansAt(ix, iz), cx = (ix + 0.5) * CELL, cz = (iz + 0.5) * CELL;
+      // the floors in this cell: the top of a drawn span with room above it (or the bare ground at 0, the exit tunnel)
+      const floors = sp.filter(q => drawn(q) && openAbove(ix, iz, q.y1)).map(q => q.y1);
+      if (!sp.some(q => q.y0 <= 0.01) && openAbove(ix, iz, 0)) floors.push(0);
+      for (const fy of floors) {
+        if (inRing(cx, fy + 0.5, cz)) continue;
+        const wk = fy < WY ? (wkOf(ix, iz) || (inExit(cx, cz) ? 2 : 0)) : 0;
+        for (const [nx, nz] of SIDES) {
+          if (!wallAt(ix + nx, iz + nz, fy)) continue;
+          const wx = cx + nx * 0.25, wz = cz + nz * 0.25, tx = nz, tz = -nx, inx = -nx, inz = -nz;
+          const fin = wallFin(wx + inx * 0.06, fy + 0.5, wz + inz * 0.06);
+          const dn = Math.SQRT1_2;
+          const litAt = (px, pz) => shade(px + inx * 0.04, fy + 0.04, pz + inz * 0.04, inx * dn, dn, inz * dn);
+          // the quarter round: from the wall (at height SR) down to the floor (SR out from the wall)
+          // (uArc: round an outside corner, the angle swept so far: the tiling follows the curve there)
+          const mk = (B, px, pz, ph, lit, dx = inx, dz = inz, uArc = 0) => {
+            const off = SR - SR * Math.cos(ph), y = fy + SR - SR * Math.sin(ph);
+            return V(B, px + dx * off, y, pz + dz * off, dx * Math.cos(ph), Math.sin(ph), dz * Math.cos(ph), (nx ? pz : px) + uArc * off, fy + SR * (1 - ph / (Math.PI / 2)), fin, wk, lit);
+          };
+          const ax = wx - tx * 0.25, az = wz - tz * 0.25, bx = wx + tx * 0.25, bz = wz + tz * 0.25, B = bufAt(wx, fy + 0.05, wz);
+          const la = litAt(ax, az), lb = litAt(bx, bz);
+          for (let k = 0; k < NS; k++) {
+            const p0 = Math.PI / 2 * k / NS, p1 = Math.PI / 2 * (k + 1) / NS;
+            quad(B, mk(B, ax, az, p0, la), mk(B, bx, bz, p0, lb), mk(B, bx, bz, p1, lb), mk(B, ax, az, p1, la), inx, 1, inz);
+          }
+          // an outside corner at either end (the wall turns away): the round swept round the corner
+          for (const sd of [-1, 1]) {
+            const ex = ix + tx * sd, ez = iz + tz * sd;
+            if (wallAt(ex, ez, fy) || wallAt(ex + nx, ez + nz, fy) || !openAbove(ex, ez, fy) || plan.poolGrid[ez * Wc + ex] >= 0) continue;
+            const px = wx + tx * 0.25 * sd, pz = wz + tz * 0.25 * sd, lc = litAt(px, pz), NR = 4;
+            for (let m = 0; m < NR; m++) for (let k = 0; k < NS; k++) {
+              const at = (mm, kk) => {
+                const th = Math.PI / 2 * mm / NR, dx = inx * Math.cos(th) + tx * sd * Math.sin(th), dz = inz * Math.cos(th) + tz * sd * Math.sin(th);
+                return mk(B, px, pz, Math.PI / 2 * kk / NS, lc, dx, dz, th * sd);
+              };
+              quad(B, at(m, k), at(m + 1, k), at(m + 1, k + 1), at(m, k + 1), inx + tx * sd, 1, inz + tz * sd);
+            }
+          }
+        }
+      }
+    }
+    // frames round the square skylights: a band 7 cm wide, 3 cm proud of the ceiling
+    for (const sk of plan.skylights) {
+      if (sk.round) continue;
+      const W2 = 0.07, D2 = 0.03, y = ROOF - D2, lit = shade((sk.x0 + sk.x1) / 2, ROOF - 0.05, sk.z0 - 0.2, 0, -1, 0);
+      const B = bufAt((sk.x0 + sk.x1) / 2, ROOF, (sk.z0 + sk.z1) / 2);
+      const P = (x, yy, z, n) => V(B, x, yy, z, n[0], n[1], n[2], n[1] ? x : n[0] ? z : x, n[1] ? z : yy, FIN.white, 0, lit);
+      const ring = [[sk.x0, sk.z0], [sk.x1, sk.z0], [sk.x1, sk.z1], [sk.x0, sk.z1]];
+      const outR = [[sk.x0 - W2, sk.z0 - W2], [sk.x1 + W2, sk.z0 - W2], [sk.x1 + W2, sk.z1 + W2], [sk.x0 - W2, sk.z1 + W2]];
+      for (let i = 0; i < 4; i++) {
+        const j = (i + 1) % 4, a = ring[i], b = ring[j], c = outR[j], d = outR[i];
+        quad(B, P(a[0], y, a[1], [0, -1, 0]), P(b[0], y, b[1], [0, -1, 0]), P(c[0], y, c[1], [0, -1, 0]), P(d[0], y, d[1], [0, -1, 0]), 0, -1, 0);
+        // its outer edge down from the ceiling, and its inner edge up into the opening
+        const ex = c[0] - d[0], ez = c[1] - d[1], el = Math.hypot(ex, ez), onx = ez / el, onz = -ex / el;      // (outwards from the hole)
+        quad(B, P(d[0], ROOF, d[1], [onx, 0, onz]), P(c[0], ROOF, c[1], [onx, 0, onz]), P(c[0], y, c[1], [onx, 0, onz]), P(d[0], y, d[1], [onx, 0, onz]), onx, 0, onz);
+        quad(B, P(a[0], y, a[1], [-onx, 0, -onz]), P(b[0], y, b[1], [-onx, 0, -onz]), P(b[0], ROOF, b[1], [-onx, 0, -onz]), P(a[0], ROOF, a[1], [-onx, 0, -onz]), -onx, 0, -onz);
+      }
+    }
+  }
+
   // ---- turn the buffers into meshes ----
   const tileMat = tileMaterial(UNI, Q, { side: THREE.DoubleSide });      // both sides: some curved parts were built facing one way only and showed see-through from the other
   const casters = new THREE.Group();
