@@ -530,13 +530,19 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     for (let i = 1; i < n; i++) len.push(len[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
     const uu = edgeU(pts, nrm, len, o.closed);
     const wk = p.name === 'great' ? 2 : 1;
-    const wallRows = [p.bottom, ...[1.2, 2.1].filter(y => y > p.bottom + 0.3 && y < WY - 0.4), WY - 0.2, G - 0.09];
+    // (the Great Pool's wall has the exit tunnel's mouth in it, p.gaps: a row ends at the tunnel's roof, and below that the
+    //  wall is left out across the mouth. It used to be drawn straight across, so once the pool was drained the way out
+    //  was there to walk through but looked like solid wall)
+    const mouthTop = p.gaps ? plan.exit.tunnel.y1 : -1;
+    const wallRows = [p.bottom, ...[1.2, 2.1, mouthTop].filter(y => y > p.bottom + 0.3 && y < WY - 0.4), WY - 0.2, G - 0.09].sort((x, y) => x - y);
+    const inMouth = (x, z) => !!p.gaps && p.gaps.some(g => x > g[0] && x < g[2] && z > g[1] && z < g[3]);
     for (let i = 0; i < n - 1; i++) {
       const a = pts[i], b = pts[i + 1], na = nrm[i], nb = nrm[i + 1], ua = uu[i], ub = uu[i + 1];
-      const B = bufAt(a[0], G - 1, a[1]);
+      const B = bufAt(a[0], G - 1, a[1]), mouth = inMouth((a[0] + b[0]) / 2, (a[1] + b[1]) / 2);
       // the wall down into the pool (a pale blue band at the waterline)
       for (let r = 0; r < wallRows.length - 1; r++) {
         const ya = wallRows[r], yb = wallRows[r + 1], fin = r === wallRows.length - 2 ? FIN.blue : FIN.cream;
+        if (mouth && yb <= mouthTop + 1e-6) continue;
         quad(B, V(B, a[0], ya, a[1], -na[0], 0, -na[1], ua, ya, fin, wk), V(B, b[0], ya, b[1], -nb[0], 0, -nb[1], ub, ya, fin, wk),
           V(B, b[0], yb, b[1], -nb[0], 0, -nb[1], ub, yb, fin, wk), V(B, a[0], yb, a[1], -na[0], 0, -na[1], ua, yb, fin, wk), -(na[0] + nb[0]), 0, -(na[1] + nb[1]));
       }
