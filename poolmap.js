@@ -32,22 +32,18 @@ const { G, U, WY, SH, ROOF } = POOL;
 const ROOFT = ROOF + 0.4;
 
 // What changes with the difficulty: hold = seconds a bridge stays up after a lone player steps off its plate;
-// turn = seconds of holding to turn a valve (the drain wheel takes twice as long); lanes = which of the Great
-// Pool's three lanes each valve heats. A lane is hot when an odd number of open valves feed it (a valve sends
-// hot water down its pipe, a second one into the same lane mixes it lukewarm again). All three lanes hot
-// unlocks the drain. Easy: one lane each (all three open). Normal and hard: the middle valve (upstairs) must
-// stay SHUT and the grotto's must be open (so the green slide is always on the way).
+// turn = seconds of holding to turn a valve (the drain wheel takes 2.5 times as long).
+// The valves (owner: "just turn the valve"): each one heats its own lane of the Great Pool — the atrium's the lane
+// on the drain wheel's side, the upstairs one the middle lane, the grotto's the lane by the grotto — and once
+// turned all the way it stays open for good. All three lanes hot unlocks the drain (so the green slide, the only
+// way to the grotto's valve, is always on the way).
 export const POOL_LEVELS = {
-  easy: { hold: 9, turn: 2, lanes: [[0], [1], [2]] },
-  normal: { hold: 7, turn: 3, lanes: [[0, 1], [1, 2], [2]] },
-  hard: { hold: 5.5, turn: 4, lanes: [[0, 2], [0, 1], [1]] },
+  easy: { hold: 9, turn: 2 },
+  normal: { hold: 7, turn: 3 },
+  hard: { hold: 5.5, turn: 4 },
 };
-// which lanes are hot with these valves open (open: [bool, bool, bool])
-export function hotLanes(level, open) {
-  const L = POOL_LEVELS[level] || POOL_LEVELS.normal, hot = [false, false, false];
-  open.forEach((o, i) => { if (o) for (const l of L.lanes[i]) hot[l] = !hot[l]; });
-  return hot;
-}
+// which lanes are hot with these valves open (open: [bool, bool, bool]): valve i heats lane i
+export const hotLanes = (open) => open.map(Boolean);
 export const poolLevel = v => brLevel(String(v == null ? '' : v).split(':').pop());
 
 // ---------- shapes ----------

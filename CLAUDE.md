@@ -415,10 +415,11 @@ The only folder is `server/` (the optional home game server).
       light well (`plan.well`): only a view.
     2 the steam: three valves (`plan.valves`: atrium wall, upstairs gallery on a post, the grotto — only reached by the GREEN slide), RED
       handwheels on brass pipes (owner's request). HOLD E / the hand button (sent every 150 ms of real time, counts 0.4 s) turns one over
-      `POOL_LEVELS.turn` s (2 / 3 / 4); it stays where it is left; turning again goes back (undo). Each valve heats lanes of the Great Pool
-      (`POOL_LEVELS.lanes`, `hotLanes()`: a lane is hot when an odd number of open valves feed it). Easy: one lane each (all three open);
-      normal / hard: the upstairs valve must stay SHUT, the grotto's open. Soft wisps of steam rise off hot lanes (`steamMaterial`), and the
-      grotto's basin always steams a little; three gauges on the drain stand show each lane's heat.
+      `POOL_LEVELS.turn` s (2 / 3 / 4); let go half way and it stays there. Owner: "just turn the valve" — NO puzzle any more: each valve
+      heats its own lane of the Great Pool (`hotLanes(open)`: valve i → lane i; atrium = the drain wheel's side, upstairs = middle, grotto =
+      the grotto's side), and once turned all the way it stays OPEN for good (can't be turned back; the E prompt goes away). All three are
+      needed, so the green slide is always on the way. Soft wisps of steam rise off hot lanes (`steamMaterial`), and the grotto's basin
+      always steams a little; three gauges on the drain stand show each lane's heat.
     3 the drain: every lane hot = the brass catch on the drain wheel swings away (`unlocked`); HOLD E turns it (`turn × 2.5` s, stays where
       left; locked it rattles, no words). Then the Great Pool empties over 10 s for good (`DRAIN_SECS`, host sets `great.y`), revealing the
       tunnel in its south wall.

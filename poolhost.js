@@ -2,7 +2,7 @@
 // Runs in the host's browser and on the home server (server.js makes one in startPool()). No three.js in here.
 //   1 the bridge: a pressure plate raises a tiled bridge across the deep channel while someone stands on it
 //     (alone: it stays up `hold` seconds after you step off). A second, optional one leads to the apse.
-//   2 the steam: three brass valves (HOLD E) heat the Great Pool's lanes (poolmap.js hotLanes); steam shows it.
+//   2 the steam: three valves (HOLD E), each heating its own lane of the Great Pool; turned, one stays open; steam shows it.
 //   3 the drain: with every lane hot the big wheel turns (HOLD E); the Great Pool empties over 10 s, for good.
 //   4 the exit: the tunnel at the bottom, the ladder up the shaft, the white hatch: each player gets out alone.
 // Also: falls of more than 6 m onto a hard floor kill (deep water always saves you), the three slides (the host
@@ -21,7 +21,7 @@ export class PoolHost {
     this.L = POOL_LEVELS[this.plan.level] || POOL_LEVELS.normal;
     this.at = performance.now(); this.sentAt = 0; this.t = 0;
     this.bridges = this.plan.bridges.map(br => ({ up: 0, solid: false, holdUntil: 0, pressed: br.plates.map(() => false), dir: 0 }));
-    this.valves = this.plan.valves.map(() => ({ p: 0, open: false, dir: 1, held: false }));
+    this.valves = this.plan.valves.map(() => ({ p: 0, open: false, held: false }));
     this.heat = [0, 0, 0];
     this.unlocked = false;
     this.drainP = 0; this.drainHeld = false; this.drainAt = null; this.stuckAt = 0;
@@ -126,18 +126,18 @@ export class PoolHost {
     // ---- 2: valves and the lanes' heat ----
     this.valves.forEach((v, i) => {
       const pv = plan.valves[i];
-      const held = inside.some(p => p.poolUse && p.poolUse.k === 'valve' && p.poolUse.i === i && now - p.poolUse.at < 400 && this.reach(p, pv));
-      if (held && !v.held) { v.dir = v.p >= 1 ? -1 : v.p <= 0 ? 1 : v.dir; this.fx({ k: 'valve', i, on: 1 }); }
+      // (only one way: open. Let go half way and it stays there; once all the way open it can't be turned again)
+      const held = !v.open && inside.some(p => p.poolUse && p.poolUse.k === 'valve' && p.poolUse.i === i && now - p.poolUse.at < 400 && this.reach(p, pv));
+      if (held && !v.held) this.fx({ k: 'valve', i, on: 1 });
       if (!held && v.held) this.fx({ k: 'valve', i, on: 0 });
       v.held = held;
       if (held) {
-        v.p = Math.max(0, Math.min(1, v.p + v.dir * dt / this.L.turn));
-        if (v.p >= 1 && !v.open) { v.open = true; this.fx({ k: 'valveEnd', i, open: 1 }); }
-        if (v.p <= 0 && v.open) { v.open = false; this.fx({ k: 'valveEnd', i, open: 0 }); }
+        v.p = Math.min(1, v.p + dt / this.L.turn);
+        if (v.p >= 1) { v.open = true; v.held = false; this.fx({ k: 'valveEnd', i, open: 1 }); }
         changed = true;
       }
     });
-    const hot = hotLanes(plan.level, this.valves.map(v => v.open));
+    const hot = hotLanes(this.valves.map(v => v.open));
     hot.forEach((h, l) => { const t = h ? 1 : 0, was = this.heat[l]; this.heat[l] += Math.max(-dt / 3, Math.min(dt / 3, t - this.heat[l])); if (this.heat[l] !== was) changed = true; });
     const unlocked = this.heat.every(h => h > 0.9);
     if (unlocked !== this.unlocked && !this.drainAt) { this.unlocked = unlocked; this.fx({ k: 'unlock', on: unlocked ? 1 : 0 }); changed = true; }
