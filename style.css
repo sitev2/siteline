@@ -261,11 +261,15 @@ body:not(.is-host) .host-only { display: none !important; }
 #round-no { font-size: .66rem; letter-spacing: .14em; color: var(--muted); text-transform: uppercase; }
 
 #radar-wrap { top: calc(10px + var(--sat)); left: calc(10px + var(--sal)); }
-/* the Backrooms task list (owner's requests): middle of the left edge; just text, no box (a soft shadow keeps it
-   readable on the bright walls); sized by the screen: 1.75 % of its height (13 px at 720p, 19 px at 1080p, 25 px at
-   1440p), never under 10 px so small phones stay readable. Everything inside is in em, so it all scales together. */
+/* the Backrooms task list (owner's requests): middle of the left edge; just text, no box (a tight dark outline plus a
+   soft shadow, and a faint dark haze behind it with no edges, keep it readable on the white Poolrooms tiles and in
+   skylight glare); sized by the screen: 1.75 % of its height (13 px at 720p, 19 px at 1080p, 25 px at 1440p), never
+   under 10 px so small phones stay readable. Everything inside is in em, so it all scales together. */
 #br-tasks { display: none; top: 50%; transform: translateY(-50%); left: calc(max(16px, 1.3vw) + var(--sal)); max-width: 50vw;
-  font-size: max(10px, 1.75vh); pointer-events: none; text-shadow: 0 .07em .14em rgba(0,0,0,.9), 0 0 .55em rgba(0,0,0,.55); }
+  font-size: max(10px, 1.75vh); pointer-events: none;
+  text-shadow: 0 0 .1em rgba(0,0,0,.95), 0 .06em .12em rgba(0,0,0,.9), 0 0 .6em rgba(0,0,0,.6); }
+#br-tasks::before { content: ''; position: absolute; z-index: -1; inset: -1.6em -3em -1.6em -2.2em; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(0,0,0,.34), rgba(0,0,0,.18) 55%, rgba(0,0,0,0)); }
 body.br-mode #br-tasks { display: block; }
 /* "Run complete": each level's time, then the whole run in bold, above the players */
 #over-stats .run-levels { margin-bottom: 14px; }
@@ -281,9 +285,9 @@ body.br-mode #br-tasks { display: block; }
 body.br-mode #topbar { display: none !important; }
 .br-tasks-title { font: 600 .73em var(--body); letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.75); margin-bottom: .55em; }
 #br-task-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .35em; }
-#br-task-list li { display: flex; gap: .55em; align-items: baseline; font: 600 1em var(--body); color: rgba(255,255,255,.62); line-height: 1.25; }
+#br-task-list li { display: flex; gap: .55em; align-items: baseline; font: 600 1em var(--body); color: rgba(255,255,255,.8); line-height: 1.25; }
 #br-task-list li .n { flex: none; width: 1.1em; text-align: right; font-variant-numeric: tabular-nums; }
-#br-task-list li.done { color: rgba(255,255,255,.55); }
+#br-task-list li.done { color: rgba(255,255,255,.72); }
 #br-task-list li.done .t { text-decoration: line-through; text-decoration-thickness: .13em; text-decoration-color: rgba(255,255,255,.9); }
 #br-task-list li.now { color: #fff; }
 #br-task-list li.now .n { color: #e8dc8a; }
