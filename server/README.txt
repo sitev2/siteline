@@ -59,6 +59,27 @@ without changing your router settings.
      game goes through your server.
 
 
+RELAY KEY (optional: keeps the Metered key out of the web page)
+---------------------------------------------------------------
+The relay (Metered) helps friends on school or work Wi-Fi connect. The
+game needs a login for it. If this server has your Metered API key, it
+hands that login out to players, so their browsers never send the key.
+(Players' browsers ask the game servers first and only ask Metered
+themselves if no game server has the key or none answers.)
+
+1. Open the "server" folder. Right-click -> New -> Text Document and name
+   it exactly  turn-key.txt  (if Windows hides ".txt", name it turn-key).
+2. Open it, paste your Metered API key on the first line, save, close.
+3. Close the black start.bat window and double-click start.bat again. It
+   should say:  relay logins for players (/turn): key set ...
+4. Check: open http://localhost:8787/turn in a browser. You should see a
+   list that starts with  [{"urls":"turn:  . After that,
+   http://localhost:8787 ends with "Relay logins for players: ready".
+- turn-key.txt stays when you unzip an update over the folder (it isn't
+  in the ZIP), and git never uploads it (it's in .gitignore).
+- Wrong key? The status page says what Metered answered.
+
+
 KEEP IT RUNNING
 ---------------
 - Start with Windows: press Win+R, type  shell:startup  and press Enter.

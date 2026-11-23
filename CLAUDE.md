@@ -20,6 +20,11 @@ The only folder is `server/` (the optional home game server).
   host's browser AND on the home server
 - `net.js` — connections: PeerJS peer-to-peer, Metered relay, WebSocket server mode. Joining tries any route, then relay-only;
   it resolves once the host answers. A failed relay sign-in is retried next time (never cached). Errors stay on the menu (`#net-error`).
+  Relay login: asked from the game servers' `/turn` first (all at once, 3.5 s, `relayServerList`), then from Metered with the key in
+  config.js as before (`relaySource()` says which; Connection check shows it). The servers' `/turn` (`server/server.mjs`) uses
+  `METERED_API_KEY` or `server/turn-key.txt` (git-ignored), asks Metered at most every 10 min, only answers the game's own site
+  (+ localhost, `ALLOWED_ORIGINS`), and the status page says "Relay logins for players: …". The key also stays in config.js until the
+  owner decides to remove it (it is in the public git history anyway: a new key would be needed to make it secret).
 - Game servers: `CONFIG.servers` = [{ name, url }] best first (owner's plan: home PC first, Render as backup); `?server=wss://…` uses only
   that one. Host picks the first that answers (4 s check), else waits up to 90 s for one to wake (free Render sleeps), else makes a
   direct P2P room. Server room codes are 6 chars with the server's list position in front ("1ABCDE" = first server, `roomRoute()` in
@@ -494,7 +499,8 @@ Tailscale Funnel) it updates itself: every (re)start runs `git pull`, and a time
 On ZimaOS (owner's plan; `server/ZIMAOS.txt`) it is a custom app from `server/zimaos-compose.yml`: `node:22` container running
 `server/docker-run.sh` (clones the repo, checks GitHub every 30 min, restarts for an update only when "Players online: 0") + a
 `tailscale/tailscale` container (userspace, Funnel via TS_SERVE_CONFIG → http://game:8787). The same server can run on Render (build `cd server && npm install`, start `node server/server.mjs`; free plan sleeps,
-the menu's Wake server row handles that). Say so whenever a change touches
+the menu's Wake server row handles that). Relay key on a server: Render → Environment → `METERED_API_KEY`; Windows/Linux: a
+`server/turn-key.txt` file; ZimaOS: the app's environment variables (README / LINUX / ZIMAOS "RELAY KEY"). Say so whenever a change touches
 `server.js`, `world.js`, `maps.js`, `weapons.js` or `config.js`.
 
 ## Testing
