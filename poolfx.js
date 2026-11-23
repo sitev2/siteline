@@ -177,9 +177,12 @@ const TILE_FRAG = /* glsl */`
       // smooth painted plaster: only the faintest unevenness
       alb *= 0.97 + 0.03 * sin(uv.x * 0.9 + sin(uv.y * 0.7) * 1.3) * sin(uv.y * 1.1 + 0.4);
     } else {
-      // the overflow gutter: a dark slot with a white grille across it
-      float bar = smoothstep(0.30, 0.42, abs(fract(uv.x / 0.04) - 0.5));
-      alb = mix(vec3(0.82, 0.81, 0.77), base, bar);
+      // the overflow gutter: a dark slot with a white grille across it. The gaps between the bars are filtered over
+      // the pixel like the grout (unfiltered, the 4 cm bars broke up into a dotted, dashed line from a few metres off)
+      float b = uv.x / 0.04 + 0.12, fb = max(fwidth(b), 1e-4), ba = b - 0.5 * fb, bb = b + 0.5 * fb;
+      float gap = clamp((floor(bb) * 0.24 + min(fract(bb), 0.24) - floor(ba) * 0.24 - min(fract(ba), 0.24)) / fb, 0.0, 1.0);
+      gap = mix(gap, 0.24, smoothstep(0.45, 1.4, fb));
+      alb = mix(vec3(0.76, 0.75, 0.71), base, gap);
     }
     // the bump tilts the normal within the surface
     vec3 Np = N;
