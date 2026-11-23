@@ -1511,6 +1511,7 @@ export class Game {
     const zoomK = me.zoom ? w.zoom[me.zoom - 1] / (this.settings.fov || 75) : 1;
     if (me.alive) {
       me.yaw -= lx * zoomK;
+      me.yaw = Math.atan2(Math.sin(me.yaw), Math.cos(me.yaw));      // (kept within −π…π; everything that blends yaws takes the short way round)
       me.pitch = Math.max(-1.45, Math.min(1.45, me.pitch - ly * zoomK));
     }
     if (inp.consume('flashlight')) this.toggleFlashlight();
