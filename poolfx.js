@@ -109,13 +109,13 @@ const TONE = /* glsl */`
 `;
 
 const TILE_VERT = /* glsl */`
-  attribute vec3 aLight; attribute vec4 aFx; attribute vec3 aGlint;
+  attribute vec3 aLight; attribute vec4 aFx; attribute vec3 aGlint; attribute float aOcc;
   uniform mat4 uShadowMat, uDynMat;
-  varying vec3 vW, vN, vL, vG, vS, vSd; varying vec2 vUv; varying vec4 vFx;
+  varying vec3 vW, vN, vL, vG, vS, vSd; varying vec2 vUv; varying vec4 vFx; varying float vOcc;
   void main() {
     vec4 w = modelMatrix * vec4(position, 1.0);
     vW = w.xyz; vN = normalize(mat3(modelMatrix) * normal);
-    vL = aLight; vG = aGlint; vUv = uv; vFx = aFx;
+    vL = aLight; vG = aGlint; vUv = uv; vFx = aFx; vOcc = aOcc;
     vec4 sp = vec4(vW + vN * 0.07, 1.0);
     vS = (uShadowMat * sp).xyz * 0.5 + 0.5;
     vSd = (uDynMat * sp).xyz * 0.5 + 0.5;
@@ -134,7 +134,11 @@ const TILE_FRAG = /* glsl */`
   ${TONE}
   uniform vec3 uSunDir, uSunCol, uHaze; uniform float uHazeK, uWaterY, uGreatY, uClipY, uLite;
   uniform vec4 uBlobs[6];
-  varying vec3 vW, vN, vL, vG, vS, vSd; varying vec2 vUv; varying vec4 vFx;
+  varying vec3 vW, vN, vL, vG, vS, vSd; varying vec2 vUv; varying vec4 vFx; varying float vOcc;
+  float vnoise(vec2 p) {
+    vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x), mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), f.x), f.y);
+  }
   void main() {
     if (vW.y < uClipY) discard;
     vec3 N = normalize(vN);
@@ -182,8 +186,26 @@ const TILE_FRAG = /* glsl */`
         alb *= 1.0 + (hash21(floor(g6) + 3.1) - 0.5) * 0.04 * far6.x * far6.y;
       }
       gloss *= 1.0 - grout * 0.85;
-      // each little tile is not quite flat and not quite level: that is what makes the highlights sparkle
+      // glazes differ a little from tile to tile: some catch the light more than others
+      gloss *= 0.8 + 0.4 * hash21(id + 11.3);
+      // each little tile is not quite flat and not quite level: that is what makes the highlights sparkle; its edges
+      // round down into the grout, so the grout reads as sunk between the tiles
       bump = ((vec2(hash21(id + 1.7), hash21(id + 4.1)) - 0.5) * 0.05 + (f - 0.5) * smoothstep(0.30, 0.50, max(abs(f.x - 0.5), abs(f.y - 0.5))) * 0.5) * near;
+      #ifdef FINE
+      // wear: now and then a tile is gone (the grey bed shows, dull), cracked, or stained. There are 400 little tiles
+      // to a square metre: about one gone in 10 m², one cracked in 5 m², one stained in 1.5 m²
+      float rare = hash21(id + 19.7);
+      if (fin < 2.5 && near > 0.01) {
+        if (rare < 0.00025) {
+          float bed = (1.0 - grout) * near;
+          alb = mix(alb, base * vec3(0.5, 0.48, 0.43), bed); gloss *= 1.0 - 0.9 * bed; bump *= 1.0 - bed;
+        } else if (rare < 0.00075) {
+          float cl = abs(f.y - 0.5 - (f.x - 0.5) * (0.6 * hash21(id + 2.9) - 0.3) - 0.04 * sin(f.x * 23.0 + h * 9.0));
+          float crack = 1.0 - smoothstep(0.012, 0.012 + 1.5 * max(fw.x, fw.y), cl);
+          alb *= 1.0 - 0.55 * crack * near * (1.0 - grout);
+        } else if (rare < 0.0025) alb *= mix(vec3(1.0), vec3(0.95, 0.92, 0.84), near);
+      }
+      #endif
     } else if (fin < 3.5) {
       // smooth painted plaster: only the faintest unevenness
       alb *= 0.97 + 0.03 * sin(uv.x * 0.9 + sin(uv.y * 0.7) * 1.3) * sin(uv.y * 1.1 + 0.4);
@@ -204,6 +226,17 @@ const TILE_FRAG = /* glsl */`
       Np = normalize(N - (Tg * bump.x + Bt * bump.y) * inv);
     }
     float wet = clamp(vFx.w + under, 0.0, 1.0);
+    #ifdef FINE
+    // grime where the place is closed in (corners, joins, the feet of walls): from the baked occlusion, blotchy
+    float grime = clamp((vOcc - 0.12) * 2.2, 0.0, 1.0) * (0.5 + 0.5 * vnoise(vW.xz * 1.7 + vW.y * 0.9));
+    alb *= mix(vec3(1.0), vec3(0.84, 0.8, 0.69), grime);
+    gloss *= 1.0 - 0.5 * grime;
+    // little puddles standing on the damp floor near the water: flat, darker, shiny as a mirror
+    if (vFx.w > 0.25 && N.y > 0.9 && under < 0.5) {
+      float pd = smoothstep(0.64, 0.72, vnoise(vW.xz * 0.9 + 4.3) + vFx.w * 0.22);
+      wet = max(wet, pd); alb *= 1.0 - 0.1 * pd; Np = normalize(mix(Np, N, pd));
+    }
+    #endif
     alb *= 1.0 - 0.16 * wet * (1.0 - under);                 // damp tiles are a shade darker
 
     // ---- light ----

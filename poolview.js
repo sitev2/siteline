@@ -27,7 +27,7 @@ const SHEET = 0.3;                                    // the mosaic's sheets (6 
 const EXPO = { a: 0.34, b: 0.1, p: 1.05 };          // the eye's adaptation (see shade())
 
 class Buf {
-  constructor() { this.pos = []; this.nor = []; this.uv = []; this.light = []; this.fx = []; this.glint = []; this.idx = []; this.map = new Map(); }
+  constructor() { this.pos = []; this.nor = []; this.uv = []; this.light = []; this.fx = []; this.glint = []; this.occ = []; this.idx = []; this.map = new Map(); }
 }
 
 export function buildPoolScene(world, renderer, gfx = {}) {
@@ -260,7 +260,29 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     const near = Math.max(0, 1 - d / 2.6);
     return Math.min(1, near * near * 1.5 * (0.25 + 0.75 * blotch(x, z)) + (d < 0.5 ? 0.35 : 0));
   };
-  // the finished light at a point on a surface: { l: [r, g, b], g: [x, y, z] (where the sky's shine comes from), c }
+  // Ambient occlusion, baked: how closed in a point on a surface is (0 open … 1 shut in). Sixteen short probes into the
+  // space in front of it (two rings, 25 and 60 cm out, tipped up from the surface): corners, the joins between walls and
+  // floors and the feet of pillars come out darker. Only lookups in the grid, no rays (fast), and glass in windows
+  // doesn't count (light comes in there). The shader also uses it for the grime in corners.
+  const blockedAt = (x, y, z) => { const sp = spansAt(Math.floor(x / CELL), Math.floor(z / CELL)); if (!sp) return true; for (const q of sp) if (q.y0 < y && q.y1 > y && q.m !== '_glass') return true; return false; };
+  const AO_RING = Array.from({ length: 8 }, (_, k) => [Math.cos(k * Math.PI / 4 + 0.39), Math.sin(k * Math.PI / 4 + 0.39)]);
+  const occlusion = (x, y, z, nx, ny, nz) => {
+    let tx = -nz, ty = 0, tz = nx;
+    if (Math.abs(ny) > 0.7) { tx = 1; ty = 0; tz = 0; }
+    const tl = Math.hypot(tx, ty, tz) || 1; tx /= tl; ty /= tl; tz /= tl;
+    const bx = ny * tz - nz * ty, by = nz * tx - nx * tz, bz = nx * ty - ny * tx;
+    let occ = 0, tot = 0;
+    for (const [r, up, w] of [[0.25, 0.5, 1.2], [0.6, 0.7, 1]]) {
+      const side = Math.sqrt(1 - up * up);
+      for (const [c, sn] of AO_RING) {
+        const dx = (tx * c + bx * sn) * side + nx * up, dy = (ty * c + by * sn) * side + ny * up, dz = (tz * c + bz * sn) * side + nz * up;
+        tot += w;
+        if (blockedAt(x + nx * 0.03 + dx * r, y + ny * 0.03 + dy * r, z + nz * 0.03 + dz * r)) occ += w;
+      }
+    }
+    return occ / tot;
+  };
+  // the finished light at a point on a surface: { l: [r, g, b], g: [x, y, z] (where the sky's shine comes from), c, occ }
   const shadeCache = new Map();
   const shade = (x, y, z, nx, ny, nz) => {
     const key = `${Math.round(x * 100)},${Math.round(y * 100)},${Math.round(z * 100)},${Math.round(nx * 8)},${Math.round(ny * 8)},${Math.round(nz * 8)}`;
@@ -277,6 +299,8 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       if (solidAt(ix, iz, y - 0.25)) ao -= 0.18;
       if (solidAt(ix, iz, y + 0.25)) ao -= 0.22;
     }
+    const occ = occlusion(x, y, z, nx, ny, nz);
+    ao *= 1 - 0.38 * occ;
     const f = sample(fill, nd.x, y + ny * 0.5, nd.z);
     const up = ny > 0.5 ? 0.85 : ny < -0.5 ? 1.0 : 1;
     const l = [(raw.r + f[0] * 1.5 * up + 0.05) * ao, (raw.g + f[1] * 1.5 * up + 0.048) * ao, (raw.b + f[2] * 1.5 * up + 0.045) * ao];
@@ -285,7 +309,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     const adapt = sample(adaptG, nd.x, y + ny * 0.5, nd.z)[0];
     { const room = roomAt(nd.x, y + ny * 0.3, nd.z), k = Math.min(1.7, Math.max(0.1, Math.pow(EXPO.a / (adapt + EXPO.b), EXPO.p))) * (room && room.dark ? room.dark : 1); l[0] *= k; l[1] *= k; l[2] *= k; }
     const gm = Math.hypot(raw.gx, raw.gy, raw.gz), gk = gm > 1e-5 ? Math.min(1.6, gm * 0.55) / gm : 0;
-    o = { l, g: [raw.gx * gk, raw.gy * gk, raw.gz * gk], c: Math.min(1.6, raw.c * 5.5), w: ny > 0.5 ? wetAt(x, y, z) : 0, adapt };
+    o = { l, g: [raw.gx * gk, raw.gy * gk, raw.gz * gk], c: Math.min(1.6, raw.c * 5.5), w: ny > 0.5 ? wetAt(x, y, z) : 0, adapt, occ };
     shadeCache.set(key, o);
     return o;
   };
@@ -308,6 +332,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     B.pos.push(x, y, z); B.nor.push(nx, ny, nz); B.uv.push(u, v);
     B.light.push(s.l[0], s.l[1], s.l[2]); B.glint.push(s.g[0], s.g[1], s.g[2]);
     B.fx.push(fin, wk, wk ? 0 : s.c, s.w || 0);
+    B.occ.push(s.occ || 0);
     B.map.set(key, i);
     return i;
   };
@@ -879,6 +904,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     g.setAttribute('aLight', new THREE.Float32BufferAttribute(B.light, 3));
     g.setAttribute('aGlint', new THREE.Float32BufferAttribute(B.glint, 3));
     g.setAttribute('aFx', new THREE.Float32BufferAttribute(B.fx, 4));
+    g.setAttribute('aOcc', new THREE.Float32BufferAttribute(B.occ, 1));
     g.setIndex(B.idx);
     g.computeBoundingSphere(); g.computeBoundingBox();
     tris += B.idx.length / 3; verts += B.pos.length / 3;
@@ -1081,6 +1107,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     g.setAttribute('position', new THREE.Float32BufferAttribute(B.pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(B.nor, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(B.uv, 2)); g.setAttribute('aLight', new THREE.Float32BufferAttribute(B.light, 3));
     g.setAttribute('aGlint', new THREE.Float32BufferAttribute(B.glint, 3)); g.setAttribute('aFx', new THREE.Float32BufferAttribute(B.fx, 4));
+    g.setAttribute('aOcc', new THREE.Float32BufferAttribute(B.occ, 1));
     g.setIndex(B.idx); g.computeBoundingSphere();
     const m = new THREE.Mesh(g, tileMat); movers.add(m);
     return m;
