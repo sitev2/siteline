@@ -303,15 +303,15 @@ The only folder is `server/` (the optional home game server).
     ramps (`plan.ramps`, collision = 11 cm steps, drawn smooth), two stairwells, 7 side rooms (`plan.rooms`: attendant booths / storerooms,
     each with windows and a door; NEVER call them "safe rooms"), puddles on the lower floor (`b.water`), and the places for the order:
     `plan.fuse` (lower, north wall), `plan.crank` + `plan.shutter` (a door with `lock: 'shutter'`) + `plan.lift` (upper, north-west),
-    `plan.start` (upper, south-east), `plan.log`, `plan.batteries`, plus cars / cones / drain pipes and the empty spots a fake one could be.
+    `plan.start` (upper, south-east), `plan.log`, plus cars / cones / drain pipes and the empty spots a fake one could be.
     Doors have a floor now: `door.y` (`World.setDoor`, `pushOutOfDoor`, the host's reach check and `Game.doorTarget` all use it).
-    `node check_gar.mjs` (add `map` to print both floors): start, fuse box, crank, lift, every side room, battery and empty bay can be
+    `node check_gar.mjs` (add `map` to print both floors): start, fuse box, crank, lift, every side room and empty bay can be
     walked to; ramps alone and stairs alone both join the floors; the lift is shut off while the shutter is down.
   - `garview.js` (+ `garprops.js`: car / cone / pipe shapes) — baked lighting like `brview.js`, per floor. Orange sodium lamps are baked
     into the vertex colours (always on); the white tubes' light is a separate attribute (`aTube`, one number per flicker group) switched
     by the `uTube` uniform, so tubes can be off / on / flickering with their light on the walls (`userData.setPower(on)`: OFF until
     the fuse box is used). No fog, no dark zones. Puddles: the floor is cut away and an upside-down copy of the ceiling,
-    lamps, pillars and nearby cars lies under dark water (a cheap true reflection). Also `setShutter(0…1)`, `setBattery(i, on)`,
+    lamps, pillars and nearby cars lies under dark water (a cheap true reflection). Also `setShutter(0…1)`,
     `setDoor`, `kickDoor`, `lightAt(x, z, y)`, `propLight` / `litGeo` / `propMat` (so a disguise is lit exactly like a real prop), drips.
   - `shifter.js` — the shapeshifter's brain on the host (`ShifterBrain`; Level 0 keeps `monster.js`). It hides as a prop (a car in an
     empty bay — solid while it is one: `World.setBlock` / `{t:'block'}` —, a stack of cones, a drain pipe on a pillar) and breaks out
@@ -346,11 +346,7 @@ The only folder is `server/` (the optional home game server).
     host's game tells the room whether Level 1 may be played (`{t:'settings', l1}` → `settings.l1`; Practice: `cfg.l1`). With that set,
     escaping Level 0 carries straight on as one run: `Server.brCheck` → `startGarage(true)` 7 s later instead of the results (same
     players and room, the clock keeps going, everyone alive again, also those who died in Level 0). Stats are never reported.
-  - The flashlight battery (Level 1 only; Level 0's flashlight is unchanged): `Game.batt` 1 → 0 over 150 s while the light is on; under
-    12 % the light stutters (`flashK`, also on the baked walls), at 0 it goes out and won't switch on. HUD bar `#br-batt` under the
-    task list (icon `battery`). Batteries (`plan.batteries`) are shared world items: E / the hand button within reach when yours is
-    under 90 % → `{t:'batt', i}` → the host gives each one once (`garBattery`, `garSt.batts`, sent to late joiners) → `{t:'batt', i, id}`:
-    it vanishes for everyone and the taker's battery is full. Flickering tubes throw sparks and zap (`onSpark`).
+  - No flashlight battery (the owner removed it): the flashlight in Level 1 never runs down, as in Level 0. No batteries on the floor, no battery bar, no `batt` message.
   - STILL TO DO for Level 1: stage 8 only — a full test on a real phone and PC with real players (two-player run from Level 0's exit to
     the lift), then set `LEVEL1_OPEN = true` when the owner wants it public.
 - **Backrooms Level 2: The Poolrooms (all three stages done).** The end of the Backrooms run for now (no Level 3). Who can reach it:

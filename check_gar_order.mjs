@@ -25,10 +25,6 @@ for (const [level, n] of [['easy', 1], ['normal', 2], ['hard', 2]]) {
   // the crank without power
   at(plan.crank, 0, 0.7); run(3, true);
   ok(S.garSt.crank === 0 && msgs.some(m => m.t === 'toast' && /brake/.test(m.text)), 'the crank turned without power');
-  // batteries: only within reach, and only once each (the host decides who got it)
-  at(plan.start); S.receive('a', { t: 'batt', i: 0 }); ok(!S.garSt.batts.length, 'a battery was taken from across the map');
-  at(plan.batteries[0], 0.5, 0); S.receive('a', { t: 'batt', i: 0 }); S.receive('a', { t: 'batt', i: 0 });
-  ok(S.garSt.batts.join() === '0' && msgs.filter(m => m.t === 'batt' && m.id === 'a').length === n, 'the battery was not given exactly once');
   // the fuse box: not from far away, then from in front of it
   at(plan.start); S.receive('a', { t: 'fuse' }); ok(!S.garSt.power, 'the fuse box worked from across the map');
   at(plan.fuse, 0, 0.8); S.receive('a', { t: 'fuse' }); ok(S.garSt.power && msgs.some(m => m.t === 'power'), 'the fuse box did not turn the power on');
@@ -50,7 +46,7 @@ for (const [level, n] of [['easy', 1], ['normal', 2], ['hard', 2]]) {
   const over = msgs.find(m => m.t === 'over');
   ok(over && over.winner === 'escaped' && over.reason === 'all' && over.map === 'garage', 'no "everyone escaped" result');
   // a late joiner is told how far things are
-  ok(S.startMsg().gar.power === true && S.startMsg().gar.crank === 1 && S.startMsg().gar.batts.join() === '0', 'the start message does not carry the order');
+  ok(S.startMsg().gar.power === true && S.startMsg().gar.crank === 1, 'the start message does not carry the order');
   console.log(`${level}, ${n} player${n > 1 ? 's' : ''}: crank ${T} s, monster told ${heard} times`);
 }
 // ---- one run: escaping Level 0 carries straight on into Level 1, everyone alive again ----

@@ -27,7 +27,7 @@
       for (var i = 0; i < files.length; i++) imports['./' + files[i] + '.js'] = './' + files[i] + '.js?v=' + v;
       window.SITELINE_V = v;
       // the small "Version" line at the bottom of the home page: the time this page was published (UTC), so it changes by itself with every update
-      var NUMBER = '1.7';      // the version number: raise it by hand with each update (1.0 → 1.1 → …); the date after it is automatic
+      var NUMBER = '1.8';      // the version number: raise it by hand with each update (1.0 → 1.1 → …); the date after it is automatic
       document.addEventListener('DOMContentLoaded', function () {
         var el = document.getElementById('version'), d = new Date(v);
         if (el && !isNaN(d)) el.textContent = 'Version ' + NUMBER + ' · ' + d.toISOString().slice(0, 10).replace(/-/g, '.');
@@ -49,8 +49,7 @@
       <div class="tscore def"><b id="score-def">0</b><span class="tname" id="tname-def">DEF</span><small id="alive-def"></small></div>
     </div>
     <!-- the Backrooms: your tasks in order, finished ones crossed out (replaces the top bar there) -->
-    <div id="br-tasks"><div class="br-tasks-title">Tasks</div><ol id="br-task-list"></ol>
-      <div id="br-batt" class="hidden" aria-label="Flashlight battery"><i data-icon="battery"></i><span class="bb"><span id="br-batt-fill"></span></span></div></div>
+    <div id="br-tasks"><div class="br-tasks-title">Tasks</div><ol id="br-task-list"></ol></div>
     <div id="radar-wrap"><canvas id="radar"></canvas><div id="team-label"></div></div>
     <div id="killfeed"></div>
     <canvas id="crosshair" class="hidden"></canvas>

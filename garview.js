@@ -656,18 +656,6 @@ export function buildGarageScene(world, renderer, gfx = {}) {
   };
   group.userData.setLiftDoors(0);
 
-  // ---------- batteries lying about (stage 5 makes them work): shown until someone takes one ----------
-  const batt = plan.batteries.map((b) => {
-    const tint = tintAt(b.x, b.y, b.z);
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.13, 10), addFlash(new THREE.MeshBasicMaterial({ color: new THREE.Color('#2f6b3a').multiply(tint) })));
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.036, 0.036, 0.03, 10), addFlash(new THREE.MeshBasicMaterial({ color: new THREE.Color('#b9a23c').multiply(tint) }))); cap.position.y = 0.075;
-    g.add(body, cap); g.rotation.z = Math.PI / 2; g.rotation.y = b.x * 3; g.position.set(b.x, b.y + 0.04, b.z);
-    group.add(g);
-    return g;
-  });
-  group.userData.setBattery = (i, on) => { if (batt[i]) batt[i].visible = !!on; };
-
   // ---------- drips from the ceiling ----------
   const DR = plan.drips.length, dGeo = new THREE.BufferGeometry(), dPos = new Float32Array(DR * 3).fill(-99);
   dGeo.setAttribute('position', new THREE.BufferAttribute(dPos, 3));

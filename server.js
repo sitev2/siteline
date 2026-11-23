@@ -278,9 +278,6 @@ export class Server {
       case 'fuse':
         if (this.phase === 'br' && this.gar && p.alive && !p.escaped) this.garFuse(p);
         return;
-      case 'batt':
-        if (this.phase === 'br' && this.gar && p.alive && !p.escaped && Number.isInteger(msg.i)) this.garBattery(p, msg.i);
-        return;
       case 'crank':
         // (sent several times a second while E / the hand button is held at the crank)
         if (this.phase === 'br' && this.gar && p.alive && !p.escaped) p.crankAt = performance.now();
@@ -827,7 +824,7 @@ export class Server {
       notes: this.br ? this.notes : undefined,
       key: this.br && this.brKey ? (this.brKey.holder ? 1 : 0) : undefined,      // the red key isn't on its shelf
       crossed: this.br && !this.gar && !this.pool && this.brCrossed ? 1 : undefined,      // someone has crossed the pit hall
-      gar: this.gar && this.garSt ? { power: this.garSt.power, crank: r2(this.garSt.crank), batts: this.garSt.batts } : undefined,      // Level 1's order so far
+      gar: this.gar && this.garSt ? { power: this.garSt.power, crank: r2(this.garSt.crank) } : undefined,      // Level 1's order so far
       block: this.gar && this.world ? this.world.block : undefined,              // Level 1: where the shapeshifter is parked as a car
       pool: this.pool && this.poolHost ? this.poolHost.state() : undefined,      // Level 2: bridges, valves, heat, the drain, the floaties
     };
@@ -1081,7 +1078,7 @@ export class Server {
   }
 
   // ---------- Level 1 of the Backrooms: the garage (garmap.js) and its shapeshifter (shifter.js) ----------
-  // (So far: the map, the doors and the monster. Still to come: the battery, the three steps of the order —
+  // (So far: the map, the doors and the monster. Still to come: the three steps of the order —
   // fuse box, crank, lift — and running on into it from Level 0's exit. See CLAUDE.md.)
   // carry: straight on from Level 0's exit, as one run (the clock keeps going, everyone is alive again)
   startGarage(carry = false) {
@@ -1112,7 +1109,7 @@ export class Server {
     this.notes = []; this.noteSeq = 0;
     this.keySpot = null; this.switchSpots = []; this.brKey = { holder: null }; this.switchDown = {}; this.switchAt = []; this.boost = null;
     // the order (owner's design): 1 the fuse box turns the power on, 2 someone winds the shutter up, 3 the lift
-    this.garSt = { power: false, crank: 0, at: performance.now(), sentAt: 0, heardAt: 0, toldAt: 0, batts: [] };      // batts: the batteries already taken
+    this.garSt = { power: false, crank: 0, at: performance.now(), sentAt: 0, heardAt: 0, toldAt: 0 };
     this.phase = 'br';
     this.broadcast(this.startMsg());
     this.broadcastRoster();
@@ -1170,14 +1167,6 @@ export class Server {
     this.doorAt[i] = performance.now() + 2500;
     const s = Math.sign((m.x - d.cx) * d.nx + (m.z - d.cz) * d.nz) || 1;
     this.broadcast({ t: 'door', i, open: true, forced: true, swing: -s, by: m.id });
-  }
-
-  // a battery lying in the garage: the first to ask within reach gets it (and a full flashlight)
-  garBattery(p, i) {
-    const b = this.world.def.gar.batteries[i], st = this.garSt;
-    if (!b || st.batts.includes(i) || Math.hypot(p.x - b.x, p.z - b.z) > 2.4 || Math.abs(p.y - b.y) > 1.5) return;
-    st.batts.push(i);
-    this.broadcast({ t: 'batt', i, id: p.id });
   }
 
   // step 1: the fuse box (any one player)

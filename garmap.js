@@ -116,8 +116,6 @@ function makePlan(level) {
     const ps = R() < 0.5 ? -1 : 1, pipe = { x: p.x + 0.25, y, z: p.z + (ps < 0 ? -0.09 : 1.09), side: ps };
     if (R() < 0.3) plan.risers.push(pipe); else plan.riserSpots.push(pipe);
   }
-  // batteries (stage 5): on the floor, some in the side rooms
-  plan.batteries = [[2.5, 0, 2.5], [61, 0, 42], [39, 0, 26], [30.5, 0, 49.5], [56.5, 0, 37.5], [61, FL, 22], [2.5, FL, 32], [32, FL, 2.5], [20, FL, 9.5]].map(([x, y, z]) => ({ x, y, z }));
   // lights: orange sodium lamps (the emergency circuit: always on) and white tubes (they need the power back;
   // group 0 steady, 1 and 2 flicker). The lower floor is mostly sodium, the upper mostly tubes.
   plan.lights = [];
