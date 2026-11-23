@@ -18,9 +18,9 @@ if (params.get('peerhost')) {
 export const CONFIG = {
   peerPrefix: 'siteline-v1-',
   peerServer,
-  // STUN finds a direct route between players. On some mobile networks a TURN
-  // relay is also needed — add one here, e.g.
-  // { urls: 'turn:turn.example.com:3478', username: 'user', credential: 'pass' }
+  // STUN finds a direct route between players (direct rooms: practice invites, or a
+  // room made when no game server answers). There is no relay any more (the owner
+  // removed Metered): online games go through the game servers below.
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
@@ -37,14 +37,6 @@ export const CONFIG = {
   // (then only that server is used).
   serverUrl: params.get('server') || '',
 
-  // Relay (TURN) for school, office and mobile networks that block direct
-  // peer-to-peer connections. Sign up free at https://www.metered.ca/ (Open Relay),
-  // then paste your app name (the part before .metered.live) and API key here.
-  // Leave both empty to play without a relay.
-  turnApp: 'siteline-lukloc',   // → siteline-lukloc.metered.live
-  turnApiKey: 'e53ed2ed1a92fec2c7ea8023d42a5a2fb4a6',
-  // force every connection through the relay (for testing): add ?relay to the URL
-  relayOnly: params.has('relay'),
   // Player accounts (optional, free): create a Supabase project, then paste its Project URL
   // and its publishable key (sb_publishable_…) or legacy anon key (eyJ…) here — step-by-step
   // in SUPABASE.md. Leave both empty for guest-only play.

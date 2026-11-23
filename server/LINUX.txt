@@ -76,19 +76,6 @@ Other commands (paste into the Terminal):
                                       stop it and don't start on boot
 
 
-RELAY KEY (optional: keeps the Metered key out of the web page)
----------------------------------------------------------------
-With your Metered API key here, the server hands players their relay
-login, so their browsers never send the key. Paste into the Terminal:
-
-     nano ~/siteline/server/turn-key.txt
-
-Paste the key (Ctrl + Shift + V), save with Ctrl + O, Enter, then Ctrl + X.
-Then:  sudo systemctl restart siteline
-Check: open http://localhost:8787/turn — it should show a list starting
-with [{"urls":"turn: . The file survives the nightly updates.
-
-
 IF SOMETHING GOES WRONG
 -----------------------
 - "The server didn't start": run  journalctl -u siteline -n 50  and send

@@ -1,4 +1,4 @@
-// Connection log: every host / join attempt writes down each step (relay sign-in, matchmaking server,
+// Connection log: every host / join attempt writes down each step (matchmaking server,
 // route search, errors, what the network let through) and keeps it on this device, so a failure on a
 // school or work Wi-Fi can be looked at afterwards. Nothing is sent anywhere: the player copies it
 // (Menu → Connection check → Copy everything, or "Copy details" under an error) and passes it on.
