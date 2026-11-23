@@ -18,22 +18,19 @@ The only folder is `server/` (the optional home game server).
 - `game.js` — 3D client: movement, shooting, effects, HUD updates
 - `server.js` — match rules (rounds, halftime swap, bomb, damage, hit checks). Runs in the
   host's browser AND on the home server
-- `net.js` — connections: PeerJS peer-to-peer, Metered relay, WebSocket server mode. Joining tries any route, then relay-only;
-  it resolves once the host answers. A failed relay sign-in is retried next time (never cached). Errors stay on the menu (`#net-error`).
-  Relay login: asked from the game servers' `/turn` first (all at once, 3.5 s, `relayServerList`), then from Metered with the key in
-  config.js as before (`relaySource()` says which; Connection check shows it). The servers' `/turn` (`server/server.mjs`) uses
-  `METERED_API_KEY` or `server/turn-key.txt` (git-ignored), asks Metered at most every 10 min, only answers the game's own site
-  (+ localhost, `ALLOWED_ORIGINS`), and the status page says "Relay logins for players: …". The key also stays in config.js until the
-  owner decides to remove it (it is in the public git history anyway: a new key would be needed to make it secret).
+- `net.js` — connections: PeerJS peer-to-peer (direct rooms: practice invites, or a room made when no game server answers) and
+  WebSocket server mode. NO relay: the owner removed Metered (Nov 2026, "I use the cloud server"): no TURN, no `turnApp` /
+  `turnApiKey` / `?relay`, no `/turn` on the server; direct rooms use STUN only (`CONFIG.iceServers`), and a join is one try of 20 s.
+  On strict networks direct rooms may fail; games on the game server still work. Errors stay on the menu (`#net-error`).
 - Game servers: `CONFIG.servers` = [{ name, url }] best first (owner's plan: home PC first, Render as backup); `?server=wss://…` uses only
   that one. Host picks the first that answers (4 s check), else waits up to 90 s for one to wake (free Render sleeps), else makes a
   direct P2P room. Server room codes are 6 chars with the server's list position in front ("1ABCDE" = first server, `roomRoute()` in
   `main.js`); P2P codes stay 5. The menu row `#server-wake` shows which server is ready. Empty list + no `?server` = P2P only, as before.
-- `netlog.js` — connection log: every host/join/server attempt saves its steps (relay sign-in, matchmaking, ICE states, routes
+- `netlog.js` — connection log: every host/join/server attempt saves its steps (matchmaking, ICE states, routes
   offered/tried from getStats, errors, drops, page hidden/offline) in localStorage (last 20). Copy via the error box
   (“Copy details”) or Connection check (“Copy everything”). Practice invite rooms only log when a friend connects.
-- `nettest.js` — Menu → Connection check: tests relay sign-in, matchmaking (PeerJS), direct UDP, relay over UDP/TCP/TLS, and a
-  real message through the relay; plain-language verdict + Copy results (for school/work Wi-Fi problems)
+- `nettest.js` — Menu → Connection check: tests the game server(s) (status page, up to a minute: Render may be asleep), matchmaking
+  (PeerJS) and direct UDP; plain-language verdict + Copy results (for school/work Wi-Fi problems)
 - `world.js` (multi-level map model, collision, wall-bang penetration), `maps.js` (map
   build scripts), `mapview.js` (3D scene; a wall's top/underside is hidden only by a VISIBLE wall touching it — invisible '_' spans and
   props don't count, they left see-through strips, e.g. Flame's upstairs floor edge under the '_rail'), `mapdeco.js` (visual-only dressing read from the span grid: wall caps, windows/doors, lamps, pipes, decals, distant scenery — no collision), `houses.js` (village houses: tiled roofs, windows, shutters, balconies, church/tower/inn details), `models.js` (characters with arm IK + gun models with moving parts, all built in code), `textures.js`, `audio.js` (all sound synthesised in code: 3D positional, per-map reverb, wall muffling, layered gunshots, surface footsteps (per-map loudness: `STEP_VOLUME` in `game.js` → `setStepVolume`; outpost and flame 0.6 = 40 % quieter, owner's request, landings too), reload/bolt/pump sequences timed to `anim.js`, ambience; `__test` renders buffers for checks),
@@ -484,8 +481,8 @@ The only folder is `server/` (the optional home game server).
 
 ## Must keep working
 - Phone, iPad and PC: every feature needs a touch control as well as a keyboard/mouse one.
-- `config.js` holds the owner's Metered relay settings (`turnApp`, `turnApiKey`) and,
-  later, `serverUrl`. Never blank or remove these values.
+- `config.js` holds the owner's game servers (`servers`) and Supabase settings. Never blank or remove these values.
+  (The Metered relay settings were removed at the owner's request; don't bring them back unless asked.)
 - Originals only: no maps, characters, logos or assets copied from existing games
   (for example, no recreations of CS maps).
 - All art and sound is generated in code; there are no image or audio asset files.
@@ -499,12 +496,11 @@ Tailscale Funnel) it updates itself: every (re)start runs `git pull`, and a time
 On ZimaOS (owner's plan; `server/ZIMAOS.txt`) it is a custom app from `server/zimaos-compose.yml`: `node:22` container running
 `server/docker-run.sh` (clones the repo, checks GitHub every 30 min, restarts for an update only when "Players online: 0") + a
 `tailscale/tailscale` container (userspace, Funnel via TS_SERVE_CONFIG → http://game:8787). The same server can run on Render (build `cd server && npm install`, start `node server/server.mjs`; free plan sleeps,
-the menu's Wake server row handles that). Relay key on a server: Render → Environment → `METERED_API_KEY`; Windows/Linux: a
-`server/turn-key.txt` file; ZimaOS: the app's environment variables (README / LINUX / ZIMAOS "RELAY KEY"). Say so whenever a change touches
+the menu's Wake server row handles that). Say so whenever a change touches
 `server.js`, `world.js`, `maps.js`, `weapons.js` or `config.js`.
 
 ## Testing
 - `python3 -m http.server 8080` in the root, then open http://localhost:8080
 - `?debug` exposes `window.__app` / `window.__game`; practice and bot games need no network (invites do)
-- `?relay` forces the relay; `?server=ws://localhost:8787` uses a local game server
+- `?server=ws://localhost:8787` uses a local game server
   (`cd server && npm install && node server.mjs`)

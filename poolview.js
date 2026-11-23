@@ -562,6 +562,31 @@ export function buildPoolScene(world, renderer, gfx = {}) {
         quad(B, P(a, na, 0.4, ua, 0), P(b, nb, 0.4, ub, 0), P(b, nb, 0.475, ub, 0.075), P(a, na, 0.475, ua, 0.075), 0, 1, 0); }
     }
   }
+  // the exit tunnel's mouth: the pool's edge row of cells is dug out past its smooth wall (to the next 0.5 m), so the
+  // tunnel's own walls and roof only start there. Close that first bit of the tunnel — its two sides and its roof, from
+  // the pool's wall to where the tunnel's walls begin — or you saw past the edges of the opening into the empty space
+  // behind the pool's wall.
+  for (const p of plan.pools) {
+    if (!p.gaps) continue;
+    const t = plan.exit.tunnel, top = t.y1, xm = (t.x0 + t.x1) / 2;
+    let z0 = t.z0;
+    for (let k = 0; k < 40 && p.sdf(xm, z0) > 0.001; k++) z0 -= 0.02;          // (the pool's smooth wall, in front of the tunnel)
+    let z1 = Math.floor(z0 * 2) / 2;
+    while (plan.poolAt(xm, z1 + 0.25) === p.id) z1 += 0.5;                      // (where the dug-out cells end)
+    if (z1 <= z0 + 0.01) continue;
+    const rows = [p.bottom, 1.2, 2.1, top].filter((y, i, a) => y <= top && (i === 0 || y > a[i - 1] + 0.05));
+    for (const [x, nx] of [[t.x0, 1], [t.x1, -1]]) {
+      const B = bufAt(x, 1, (z0 + z1) / 2);
+      for (let r = 0; r < rows.length - 1; r++) {
+        const ya = rows[r], yb = rows[r + 1];
+        quad(B, V(B, x, ya, z0, nx, 0, 0, z0, ya, FIN.cream, 2), V(B, x, ya, z1, nx, 0, 0, z1, ya, FIN.cream, 2),
+          V(B, x, yb, z1, nx, 0, 0, z1, yb, FIN.cream, 2), V(B, x, yb, z0, nx, 0, 0, z0, yb, FIN.cream, 2), nx, 0, 0);
+      }
+    }
+    const B = bufAt(xm, top, (z0 + z1) / 2);
+    quad(B, V(B, t.x0, top, z0, 0, -1, 0, t.x0, z0, FIN.cream, 2), V(B, t.x1, top, z0, 0, -1, 0, t.x1, z0, FIN.cream, 2),
+      V(B, t.x1, top, z1, 0, -1, 0, t.x1, z1, FIN.cream, 2), V(B, t.x0, top, z1, 0, -1, 0, t.x0, z1, FIN.cream, 2), 0, -1, 0);
+  }
   // lane lines on the floors of the straight pools (pale blue)
   const stripe = (x0, z0, x1, z1, y, wk) => {
     for (let z = z0; z < z1 - 0.01; z += 2) {

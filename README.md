@@ -60,7 +60,7 @@ The site needs to be served over HTTP(S) — opening `index.html` straight from 
 Things to know:
 
 - **The host must keep the game open and in the foreground.** If the host leaves, the match ends for everyone. On phones, switching apps can pause the host's browser — the best host is a PC or laptop.
-- Most home Wi-Fi works out of the box. Some mobile data networks and strict school/office networks block direct connections. If players can't join, add a TURN relay server in `config.js` (services like Metered, Twilio or a self-hosted coturn provide one).
+- Most home Wi-Fi works out of the box. Some mobile data networks and strict school/office networks block direct connections between players: there, play online games on the game server (6-character room codes), which only needs a normal secure web connection. (The Metered relay that used to help direct rooms was removed.)
 - The public PeerJS server is free and best-effort. You can run your own with `npx peerjs --port 9000` and point the game at it in `config.js` (or with `?peerhost=…&peerport=…` in the URL).
 
 ## Controls

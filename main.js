@@ -1,6 +1,6 @@
 // App controller: menus, lobby, hosting/joining, starting and leaving games.
 import { Server } from './server.js';
-import { HostNet, ClientNet, ServerNet, normaliseCode, relayStatus } from './net.js';
+import { HostNet, ClientNet, ServerNet, normaliseCode } from './net.js';
 import { STEPS as NET_STEPS, runNetTest, summarise as netVerdict, resultsText as netResultsText } from './nettest.js';
 import { logEntries, logText, entryText, clearLog } from './netlog.js';
 import { CONFIG } from './config.js';
@@ -499,7 +499,6 @@ async function hostGame() {
   }
   if (app.mode !== 'host') return; // cancelled
   app.server.addPlayer('host', name);
-  if (relayStatus() === 'blocked') toast('This Wi-Fi blocks the relay sign-in, so friends on school or work Wi-Fi may not be able to join. Menu → Connection check shows more.', 9000);
 }
 
 async function joinGame(rawCode) {
