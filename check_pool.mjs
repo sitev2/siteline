@@ -8,8 +8,8 @@
 //   - the way out is shut while the Great Pool is full and open once it is drained.
 //   - every slide's tube runs inside solid wall from its mouth to its outlet;
 //   - the order, played on the real host code with pretend players (1 and 2 of them, every difficulty): the plates
-//     raise the bridge (alone it stays up a while; never onto a swimmer), the valves heat the lanes, only the right
-//     valves unlock the drain (and the grotto's valve, only reached by the green slide, is always needed), the drain
+//     raise the bridge (alone it stays up a while; never onto a swimmer), each valve heats its own lane and can't be
+//     turned back, only all three unlock the drain (so the grotto's, only reached by the green slide, is needed), the drain
 //     empties the Great Pool for good, the exit ladder takes you out through the hatch; long falls onto a hard floor
 //     kill (not into water), everyone dead = the Poolrooms start again; the floaties; the start message.
 // Usage: node check_pool.mjs [map]      (map: print both floors)
@@ -216,12 +216,11 @@ for (const level of ['easy', 'normal', 'hard']) {
 // ---- the order on the real host code ----
 globalThis.__sim = true;
 const { Server } = await import('./server.js');
-// the right valves for each level: the grotto's (3rd) is always needed, so the green slide is on the way
-for (const level of ['easy', 'normal', 'hard']) {
+// every lane hot needs all three valves (so the grotto's, and with it the green slide, is always on the way)
+{
   const good = [];
-  for (let m = 0; m < 8; m++) { const o = [!!(m & 1), !!(m & 2), !!(m & 4)]; if (hotLanes(level, o).every(Boolean)) good.push(o.map(Number).join('')); }
-  if (good.length !== 1) fail(`${level}: ${good.length} ways to heat every lane (should be exactly one)`);
-  else if (good[0][2] !== '1') fail(`${level}: the grotto's valve isn't needed`);
+  for (let m = 0; m < 8; m++) { const o = [!!(m & 1), !!(m & 2), !!(m & 4)]; if (hotLanes(o).every(Boolean)) good.push(o.map(Number).join('')); }
+  if (good.join() !== '111') fail(`the lanes are all hot with the valves ${good.join(' / ')} open (should be only all three)`);
 }
 for (const level of ['easy', 'normal', 'hard']) for (const n of [1, 2]) {
   const msgs = [];
@@ -255,33 +254,30 @@ for (const level of ['easy', 'normal', 'hard']) for (const n of [1, 2]) {
   const hold = (p, k, i, secs) => run(secs, () => S.receive(p.id, k === 'valve' ? { t: 'valve', i } : { t: 'drain' }));
   const stand = (p, v) => put(p, v.x + v.nx * 0.7, v.y, v.z + v.nz * 0.7);
   far(a); hold(a, 'valve', 0, 3); ok(H.valves[0].p === 0, 'a valve turned from far away');
-  const want = [0, 1, 2].map(i => (level === 'easy' ? true : i !== 1));
-  // the wrong one first (normal/hard: the upstairs valve), then undo it
-  if (level !== 'easy') {
-    stand(a, plan.valves[1]); hold(a, 'valve', 1, Lv.turn + 0.3);
-    ok(H.valves[1].open, `the upstairs valve did not open in ${Lv.turn} s`);
-    run(4); ok(H.heat.filter(h => h > 0.9).length === Lv.lanes[1].length, 'opening the upstairs valve did not heat its lanes');
-    hold(a, 'valve', 1, Lv.turn + 0.3); ok(!H.valves[1].open, 'the upstairs valve could not be turned back');
-    run(4); ok(H.heat.every(h => h < 0.1), 'the lanes stayed hot after the valve was turned back');
-  }
+  // the upstairs valve: it opens, heats its own lane (the middle one), and can't be turned back
+  stand(a, plan.valves[1]); hold(a, 'valve', 1, Lv.turn + 0.3);
+  ok(H.valves[1].open, `the upstairs valve did not open in ${Lv.turn} s`);
+  run(4); ok(H.heat.map(h => h > 0.9).join() === 'false,true,false', `opening the upstairs valve heated the lanes ${H.heat.map(r => r.toFixed(1))}`);
+  hold(a, 'valve', 1, Lv.turn + 0.3); ok(H.valves[1].open && H.valves[1].p === 1, 'an open valve could be turned back');
   // the drain wheel won't turn yet
   stand(a, plan.drain); hold(a, 'drain', 0, 3); ok(H.drainP === 0 && msgs.some(m => m.t === 'pfx' && m.k === 'stuck'), 'the drain wheel turned while the lanes were cold');
   // half a turn, let go: it stays half open; then the rest
   stand(a, plan.valves[0]); hold(a, 'valve', 0, Lv.turn / 2); run(1); const half = H.valves[0].p;
   ok(half > 0.3 && half < 0.7 && !H.valves[0].open, `half a turn left the valve at ${half}`);
   hold(a, 'valve', 0, Lv.turn / 2 + 0.4); ok(H.valves[0].open, 'the first valve did not open');
+  run(4); ok(!H.unlocked, 'two valves unlocked the drain (all three are needed)');
+  stand(a, plan.drain); hold(a, 'drain', 0, 2); ok(H.drainP === 0, 'the drain wheel turned with two lanes hot');
   // (the grotto's valve: only reached by the green slide; the explore check above proves that)
   const who = b || a; stand(who, plan.valves[2]); hold(who, 'valve', 2, Lv.turn + 0.3); ok(H.valves[2].open, 'the grotto valve did not open');
-  if (level === 'easy') { stand(a, plan.valves[1]); hold(a, 'valve', 1, Lv.turn + 0.3); }
-  ok(H.valves.map(v => v.open).join() === want.join(), `the valves are ${H.valves.map(v => v.open)}, wanted ${want}`);
-  run(4); ok(H.unlocked && H.heat.every(h => h > 0.9), 'the right valves did not heat every lane');
+  ok(H.valves.every(v => v.open), `the valves are ${H.valves.map(v => v.open)}, wanted all open`);
+  run(4); ok(H.unlocked && H.heat.every(h => h > 0.9), 'the three valves did not heat every lane');
   // ---- 3: the drain ----
   stand(a, plan.drain); hold(a, 'drain', 0, Lv.turn * 2.5 + 0.5);
   ok(H.drainAt && msgs.some(m => m.t === 'pfx' && m.k === 'drain'), 'the drain wheel did not open the plug');
   run(5); ok(H.level < WY - 0.5 && H.level > 0.2, `half way through draining the water is at ${H.level}`);
   run(6); ok(H.level === H.great.bottom && S.world.bodyAt(52, 33).y === H.great.bottom, 'the Great Pool did not empty');
-  // turning a valve back now changes nothing: drained pools stay empty
-  stand(a, plan.valves[0]); hold(a, 'valve', 0, Lv.turn + 0.3); run(5); ok(H.level === H.great.bottom, 'the Great Pool filled up again');
+  // trying a valve again now changes nothing: it stays open, and drained pools stay empty
+  stand(a, plan.valves[0]); hold(a, 'valve', 0, Lv.turn + 0.3); run(5); ok(H.valves[0].open && H.level === H.great.bottom, 'the Great Pool filled up again');
   // the bottom, the tunnel and the exit ladder can now be reached (bridges up)
   for (const q of plan.bridges) { const { setBridge } = await import('./poolmap.js'); setBridge(S.world, q, true); }
   const ex = explore(S.world, plan.start);

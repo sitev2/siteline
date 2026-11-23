@@ -189,7 +189,7 @@ export class PoolClient {
       this.lastValveP[i] = p;
     });
     ud.setHeat(s.h); ud.setGauges(s.h); ud.setUnlocked(!!s.u); ud.setDrain(s.d);
-    // finished steps for the task list stay ticked (a bridge sinks again, a valve can be turned back)
+    // finished steps for the task list stay ticked (a bridge sinks again)
     const dn = this.done || (this.done = { bridge: false, heat: false, drain: false });
     if (s.b[0] >= 0.98) dn.bridge = true;
     if (s.u) dn.heat = true;
@@ -234,7 +234,7 @@ export class PoolClient {
     const me = this.g.me, P = this.plan;
     if (!me.alive || this.ride || me.ladder) return null;
     const near = (v, r = 1.6) => Math.abs(v.y - me.pos.y) < 1.4 && Math.hypot(v.x + v.nx * 0.7 - me.pos.x, v.z + v.nz * 0.7 - me.pos.z) < r;
-    for (let i = 0; i < P.valves.length; i++) if (near(P.valves[i])) return { kind: 'valve', i };
+    for (let i = 0; i < P.valves.length; i++) if (near(P.valves[i]) && !(this.s && this.s.o && this.s.o[i])) return { kind: 'valve', i };      // (an open valve is done: nothing to turn)
     if (!(this.s && this.s.dr) && near(P.drain, 1.8)) return { kind: 'drain' };
     if (!this.holding()) for (const r of this.rings) {
       if (r.holder || r.mode === 4) continue;
