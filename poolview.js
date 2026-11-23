@@ -1271,7 +1271,9 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       if (o.axis === 'z') card(w, h, u, y, d); else card(w, h, d, y, u, Math.PI / 2);
     }
     { const sw = plan.slant.windows; card(sw[sw.length - 1].z - sw[0].z + 4, 5, 0.9, (sw[0].y0 + sw[0].y1) / 2, (sw[0].z + sw[sw.length - 1].z) / 2, Math.PI / 2); }
-    for (const r of [...plan.skylights, plan.well]) card(r.x1 - r.x0 + 1, r.z1 - r.z0 + 1, (r.x0 + r.x1) / 2, ROOFT + 1, (r.z0 + r.z1) / 2, 0, -Math.PI / 2);
+    // the skylights and the light well: one sheet of sky lying right on the roof closes every shaft at its top (a small card
+    // a metre above each one let you see past its edge, into the empty grey above the roof, when you looked up at a slant)
+    card(80, 70, 32, ROOFT + 0.002, 26, 0, -Math.PI / 2);
   }
   renderer.setClearColor(0x9a917f, 1);                      // gaps read as shaded tile; the white sky is the cards above
   return { group, theme: { name: 'pool' }, fog: null, sky: null, sun: null, far: Math.min(gfx.viewDistance || 140, 110) };
