@@ -311,7 +311,7 @@ The only folder is `server/` (the optional home game server).
     into the vertex colours (always on); the white tubes' light is a separate attribute (`aTube`, one number per flicker group) switched
     by the `uTube` uniform, so tubes can be off / on / flickering with their light on the walls (`userData.setPower(on)`: OFF until
     the fuse box is used). No fog, no dark zones. Puddles: the floor is cut away and an upside-down copy of the ceiling,
-    lamps, pillars and nearby cars lies under dark water (a cheap true reflection). Also `setShutter(0…1)`, `setBattery(i, on)`,
+    lamps, pillars and nearby cars lies under dark water (a cheap true reflection). Also `setShutter(0…1)`,
     `setDoor`, `kickDoor`, `lightAt(x, z, y)`, `propLight` / `litGeo` / `propMat` (so a disguise is lit exactly like a real prop), drips.
   - `shifter.js` — the shapeshifter's brain on the host (`ShifterBrain`; Level 0 keeps `monster.js`). It hides as a prop (a car in an
     empty bay — solid while it is one: `World.setBlock` / `{t:'block'}` —, a stack of cones, a drain pipe on a pillar) and breaks out
