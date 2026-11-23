@@ -221,7 +221,7 @@ The only folder is `server/` (the optional home game server).
   Explorer logs (owner's pick): `plan.logs` (brmap step 10, `LOG_COUNT` 7 a maze: clue 0 always in the start room, the rest spread out
   ≥ 6 rooms apart, never on a wall with an arrow) → `brfx.startNotes` adds them as wall notes (ids −1…, `log` = clue index, 0.42 m) drawn
   by `paintNote` with the clue's text + its own pencil drawing (`LOGS` in `brfx.js`: our own words/pictures; signatures `WHO`; 9–11 = the team shortcuts); read close
-  up like any note. Self-drawn map (owner's pick): M (`map` key) / `#btn-map` → `#br-map`: only cells you've been within 2.4 m of AND could
+  up like any note. Map pointer colours (owner's request, v1.9): each player has a different arrowhead colour on the map (`MAP_COLORS` in `brfx.js`, 6 colours). Settings → General "Your pointer colour on the Backrooms map" (`settings.mapColor`, this device only) → `{t:'mcol', c}` → the host's `Server.mapColors()` keeps your pick if free, else the first free colour in join order → roster field `mc` (`Game.mapCol`, `rem.mapCol`). Self-drawn map (owner's pick): M (`map` key) / `#btn-map` → `#br-map`: only cells you've been within 2.4 m of AND could
   see (2D ray through `mapKind`), drawn like pencil on paper (`initMap` / `mapStep` / `drawMap`: floor, walls, holes, your trail in blue,
   you as a red arrowhead, EXIT once you've seen its door); client only. Ending scene (owner's pick): your own `escaped` →
   `Game.escapeScene` (game clock): you step into the doorway, turn round for a last look back (`updateCamera`), the screen goes white

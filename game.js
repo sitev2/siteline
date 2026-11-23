@@ -355,6 +355,7 @@ export class Game {
       ids.add(r.id);
       if (r.id === this.myId) {
         if (this.me.team !== r.team) { this.me.team = r.team; this.setViewModel(); }
+        this.mapCol = r.mc;
         continue;
       }
       let rem = this.remotes.get(r.id);
@@ -369,6 +370,7 @@ export class Game {
       }
       rem.name = r.name;
       rem.bot = !!r.bot;
+      rem.mapCol = r.mc;
       if (rem.xhCode !== r.xh) { rem.xhCode = r.xh; rem.xh = r.xh ? parseCrosshairCode(r.xh) : null; }
       if (!rem.model && r.team === 'monster') {
         rem.model = this.gar ? makeShifterModel(this.builtMap.group.userData) : makeMonsterModel();
@@ -2870,6 +2872,8 @@ export class Game {
       this.xhTimer = 1;
       const code = crosshairCode(this.settings.crosshair);
       if (code !== this.sentXh) { this.sentXh = code; this.transport.send({ t: 'xh', c: code }); }
+      const mc = this.settings.mapColor | 0;
+      if (mc !== this.sentMc) { this.sentMc = mc; this.transport.send({ t: 'mcol', c: mc }); }
     }
     if (!me.alive) return;
     const r = v => Math.round(v * 100) / 100;
