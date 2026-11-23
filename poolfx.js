@@ -99,10 +99,12 @@ const SHADOW = /* glsl */`
 
 const TONE = /* glsl */`
   uniform float uExposure;
-  // bright patches roll off softly into white instead of clipping
+  // filmic (ACES) tone curve: bright sun patches and the glare round skylights roll off softly and never clip to flat
+  // white, mid-tones keep their brightness (exposure 0.8 matches the old curve there), the darkest corners get a
+  // little more depth. The picture is then written out as sRGB (colorspace_fragment).
   vec3 tone(vec3 c) {
-    c *= uExposure;
-    return 1.0 - exp(-1.3 * max(c, 0.0));
+    c = max(c, 0.0) * (uExposure * 0.8);
+    return clamp(c * (2.51 * c + 0.03) / (c * (2.43 * c + 0.59) + 0.14), 0.0, 1.0);
   }
 `;
 
