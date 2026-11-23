@@ -1143,6 +1143,35 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     { const p = c.at(1), rq = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), along(0.999));
       put('plain', new THREE.TorusGeometry(0.77, 0.045, 8, 28), p[0], p[1], p[2] + 0.5, s.color, new THREE.Matrix4().compose(new THREE.Vector3(p[0], p[1], p[2]), rq, new THREE.Vector3(1, 1, 1))); }
   }
+  // rust where steel meets wet tile (Medium and up): stains on the floor round the feet of the ladders' rails, the valves'
+  // pipes and the drain's stand, and streaks down the wall under the two valves on walls. Multiplied onto what is
+  // drawn there (so they darken it in its own light), one mesh for all of them.
+  if (Q >= 1) {
+    const tex = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
+    const rust = (g, x, y, r, a) => { const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(150,92,52,${a})`); gr.addColorStop(0.55, `rgba(176,120,72,${a * 0.55})`); gr.addColorStop(1, 'rgba(200,150,100,0)'); g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); };
+    // (drawn as darkness on white: white multiplies to "no change")
+    const spotTex = tex(128, 128, (g, w) => { g.fillStyle = '#fff'; g.fillRect(0, 0, w, w); for (let i = 0; i < 9; i++) rust(g, 64 + (R() - 0.5) * 40, 64 + (R() - 0.5) * 40, 14 + R() * 30, 0.35 + R() * 0.3); });
+    const streakTex = tex(64, 256, (g, w, h) => {
+      g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 8; i++) { const x = 32 + (i % 2 ? 1 : -1) * (9 + R() * 18), len = h * (0.35 + R() * 0.65), gr = g.createLinearGradient(0, 0, 0, len); gr.addColorStop(0, 'rgba(140,84,46,0.55)'); gr.addColorStop(1, 'rgba(190,140,95,0)'); g.fillStyle = gr; g.fillRect(x - 2 - R() * 3, 0, 3 + R() * 5, len); }
+      rust(g, 32, 6, 22, 0.6);
+    });
+    const mat = (map) => new THREE.MeshBasicMaterial({ map, transparent: true, blending: THREE.MultiplyBlending, premultipliedAlpha: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4, fog: false, toneMapped: false });
+    const spots = [], streaks = [];
+    const spot = (x, y, z, r) => { const g = new THREE.PlaneGeometry(r * 2, r * 2); g.rotateX(-Math.PI / 2); g.rotateY(R() * Math.PI * 2); g.translate(x, y + 0.002, z); spots.push(g); };
+    for (const L of plan.ladders) { const tx = -L.nz, tz = L.nx; for (const sd of [-0.25, 0.25]) spot(L.x + tx * sd + L.nx * 0.62, G, L.z + tz * sd + L.nz * 0.62, 0.16 + R() * 0.06); }
+    for (const v of plan.valves) {
+      const th = Math.atan2(v.nx, v.nz), cx = Math.cos(th), sx = -Math.sin(th);
+      if (v.post) { spot(v.x - v.nx * 0.12, v.y, v.z - v.nz * 0.12, 0.26); continue; }
+      const px = v.x + 0.32 * cx + 0.05 * v.nx, pz = v.z + 0.32 * sx + 0.05 * v.nz;
+      spot(px + v.nx * 0.1, v.y, pz + v.nz * 0.1, 0.24);
+      // the streak down the wall from the pipe's lower bracket
+      const g = new THREE.PlaneGeometry(0.34, 0.5); g.rotateY(th); g.translate(px - v.nx * 0.046, v.y + 0.25, pz - v.nz * 0.046); streaks.push(g);
+    }
+    spot(plan.drain.x + 0.2 * -plan.drain.nx, plan.drain.y, plan.drain.z, 0.36);
+    const merge = (list) => { const pos = [], uv = []; for (const g of list) { const ng = g.index ? g.toNonIndexed() : g; pos.push(...ng.attributes.position.array); uv.push(...ng.attributes.uv.array); g.dispose(); } const o = new THREE.BufferGeometry(); o.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); o.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); o.computeBoundingSphere(); return o; };
+    for (const [list, map] of [[spots, spotTex], [streaks, streakTex]]) if (list.length) { const m = new THREE.Mesh(merge(list), mat(map)); m.renderOrder = 1; group.add(m); }
+  }
   const mergeGeo = (list) => {
     let n = 0; for (const g of list) n += g.attributes.position.count;
     const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), la = new Float32Array(n * 3), col = new Float32Array(n * 3);
