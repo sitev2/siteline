@@ -79,7 +79,14 @@ export class Server {
   later(sec, fn) { this.pending.push([performance.now() + sec * 1000, fn]); }
 
   roster() {
-    return [...this.players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, dummy: p.dummy, bot: !!p.bot, ping: p.ping, owner: p.id === this.ownerId, xh: p.xh || null }));
+    return [...this.players.values()].map(p => ({ id: p.id, name: p.name, team: p.team, dummy: p.dummy, bot: !!p.bot, ping: p.ping, owner: p.id === this.ownerId, xh: p.xh || null, mc: this.mapColors().get(p.id) }));
+  }
+  // each player's map pointer colour (Level 0): their own pick if free, else the first free one, in join order
+  mapColors() {
+    const out = new Map(), used = new Set(), list = [...this.players.values()];
+    for (const p of list) if (Number.isInteger(p.mcol) && !used.has(p.mcol)) { out.set(p.id, p.mcol); used.add(p.mcol); }
+    for (const p of list) if (!out.has(p.id)) { let c = 0; while (used.has(c)) c++; out.set(p.id, c); used.add(c); }
+    return out;
   }
 
   broadcastRoster() {
@@ -262,6 +269,12 @@ export class Server {
         // their crosshair style (a share code from crosshair.js), so spectators can see it
         const c = typeof msg.c === 'string' && /^SL-[A-Za-z0-9+/]{4,60}$/.test(msg.c) ? msg.c : null;
         if (c && c !== p.xh) { p.xh = c; this.broadcastRoster(); }
+        return;
+      }
+      case 'mcol': {
+        // the colour they want for their pointer on the Level 0 map (0–5)
+        const c = Number.isInteger(msg.c) && msg.c >= 0 && msg.c < 6 ? msg.c : null;
+        if (c !== null && c !== p.mcol) { p.mcol = c; this.broadcastRoster(); }
         return;
       }
       case 'pick': return this.onPick(p, msg);

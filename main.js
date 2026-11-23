@@ -79,7 +79,7 @@ function backroomsAllowed() {
 // ---------- settings ----------
 const STORE = 'siteline-settings';
 const defaults = {
-  name: '', sens: 1, fov: 75, volume: 0.7, ambience: 0.6, camShake: 0.5, headBob: 0.5, quality: 'auto', touchMode: 'auto', invert: false, showChat: true,
+  name: '', sens: 1, fov: 75, volume: 0.7, ambience: 0.6, camShake: 0.5, headBob: 0.5, mapColor: 0, quality: 'auto', touchMode: 'auto', invert: false, showChat: true,
   keys: {}, crosshair: { ...DEFAULT_CROSSHAIR }, touchLayout: {}, graphics: { preset: 'auto', custom: {} },
   // last practice choices
   practice: { kind: 'range', map: 'outpost', bots: true, count: 6, behavior: 'still', side: 'atk', level: 'normal', dmMap: 'quarry', dmCount: 3 },
@@ -1148,6 +1148,7 @@ function bindSettings() {
     const bob = settings.headBob == null ? 0.5 : settings.headBob;
     $('set-bob').value = bob; $('bob-out').textContent = bob > 0 ? `${Math.round(bob * 100)}%` : 'off';
     $('set-touch').value = settings.touchMode;
+    $('set-mapcol').value = String(settings.mapColor | 0);
     $('set-invert').checked = settings.invert;
     $('set-chat').checked = settings.showChat !== false;
     document.body.classList.toggle('no-chat', settings.showChat === false);
@@ -1158,6 +1159,8 @@ function bindSettings() {
   $('set-fov').addEventListener('input', e => { settings.fov = Number(e.target.value); sync(); saveSettings(); });
   $('set-vol').addEventListener('input', e => { settings.volume = Number(e.target.value); setVolume(settings.volume); sync(); saveSettings(); });
   $('set-shake').addEventListener('input', e => { settings.camShake = Number(e.target.value); sync(); saveSettings(); });
+  ['Red', 'Blue', 'Green', 'Orange', 'Purple', 'White'].forEach((n, i) => { const o = document.createElement('option'); o.value = String(i); o.textContent = n; $('set-mapcol').appendChild(o); });
+  $('set-mapcol').addEventListener('change', e => { settings.mapColor = Number(e.target.value); saveSettings(); });
   $('set-bob').addEventListener('input', e => { settings.headBob = Number(e.target.value); sync(); saveSettings(); });
   $('set-amb').addEventListener('input', e => { settings.ambience = Number(e.target.value); setAmbienceVolume(settings.ambience); sync(); saveSettings(); });
   $('set-touch').addEventListener('change', e => { settings.touchMode = e.target.value; saveSettings(); });

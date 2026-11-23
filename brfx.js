@@ -14,6 +14,8 @@ const H = BR.ceiling;
 const smooth = t => t * t * (3 - 2 * t);
 
 // a paper note drawn on a canvas: paper, tape (on walls), the drawing, the writing
+// the pointer colours on the self-drawn map: each player gets a different one (picked in Settings; the host sorts out clashes)
+export const MAP_COLORS = ['#c0392b', '#2c6fd1', '#2e9d4f', '#e0a020', '#8a4fc2', '#d9d9d9'];
 export function paintNote(canvas, note, drawing) {
   const g = canvas.getContext('2d'), S = canvas.width;
   g.clearRect(0, 0, S, S);
@@ -430,9 +432,9 @@ export class BackroomsFX {
     for (const r of this.g.remotes.values()) {
       if (!r.alive || r.team === 'monster' || !r.rp) continue;
       const [ox, oy] = to(r.rp.x, r.rp.z);
-      arrow(ox, oy, -Math.sin(r.rp.yaw), -Math.cos(r.rp.yaw), '#2c6fd1');
+      arrow(ox, oy, -Math.sin(r.rp.yaw), -Math.cos(r.rp.yaw), MAP_COLORS[r.mapCol] || MAP_COLORS[1]);
     }
-    arrow(mx, my, fx, fz, '#c0392b');
+    arrow(mx, my, fx, fz, MAP_COLORS[this.g.mapCol] || MAP_COLORS[0]);
   }
 
   // ---------- notes ----------
