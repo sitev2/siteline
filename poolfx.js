@@ -20,7 +20,7 @@ export function poolUniforms(sunDir) {
     uWaterY: { value: 2.88 }, uGreatY: { value: 2.88 },
     uClipY: { value: -1e6 }, uLite: { value: 0 },
     uHaze: { value: new THREE.Color(0.98, 0.93, 0.80) }, uHazeK: { value: 0.0075 },
-    uExposure: { value: 1.0 },
+    uExposure: { value: 1.0 }, uGrade: { value: 0 },
     uRipples: { value: Array.from({ length: MAX_RIPPLES }, () => new THREE.Vector4(0, 0, -99, 0)) },
     uBlobs: { value: Array.from({ length: 6 }, () => new THREE.Vector4(0, -99, 0, 0)) },
     uRefl: { value: null }, uReflMat: { value: new THREE.Matrix4() }, uReflOn: { value: 0 },
@@ -98,22 +98,32 @@ const SHADOW = /* glsl */`
 `;
 
 const TONE = /* glsl */`
-  uniform float uExposure;
-  // bright patches roll off softly into white instead of clipping
+  uniform float uExposure, uGrade;
+  // filmic (ACES) tone curve: bright sun patches and the glare round skylights roll off softly and never clip to flat
+  // white, mid-tones keep their brightness (exposure 0.8 matches the old curve there), the darkest corners get a
+  // little more depth. The picture is then written out as sRGB (colorspace_fragment).
+  // uGrade (with the graphics option 'Picture shaders'): the Poolrooms' own grade on top, faint: shadows leaning a sickly
+  // green, highlights an old warm yellow, a touch less colour (empty, too-clean, too-quiet)
   vec3 tone(vec3 c) {
-    c *= uExposure;
-    return 1.0 - exp(-1.3 * max(c, 0.0));
+    c = max(c, 0.0) * (uExposure * 0.8);
+    vec3 t = clamp(c * (2.51 * c + 0.03) / (c * (2.43 * c + 0.59) + 0.14), 0.0, 1.0);
+    if (uGrade > 0.0) {
+      float l = dot(t, vec3(0.2126, 0.7152, 0.0722));
+      vec3 g = t * mix(vec3(0.965, 1.0, 0.975), vec3(1.02, 1.0, 0.945), smoothstep(0.15, 0.85, l));
+      t = mix(t, mix(vec3(l), g, 0.93), uGrade);
+    }
+    return t;
   }
 `;
 
 const TILE_VERT = /* glsl */`
-  attribute vec3 aLight; attribute vec4 aFx; attribute vec3 aGlint;
+  attribute vec3 aLight; attribute vec4 aFx; attribute vec3 aGlint; attribute float aOcc;
   uniform mat4 uShadowMat, uDynMat;
-  varying vec3 vW, vN, vL, vG, vS, vSd; varying vec2 vUv; varying vec4 vFx;
+  varying vec3 vW, vN, vL, vG, vS, vSd; varying vec2 vUv; varying vec4 vFx; varying float vOcc;
   void main() {
     vec4 w = modelMatrix * vec4(position, 1.0);
     vW = w.xyz; vN = normalize(mat3(modelMatrix) * normal);
-    vL = aLight; vG = aGlint; vUv = uv; vFx = aFx;
+    vL = aLight; vG = aGlint; vUv = uv; vFx = aFx; vOcc = aOcc;
     vec4 sp = vec4(vW + vN * 0.07, 1.0);
     vS = (uShadowMat * sp).xyz * 0.5 + 0.5;
     vSd = (uDynMat * sp).xyz * 0.5 + 0.5;
@@ -122,15 +132,21 @@ const TILE_VERT = /* glsl */`
 `;
 
 // aFx: x = finish (0 cream mosaic, 1 white mosaic, 2 pale blue mosaic, 3 smooth plaster, 4 gutter slot, 5 big cream
-// tiles), y = the water this surface can be under (0 none, 1 a pool, 2 the Great Pool (it drains), 3 a flooded
+// ceiling tiles), y = the water this surface can be under (0 none, 1 a pool, 2 the Great Pool (it drains), 3 a flooded
 // floor), z = how much of the water's reflected light dances on it, w = how wet it is (shinier)
 const TILE_FRAG = /* glsl */`
+  #define MOSAIC 0.05
+  #define CEIL_TILE 0.15
   ${COMMON}
   ${SHADOW}
   ${TONE}
   uniform vec3 uSunDir, uSunCol, uHaze; uniform float uHazeK, uWaterY, uGreatY, uClipY, uLite;
   uniform vec4 uBlobs[6];
-  varying vec3 vW, vN, vL, vG, vS, vSd; varying vec2 vUv; varying vec4 vFx;
+  varying vec3 vW, vN, vL, vG, vS, vSd; varying vec2 vUv; varying vec4 vFx; varying float vOcc;
+  float vnoise(vec2 p) {
+    vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+    return mix(mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x), mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), f.x), f.y);
+  }
   void main() {
     if (vW.y < uClipY) discard;
     vec3 N = normalize(vN);
@@ -148,38 +164,66 @@ const TILE_FRAG = /* glsl */`
     float gloss = fin < 2.5 ? 1.0 : fin < 3.5 ? 0.1 : fin < 4.5 ? 0.3 : 1.0;
     vec3 alb = base; vec2 bump = vec2(0.0);
     if (fin < 2.5 || fin > 4.5) {
-      float T = fin > 4.5 ? 0.15 : 0.05;
+      // tile sizes in metres (one number per kind of tile, the same on every surface: every surface's uv is in world
+      // metres, see poolview.js): the 5 cm mosaic on walls, floors and pools, the bigger ceiling tiles
+      float T = fin > 4.5 ? CEIL_TILE : MOSAIC;
       vec2 g = uv / T, id = floor(g), f = fract(g);
       vec2 fw = max(fwidth(g), vec2(1e-4));
-      vec2 e = min(f, 1.0 - f);                                 // how far from the tile's edge
-      float gw = fin > 4.5 ? 0.02 : 0.04;
+      float gw = fin > 4.5 ? 0.035 : 0.04;
       // how much of this pixel is grout: worked out exactly over the pixel's footprint, so there is neither
       // shimmer nor a dark band where the tiles get smaller than a pixel
       vec2 ga = g + gw - 0.5 * fw, gb = g + gw + 0.5 * fw;
       vec2 cov = clamp((floor(gb) * 2.0 * gw + min(fract(gb), 2.0 * gw) - floor(ga) * 2.0 * gw - min(fract(ga), 2.0 * gw)) / fw, 0.0, 1.0);
-      cov = mix(cov, vec2(2.0 * gw), smoothstep(0.45, 1.4, max(fw.x, fw.y)));      // (far off: no stripes, just the average)
+      // far off the lines melt into their average — each way on its own: on a wall seen side-on the squashed lines go
+      // but the rows stay (both used to go at once there, leaving only the sheet seams: it looked like bigger tiles)
+      cov = mix(cov, vec2(2.0 * gw), smoothstep(0.45, 1.4, fw));
       float grout = 1.0 - (1.0 - cov.x) * (1.0 - cov.y);
-      float near = 1.0 - smoothstep(0.15, 0.6, max(fw.x, fw.y));
+      vec2 nearV = 1.0 - smoothstep(0.15, 0.6, fw);
+      float near = nearV.x * nearV.y;
       float h = hash21(id);
       alb = base * (1.0 + (h - 0.5) * 0.07 * near) * (1.0 + (hash21(id + 7.3) - 0.5) * vec3(0.03, 0.0, -0.04) * near);
       alb = mix(alb, base * vec3(0.46, 0.44, 0.42), grout);
-      // mosaic comes in sheets of six by six: their seams and the slight difference from sheet to sheet still
-      // read as tiling from across the hall, when the little tiles have melted together
-      vec2 g6 = g / 6.0, fw6 = fw / 6.0, sa = g6 + 0.012 - 0.5 * fw6, sb = g6 + 0.012 + 0.5 * fw6;
-      vec2 c6 = clamp((floor(sb) * 0.024 + min(fract(sb), 0.024) - floor(sa) * 0.024 - min(fract(sa), 0.024)) / fw6, 0.0, 1.0);
-      float far6 = 1.0 - smoothstep(0.2, 0.7, max(fw6.x, fw6.y));
-      alb *= 1.0 - (1.0 - (1.0 - c6.x) * (1.0 - c6.y)) * 0.42 * (1.0 - near * 0.7);
-      alb *= 1.0 + (hash21(floor(g6) + 3.1) - 0.5) * 0.045 * far6;
+      if (fin < 2.5) {
+        // mosaic comes in sheets of six by six: a faint seam and a slight difference from sheet to sheet keep a hint of
+        // tiling across the hall when the little tiles have melted together (faint: strong seams read as big tiles)
+        vec2 g6 = g / 6.0, fw6 = fw / 6.0, sa = g6 + 0.012 - 0.5 * fw6, sb = g6 + 0.012 + 0.5 * fw6;
+        vec2 c6 = clamp((floor(sb) * 0.024 + min(fract(sb), 0.024) - floor(sa) * 0.024 - min(fract(sa), 0.024)) / fw6, 0.0, 1.0);
+        c6 = mix(c6, vec2(0.024), smoothstep(0.45, 1.4, fw6));
+        vec2 far6 = 1.0 - smoothstep(0.2, 0.7, fw6);
+        alb *= 1.0 - (1.0 - (1.0 - c6.x) * (1.0 - c6.y)) * 0.1 * (1.0 - near * 0.7);
+        alb *= 1.0 + (hash21(floor(g6) + 3.1) - 0.5) * 0.04 * far6.x * far6.y;
+      }
       gloss *= 1.0 - grout * 0.85;
-      // each little tile is not quite flat and not quite level: that is what makes the highlights sparkle
+      // glazes differ a little from tile to tile: some catch the light more than others
+      gloss *= 0.8 + 0.4 * hash21(id + 11.3);
+      // each little tile is not quite flat and not quite level: that is what makes the highlights sparkle; its edges
+      // round down into the grout, so the grout reads as sunk between the tiles
       bump = ((vec2(hash21(id + 1.7), hash21(id + 4.1)) - 0.5) * 0.05 + (f - 0.5) * smoothstep(0.30, 0.50, max(abs(f.x - 0.5), abs(f.y - 0.5))) * 0.5) * near;
+      #ifdef WEAR
+      // wear: now and then a tile is gone (the grey bed shows, dull), cracked, or stained. There are 400 little tiles
+      // to a square metre: about one gone in 10 m², one cracked in 5 m², one stained in 1.5 m²
+      float rare = hash21(id + 19.7);
+      if (fin < 2.5 && near > 0.01) {
+        if (rare < 0.00025) {
+          float bed = (1.0 - grout) * near;
+          alb = mix(alb, base * vec3(0.5, 0.48, 0.43), bed); gloss *= 1.0 - 0.9 * bed; bump *= 1.0 - bed;
+        } else if (rare < 0.00075) {
+          float cl = abs(f.y - 0.5 - (f.x - 0.5) * (0.6 * hash21(id + 2.9) - 0.3) - 0.04 * sin(f.x * 23.0 + h * 9.0));
+          float crack = 1.0 - smoothstep(0.012, 0.012 + 1.5 * max(fw.x, fw.y), cl);
+          alb *= 1.0 - 0.55 * crack * near * (1.0 - grout);
+        } else if (rare < 0.0025) alb *= mix(vec3(1.0), vec3(0.95, 0.92, 0.84), near);
+      }
+      #endif
     } else if (fin < 3.5) {
       // smooth painted plaster: only the faintest unevenness
       alb *= 0.97 + 0.03 * sin(uv.x * 0.9 + sin(uv.y * 0.7) * 1.3) * sin(uv.y * 1.1 + 0.4);
     } else {
-      // the overflow gutter: a dark slot with a white grille across it
-      float bar = smoothstep(0.30, 0.42, abs(fract(uv.x / 0.04) - 0.5));
-      alb = mix(vec3(0.82, 0.81, 0.77), base, bar);
+      // the overflow gutter: a dark slot with a white grille across it. The gaps between the bars are filtered over
+      // the pixel like the grout (unfiltered, the 4 cm bars broke up into a dotted, dashed line from a few metres off)
+      float b = uv.x / 0.04 + 0.12, fb = max(fwidth(b), 1e-4), ba = b - 0.5 * fb, bb = b + 0.5 * fb;
+      float gap = clamp((floor(bb) * 0.24 + min(fract(bb), 0.24) - floor(ba) * 0.24 - min(fract(ba), 0.24)) / fb, 0.0, 1.0);
+      gap = mix(gap, 0.24, smoothstep(0.45, 1.4, fb));
+      alb = mix(vec3(0.76, 0.75, 0.71), base, gap);
     }
     // the bump tilts the normal within the surface
     vec3 Np = N;
@@ -190,6 +234,19 @@ const TILE_FRAG = /* glsl */`
       Np = normalize(N - (Tg * bump.x + Bt * bump.y) * inv);
     }
     float wet = clamp(vFx.w + under, 0.0, 1.0);
+    #ifdef WEAR
+    // grime where the place is closed in (corners, joins, the feet of walls): from the baked occlusion, blotchy
+    if (vOcc > 0.12) {          // (only in the closed-in places: everywhere else the noise is skipped)
+      float grime = clamp((vOcc - 0.12) * 2.2, 0.0, 1.0) * (0.5 + 0.5 * vnoise(vW.xz * 1.7 + vW.y * 0.9));
+      alb *= mix(vec3(1.0), vec3(0.84, 0.8, 0.69), grime);
+      gloss *= 1.0 - 0.5 * grime;
+    }
+    // little puddles standing on the damp floor near the water: flat, darker, shiny as a mirror
+    if (vFx.w > 0.25 && N.y > 0.9 && under < 0.5) {
+      float pd = smoothstep(0.64, 0.72, vnoise(vW.xz * 0.9 + 4.3) + vFx.w * 0.22);
+      wet = max(wet, pd); alb *= 1.0 - 0.1 * pd; Np = normalize(mix(Np, N, pd));
+    }
+    #endif
     alb *= 1.0 - 0.16 * wet * (1.0 - under);                 // damp tiles are a shade darker
 
     // ---- light ----
@@ -257,6 +314,7 @@ const TILE_FRAG = /* glsl */`
 export function tileMaterial(U, q, extra = {}) {
   const defines = {};
   if (q >= 1) { defines.FINE = 1; defines.SOFT = 1; defines.DYN = 1; }
+  if (q >= 2) defines.WEAR = 1;           // (High and up: grime, worn tiles, puddles — per pixel, so not on Medium)
   return new THREE.ShaderMaterial({
     uniforms: U, defines, vertexShader: TILE_VERT, fragmentShader: TILE_FRAG, ...extra,
   });
@@ -328,7 +386,14 @@ const WATER_FRAG = /* glsl */`
     // (what lies under the surface is already drawn, tinted by the water over it: the mirror goes on top of it)
     float hz = 1.0 - exp(-dist * uHazeK);
     col = mix(col, tone(uHaze * 0.9) * F, hz * 0.5);
+    #ifdef FINE
+    // a thin warm mist lying on the water: it thickens with distance and veils what lies under the surface too
+    float mist = (1.0 - exp(-dist * 0.03)) * 0.2;
+    vec3 mc = tone(uHaze * clamp(dot(vL, vec3(0.35)) * 1.1 + 0.25, 0.0, 1.2));
+    gl_FragColor = vec4(col + mc * mist * (1.0 - F), 1.0 - (1.0 - F) * (1.0 - mist));
+    #else
     gl_FragColor = vec4(col, F);
+    #endif
     #include <colorspace_fragment>
   }
 `;

@@ -149,6 +149,7 @@ function makePlan(level) {
   // axis: the way you walk (or look) through it. a0…a1: the wall's thickness along that axis; u0…u1: across.
   // shape: 'arch' (round top), 'capsule', 'round', 'rect'. out: -1 / +1 = that end is outdoors (a window).
   const O = [];
+  const snap = v => Math.round(v * 2) / 2;
   const arch = (axis, a0, a1, u0, u1, y0, y1, extra = {}) => O.push({ axis, a0, a1, u0, u1, y0, y1, shape: 'arch', ...extra });
   arch('x', 9, 11, 30.5, 33.5, G, G + 3.3);                // lane hall ↔ kidney hall
   arch('x', 9, 11, 41, 44, G, G + 3.3);
@@ -176,7 +177,6 @@ function makePlan(level) {
   for (let x = 37.6; x < 57; x += 3.1) O.push({ axis: 'z', a0: 50, a1: 50.5, u0: x - 0.6, u1: x + 0.6, y0: G + 0.9, y1: G + 2.9, shape: 'arch', out: 1 });
   for (const x of [13, 20.5, 28]) O.push({ axis: 'z', a0: 1.5, a1: 2, u0: x, u1: x + 4, y0: G + 2.0, y1: G + 3.0, shape: 'capsule', out: -1 });
   // the wall is cut on a 0.5 m grid: snap every opening to it, or the drawn arch and the real hole don't line up
-  const snap = v => Math.round(v * 2) / 2;
   for (const o of O) { o.u0 = snap(o.u0); o.u1 = snap(o.u1); }
   plan.openings = O;
   // the lane hall's slanted west wall and its row of tall capsule windows (Picture B)
@@ -184,7 +184,9 @@ function makePlan(level) {
   for (let z = 13.5; z < 44.6; z += 3.75) plan.slant.windows.push({ z, w: 1.3, y0: G + 0.75, y1: G + 3.95 });
   // skylights: holes through the roof (upstairs and the tall halls only). round: a circle in the square
   const S = [];
-  const sky = (x0, z0, x1, z1, round = false) => S.push({ x0, z0, x1, z1, round });
+  // (on the 0.5 m grid, like the openings: the roof is cut cell by cell, and a skylight off the grid left a square hole
+  //  that didn't match the drawn one — round ones showed a strip of shaft wall and a bright slit beside the circle)
+  const sky = (x0, z0, x1, z1, round = false) => S.push({ x0: snap(x0), z0: snap(z0), x1: snap(x1), z1: snap(z1), round });
   sky(42.5, 24, 46.5, 29); sky(42.5, 37, 46.5, 43); sky(48.5, 30, 53.5, 36); sky(53, 23, 57, 27);      // over the atrium
   // (upstairs galleries: only a few small ones, so it stays softer and cosier than the tall halls)
   for (const z of [25, 37.5]) sky(36, z, 37.5, z + 1.5);                                              // west gallery
@@ -194,10 +196,12 @@ function makePlan(level) {
   sky(48, 13, 49.5, 14.5);                                                                           // the corridor
   sky(43.5, 5, 45, 6.5);                                                                             // slide platform
   sky(42.5, 11.5, 45.5, 15.5);                                                                       // over the plunge pool
-  for (const [dx, dz] of [[-3.3, 0], [0, -3.3], [3.3, 0], [0, 3.3]]) sky(TOWER.x + dx - 0.75, TOWER.z + dz - 0.75, TOWER.x + dx + 0.75, TOWER.z + dz + 0.75, true);
+  // the stair tower's four round ones: 2 m circles 3.5 m out from its middle (so each sits square on the grid)
+  for (const [dx, dz] of [[-3.5, 0], [0, -3.5], [3.5, 0], [0, 3.5]]) sky(TOWER.x + dx - 1, TOWER.z + dz - 1, TOWER.x + dx + 1, TOWER.z + dz + 1, true);
   plan.skylights = S;
 
   // ---- how each room is finished: tiled everywhere, or smooth pale walls and ceiling (first match wins) ----
+  // ceil 'big': the tiled halls' ceilings have bigger tiles than the walls (they were bare plaster, which read as untextured)
   // vault: a barrel ceiling along 'x' or 'z' (spring: where it starts to curve); cove: ceilings curve into the walls
   plan.rooms = [
     { name: 'lane', x0: 2, z0: 8, x1: 9, z1: 47, y0: 0, y1: G + 4.6, wall: 'tile', ceil: 'tile', cove: 0.6 },
@@ -209,13 +213,13 @@ function makePlan(level) {
     { name: 'deadend', x0: 34.4, z0: 3, x1: 37.5, z1: 17, y0: 0, y1: G + 2.4, wall: 'smooth', ceil: 'smooth', dark: 0.3 },      // dark: hardly any light gets in
     { name: 'kidney', x0: 11, z0: 28, x1: 35, z1: 50, y0: 0, y1: G + 4.2, wall: 'tile', ceil: 'tile', cove: 0.6 },
     { name: 'channel', x0: 35, z0: 21, x1: 41, z1: 45.5, y0: 0, y1: G + 4.2, wall: 'tile', ceil: 'tile' },
-    { name: 'hallway', x0: 35.5, z0: 47, x1: 58.5, z1: 50, y0: G, y1: G + 3.4, wall: 'tile', ceil: 'smooth', cove: 0.5 },
-    { name: 'atrium', x0: 41, z0: 21, x1: 58, z1: 44, y0: 0, y1: ROOF, wall: 'tile', ceil: 'smooth' },
-    { name: 'slidehall', x0: 41.5, z0: 9, x1: 47, z1: 19.5, y0: 0, y1: ROOF, wall: 'tile', ceil: 'smooth' },
+    { name: 'hallway', x0: 35.5, z0: 47, x1: 58.5, z1: 50, y0: G, y1: G + 3.4, wall: 'tile', ceil: 'big', cove: 0.5 },
+    { name: 'atrium', x0: 41, z0: 21, x1: 58, z1: 44, y0: 0, y1: ROOF, wall: 'tile', ceil: 'big' },
+    { name: 'slidehall', x0: 41.5, z0: 9, x1: 47, z1: 19.5, y0: 0, y1: ROOF, wall: 'tile', ceil: 'big' },
     { name: 'lobby', x0: 54.5, z0: 15.5, x1: 56.5, z1: 20, y0: G, y1: G + 3, wall: 'tile', ceil: 'tile', vault: 'z', spring: G + 2 },
     { name: 'grotto', x0: 58.5, z0: 26, x1: 62.5, z1: 40, y0: 0, y1: G + 3.6, wall: 'tile', ceil: 'tile', vault: 'z', spring: G + 2.6 },
     { name: 'exit', x0: 51, z0: 41, x1: 53, z1: 46.5, y0: 0, y1: 8.5, wall: 'tile', ceil: 'tile' },
-    { name: 'upstairs', x0: 30, z0: 2, x1: 63, z1: 48, y0: U, y1: ROOF, wall: 'tile', ceil: 'smooth', cove: 0.45 },
+    { name: 'upstairs', x0: 30, z0: 2, x1: 63, z1: 48, y0: U, y1: ROOF, wall: 'tile', ceil: 'big', cove: 0.45 },
   ];
   plan.roomAt = (x, y, z) => plan.rooms.find(r => x >= r.x0 - 0.01 && x <= r.x1 + 0.01 && z >= r.z0 - 0.01 && z <= r.z1 + 0.01 && y >= r.y0 - 0.01 && y <= r.y1 + 0.01) || null;
 

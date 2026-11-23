@@ -17,11 +17,17 @@ const { G, U, WY, SH, ROOF } = POOL;
 const ROOFT = ROOF + 0.4;
 const S = POOL.sun;                                   // the way the sunlight travels
 const SUN = [3.3, 2.4, 1.4], SKY = [13, 12.6, 11.6], ALB = [0.84, 0.79, 0.66];
-const FIN = { cream: 0, white: 1, blue: 2, smooth: 3, gutter: 4 };
+const FIN = { cream: 0, white: 1, blue: 2, smooth: 3, gutter: 4, ceil: 5 };      // (5: the bigger ceiling tiles)
+// How surfaces are tiled: every surface's uv is in world metres, so the tile shader (poolfx.js) draws the same size of
+// tile everywhere and the grout lines carry on from one piece to the next. Flat floors and ceilings use (x, z), walls
+// facing x use (z, y) and walls facing z (x, y): the world position itself. Curved pieces (round walls, pillars, pool
+// edges, vaults, arches) use the distance along them, started from the world coordinate of the straight piece they
+// carry on from, and height y wherever they stand upright.
+const SHEET = 0.3;                                    // the mosaic's sheets (6 × 5 cm): shifting a pattern by this changes nothing
 const EXPO = { a: 0.34, b: 0.1, p: 1.05 };          // the eye's adaptation (see shade())
 
 class Buf {
-  constructor() { this.pos = []; this.nor = []; this.uv = []; this.light = []; this.fx = []; this.glint = []; this.idx = []; this.map = new Map(); }
+  constructor() { this.pos = []; this.nor = []; this.uv = []; this.light = []; this.fx = []; this.glint = []; this.occ = []; this.idx = []; this.map = new Map(); }
 }
 
 export function buildPoolScene(world, renderer, gfx = {}) {
@@ -30,6 +36,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   const group = new THREE.Group(), ud = group.userData;
   const R = rng(4242);
   const UNI = poolUniforms(S);
+  UNI.uGrade.value = gfx.look ? 1 : 0;                // (the Poolrooms' own faint colour grade goes with 'Picture shaders')
   const spansAt = (ix, iz) => (ix < 0 || iz < 0 || ix >= Wc || iz >= Dc ? null : world.spans[iz * Wc + ix]);
   const outdoors = (ix, iz) => ix < 3 || iz < 3 || iz >= 101;            // beyond the glazed walls: open sky
   const drawn = s => s.m[0] !== '_';
@@ -39,6 +46,19 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   const wkOf = (ix, iz) => { const b = bodyIdx(ix, iz); if (!b) return 0; const o = world.bodies[b - 1]; return o.shallow ? 3 : o.name === 'great' ? 2 : 1; };
   const inExit = (x, z) => { const t = plan.exit.tunnel; return x > t.x0 - 0.01 && x < t.x1 + 0.01 && z > t.z0 - 0.01 && z < t.z1 + 0.01; };
   const sdfMin = (x, z) => { let d = 9; for (const p of plan.pools) if (x > p.x0 - 1.5 && x < p.x1 + 1.5 && z > p.z0 - 1.5 && z < p.z1 + 1.5) d = Math.min(d, p.sdf(x, z)); return d; };
+  // the same, but a pool also ends at the room it is clipped to: the Great Pool's shape runs on to x = 60, into the grotto,
+  // and the deck there (and the floor of the three arches between them) was taken for water and never drawn, so the
+  // walls between the arches stood on nothing with the water showing under them. (Only for drawing the deck: the
+  // collision keeps using the pools' own shapes, as before.)
+  const sdfDeck = (x, z) => {
+    let d = 9;
+    for (const p of plan.pools) {
+      if (!(x > p.x0 - 1.5 && x < p.x1 + 1.5 && z > p.z0 - 1.5 && z < p.z1 + 1.5)) continue;
+      const c = p.clip;
+      d = Math.min(d, Math.max(p.sdf(x, z), c[0] - x, x - c[2], c[1] - z, z - c[3]));
+    }
+    return d;
+  };
 
   // ================= the light, worked out once =================
   // Everything that sends light: the white sky seen through each window and skylight, and the patches where the
@@ -241,7 +261,29 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     const near = Math.max(0, 1 - d / 2.6);
     return Math.min(1, near * near * 1.5 * (0.25 + 0.75 * blotch(x, z)) + (d < 0.5 ? 0.35 : 0));
   };
-  // the finished light at a point on a surface: { l: [r, g, b], g: [x, y, z] (where the sky's shine comes from), c }
+  // Ambient occlusion, baked: how closed in a point on a surface is (0 open … 1 shut in). Sixteen short probes into the
+  // space in front of it (two rings, 25 and 60 cm out, tipped up from the surface): corners, the joins between walls and
+  // floors and the feet of pillars come out darker. Only lookups in the grid, no rays (fast), and glass in windows
+  // doesn't count (light comes in there). The shader also uses it for the grime in corners.
+  const blockedAt = (x, y, z) => { const sp = spansAt(Math.floor(x / CELL), Math.floor(z / CELL)); if (!sp) return true; for (const q of sp) if (q.y0 < y && q.y1 > y && q.m !== '_glass') return true; return false; };
+  const AO_RING = Array.from({ length: 8 }, (_, k) => [Math.cos(k * Math.PI / 4 + 0.39), Math.sin(k * Math.PI / 4 + 0.39)]);
+  const occlusion = (x, y, z, nx, ny, nz) => {
+    let tx = -nz, ty = 0, tz = nx;
+    if (Math.abs(ny) > 0.7) { tx = 1; ty = 0; tz = 0; }
+    const tl = Math.hypot(tx, ty, tz) || 1; tx /= tl; ty /= tl; tz /= tl;
+    const bx = ny * tz - nz * ty, by = nz * tx - nx * tz, bz = nx * ty - ny * tx;
+    let occ = 0, tot = 0;
+    for (const [r, up, w] of [[0.25, 0.5, 1.2], [0.6, 0.7, 1]]) {
+      const side = Math.sqrt(1 - up * up);
+      for (const [c, sn] of AO_RING) {
+        const dx = (tx * c + bx * sn) * side + nx * up, dy = (ty * c + by * sn) * side + ny * up, dz = (tz * c + bz * sn) * side + nz * up;
+        tot += w;
+        if (blockedAt(x + nx * 0.03 + dx * r, y + ny * 0.03 + dy * r, z + nz * 0.03 + dz * r)) occ += w;
+      }
+    }
+    return occ / tot;
+  };
+  // the finished light at a point on a surface: { l: [r, g, b], g: [x, y, z] (where the sky's shine comes from), c, occ }
   const shadeCache = new Map();
   const shade = (x, y, z, nx, ny, nz) => {
     const key = `${Math.round(x * 100)},${Math.round(y * 100)},${Math.round(z * 100)},${Math.round(nx * 8)},${Math.round(ny * 8)},${Math.round(nz * 8)}`;
@@ -258,6 +300,8 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       if (solidAt(ix, iz, y - 0.25)) ao -= 0.18;
       if (solidAt(ix, iz, y + 0.25)) ao -= 0.22;
     }
+    const occ = occlusion(x, y, z, nx, ny, nz);
+    ao *= 1 - 0.38 * occ;
     const f = sample(fill, nd.x, y + ny * 0.5, nd.z);
     const up = ny > 0.5 ? 0.85 : ny < -0.5 ? 1.0 : 1;
     const l = [(raw.r + f[0] * 1.5 * up + 0.05) * ao, (raw.g + f[1] * 1.5 * up + 0.048) * ao, (raw.b + f[2] * 1.5 * up + 0.045) * ao];
@@ -266,7 +310,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     const adapt = sample(adaptG, nd.x, y + ny * 0.5, nd.z)[0];
     { const room = roomAt(nd.x, y + ny * 0.3, nd.z), k = Math.min(1.7, Math.max(0.1, Math.pow(EXPO.a / (adapt + EXPO.b), EXPO.p))) * (room && room.dark ? room.dark : 1); l[0] *= k; l[1] *= k; l[2] *= k; }
     const gm = Math.hypot(raw.gx, raw.gy, raw.gz), gk = gm > 1e-5 ? Math.min(1.6, gm * 0.55) / gm : 0;
-    o = { l, g: [raw.gx * gk, raw.gy * gk, raw.gz * gk], c: Math.min(1.6, raw.c * 5.5), w: ny > 0.5 ? wetAt(x, y, z) : 0, adapt };
+    o = { l, g: [raw.gx * gk, raw.gy * gk, raw.gz * gk], c: Math.min(1.6, raw.c * 5.5), w: ny > 0.5 ? wetAt(x, y, z) : 0, adapt, occ };
     shadeCache.set(key, o);
     return o;
   };
@@ -289,6 +333,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     B.pos.push(x, y, z); B.nor.push(nx, ny, nz); B.uv.push(u, v);
     B.light.push(s.l[0], s.l[1], s.l[2]); B.glint.push(s.g[0], s.g[1], s.g[2]);
     B.fx.push(fin, wk, wk ? 0 : s.c, s.w || 0);
+    B.occ.push(s.occ || 0);
     B.map.set(key, i);
     return i;
   };
@@ -317,7 +362,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       if (ix < 0 || iz < 0 || ix >= Wc || iz >= Dc) continue;
       if (!isDeck(ix, iz) && poolCell(ix, iz) < 0) continue;
       let neg = false;
-      for (let j = 0; j <= 2 && !neg; j++) for (let i = 0; i <= 2; i++) if (sdfMin(ix * CELL + i * 0.25, iz * CELL + j * 0.25) < 0) { neg = true; break; }
+      for (let j = 0; j <= 2 && !neg; j++) for (let i = 0; i <= 2; i++) if (sdfDeck(ix * CELL + i * 0.25, iz * CELL + j * 0.25) < 0) { neg = true; break; }
       if (neg || poolCell(ix, iz) >= 0) edge[iz * Wc + ix] = 1;
     }
   }
@@ -340,7 +385,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       // underside
       if (s.y0 > 0.01 && !spans.some(t => t !== s && drawn(t) && t.y1 >= s.y0 - 0.001 && t.y0 < s.y0 - 0.001)) {
         const r = roomAt(cx, s.y0 - 0.1, cz);
-        flat(x0, z0, x1, z1, s.y0, -1, r && r.ceil === 'smooth' ? FIN.smooth : FIN.cream, 0);
+        flat(x0, z0, x1, z1, s.y0, -1, r && r.ceil === 'smooth' ? FIN.smooth : r && r.ceil === 'big' ? FIN.ceil : FIN.cream, 0);
       }
       // sides
       for (const [nx, nz] of SIDES) {
@@ -394,7 +439,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   for (let iz = 0; iz < Dc; iz++) for (let ix = 0; ix < Wc; ix++) {
     if (!edge[iz * Wc + ix]) continue;
     for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) {
-      const poly = dryPoly(ix * CELL + i * H, iz * CELL + j * H, sdfMin);
+      const poly = dryPoly(ix * CELL + i * H, iz * CELL + j * H, sdfDeck);
       if (poly.length < 3) continue;
       const B = bufAt(poly[0][0], G, poly[0][1]);
       const idx = poly.map(p => V(B, p[0], G, p[1], 0, 1, 0, p[0], p[1], FIN.cream, 0));
@@ -437,6 +482,44 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     segs.forEach((s, i) => { if (used[i]) return; for (const e of [0, 1]) if ((ends.get(key(s[e])) || []).length === 1 && !used[i]) outlines.push({ pool: p, pts: walk(i, e), closed: false }); });
     segs.forEach((s, i) => { if (!used[i]) { const pts = walk(i, 0); outlines.push({ pool: p, pts, closed: key(pts[0]) === key(pts[pts.length - 1]) }); } });
   }
+  // u along a pool's edge (metres): on its straight stretches the world coordinate along them, so the grout lines up with
+  // the deck's tiles; round the bends the distance along the edge, stretched a little to meet the next straight stretch
+  // (which is moved by whole sheets to suit: the pattern looks the same)
+  const edgeU = (pts, nrm, len, closed) => {
+    const n = pts.length, total = len[n - 1], runs = [];
+    let cur = null;
+    for (let i = 0; i < n; i++) {
+      const ax = Math.abs(nrm[i][0]) > 0.9995 ? 1 : Math.abs(nrm[i][1]) > 0.9995 ? 0 : -1;      // 1: faces x (runs along z), 0: faces z (runs along x)
+      if (ax < 0 || (cur && cur.ax !== ax)) cur = null;
+      if (ax < 0) continue;
+      if (!cur) { cur = { ax, i0: i, i1: i }; runs.push(cur); } else cur.i1 = i;
+    }
+    const good = runs.filter(r => len[r.i1] - len[r.i0] > 0.3);
+    if (!good.length) { const fit = closed ? Math.max(0.05, Math.round(total / 0.05) * 0.05) / total : 1; return len.map(l => l * fit); }
+    const u = new Array(n), coord = (i, ax) => pts[i][ax];
+    let prev = null;
+    for (const r of good) {
+      const sg = Math.sign(coord(r.i1, r.ax) - coord(r.i0, r.ax)) || 1;
+      let shift = 0;
+      if (prev) shift = Math.round((u[prev.i1] + (len[r.i0] - len[prev.i1]) - sg * coord(r.i0, r.ax)) / SHEET) * SHEET;
+      for (let i = r.i0; i <= r.i1; i++) u[i] = sg * coord(i, r.ax) + shift;
+      if (prev) { const a = prev.i1, b = r.i0, L = (len[b] - len[a]) || 1; for (let i = a + 1; i < b; i++) u[i] = u[a] + (u[b] - u[a]) * (len[i] - len[a]) / L; }
+      prev = r;
+    }
+    const first = good[0], last = good[good.length - 1];
+    if (closed) {
+      // the bend through the loop's start: from the last straight round to the first (a whole number of sheets on)
+      const Lw = total - len[last.i1] + len[first.i0];
+      const K = Math.round((u[last.i1] + Lw - u[first.i0]) / SHEET) * SHEET, target = u[first.i0] + K;
+      const at = (l) => u[last.i1] + (target - u[last.i1]) * l / (Lw || 1);
+      for (let i = last.i1 + 1; i < n; i++) u[i] = at(len[i] - len[last.i1]);
+      for (let i = 0; i < first.i0; i++) u[i] = at(total - len[last.i1] + len[i]) - K;
+    } else {
+      for (let i = 0; i < first.i0; i++) u[i] = u[first.i0] - (len[first.i0] - len[i]);
+      for (let i = last.i1 + 1; i < n; i++) u[i] = u[last.i1] + (len[i] - len[last.i1]);
+    }
+    return u;
+  };
   const LIP = [[0.0, -0.09], [-0.05, -0.06], [-0.06, 0.0], [-0.035, 0.055], [0.03, 0.086], [0.13, 0.092], [0.25, 0.074], [0.33, 0.04], [0.37, 0.004]];
   for (const o of outlines) {
     const p = o.pool, pts = o.pts, n = pts.length;
@@ -445,11 +528,11 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     const nrm = pts.map(q => { const e = 0.03; let gx = p.sdf(q[0] + e, q[1]) - p.sdf(q[0] - e, q[1]), gz = p.sdf(q[0], q[1] + e) - p.sdf(q[0], q[1] - e); const l = Math.hypot(gx, gz) || 1; return [gx / l, gz / l]; });
     const len = [0];
     for (let i = 1; i < n; i++) len.push(len[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
-    const total = len[n - 1], fit = o.closed ? Math.max(0.05, Math.round(total / 0.05) * 0.05) / total : 1;
+    const uu = edgeU(pts, nrm, len, o.closed);
     const wk = p.name === 'great' ? 2 : 1;
     const wallRows = [p.bottom, ...[1.2, 2.1].filter(y => y > p.bottom + 0.3 && y < WY - 0.4), WY - 0.2, G - 0.09];
     for (let i = 0; i < n - 1; i++) {
-      const a = pts[i], b = pts[i + 1], na = nrm[i], nb = nrm[i + 1], ua = len[i] * fit, ub = len[i + 1] * fit;
+      const a = pts[i], b = pts[i + 1], na = nrm[i], nb = nrm[i + 1], ua = uu[i], ub = uu[i + 1];
       const B = bufAt(a[0], G - 1, a[1]);
       // the wall down into the pool (a pale blue band at the waterline)
       for (let r = 0; r < wallRows.length - 1; r++) {
@@ -525,7 +608,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     };
     // angles: plenty of them, and extra ones across each doorway
     const cuts = new Set();
-    const N = Math.round(o.R * 9);
+    const N = Math.round(o.R * 16);              // (about 2 cm off the true circle between corners: no visible facets where it meets the ceiling)
     for (let k = 0; k < N; k++) cuts.add(Math.round((k / N * Math.PI * 2) * 1e4) / 1e4);
     for (const g of gaps) for (let k = 0; k <= 12; k++) { let t = g.th - g.half + g.half * 2 * k / 12; t = ((t % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); cuts.add(Math.round(t * 1e4) / 1e4); }
     const list = [...cuts].sort((a, b) => a - b);
@@ -551,8 +634,31 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     if (o.core) cylinder(o.x, o.z, o.core, o.y0, o.y1, FIN.white, 0);
   }
   // the floor in the tower's top doorway, between the corridor and the stair's landing (the landing is drawn only up to the
-  // round wall, and the doorway's own cells are invisible stair collision, so a strip there was left open: you saw down the stairwell)
-  { const g = plan.rings[0].gaps[1]; flat(g.x0, g.z0, g.x1 - 0.4, g.z1, g.y0, 1, FIN.cream, 0); flat(g.x0, g.z0, g.x1 - 0.4, g.z1, g.y0 - 0.35, -1, FIN.cream, 0); }
+  // round wall, and the doorway's own cells are invisible stair collision, so a strip there was left open: you saw down the stairwell).
+  // It stops exactly on the landing's own outline (the same straight pieces the landing is drawn with: every 15° on top, every
+  // 7.5° underneath), so the two never overlap: they did, both at y = U, and fought (a jagged edge across the floor).
+  {
+    const g = plan.rings[0].gaps[1], T = plan.tower, RAD = Math.PI / 180;
+    const strip = (y, ny, step) => {
+      const pts = [];
+      for (let th = T.a1; th <= T.a1 + 30 + 1e-6; th += step) pts.push([T.x + Math.cos((th + 90) * RAD) * T.R, T.z + Math.sin((th + 90) * RAD) * T.R]);
+      const edgeX = (z) => {
+        for (let k = 0; k + 1 < pts.length; k++) {
+          const a = pts[k], b = pts[k + 1];
+          if ((z - a[1]) * (z - b[1]) <= 0 && a[1] !== b[1]) return a[0] + (b[0] - a[0]) * (z - a[1]) / (b[1] - a[1]);
+        }
+        return g.x0;
+      };
+      const zs = [g.z0, g.z1, ...pts.map(q => q[1]).filter(z => z > g.z0 + 1e-4 && z < g.z1 - 1e-4)].sort((a, b) => a - b);
+      for (let k = 0; k + 1 < zs.length; k++) {
+        const za = zs[k], zb = zs[k + 1], B = bufAt(g.x0 + 0.3, y - ny * 0.3, (za + zb) / 2);
+        quad(B, V(B, g.x0, y, za, 0, ny, 0, g.x0, za, FIN.cream, 0), V(B, edgeX(za), y, za, 0, ny, 0, edgeX(za), za, FIN.cream, 0),
+          V(B, edgeX(zb), y, zb, 0, ny, 0, edgeX(zb), zb, FIN.cream, 0), V(B, g.x0, y, zb, 0, ny, 0, g.x0, zb, FIN.cream, 0), 0, ny, 0);
+      }
+    };
+    strip(g.y0, 1, 15);              // (the landing's top: sector() below, two pieces over its 30°)
+    strip(g.y0 - 0.35, -1, 7.5);     // (its underside: the slab below, in 7.5° pieces)
+  }
   {
     const T = plan.tower, RAD = Math.PI / 180;
     const at = (th, r) => [T.x + Math.cos((th + 90) * RAD) * r, T.z + Math.sin((th + 90) * RAD) * r];
@@ -565,8 +671,8 @@ export function buildPoolScene(world, renderer, gfx = {}) {
         const ta = t0 + (t1 - t0) * k / sub, tb = t0 + (t1 - t0) * (k + 1) / sub;
         for (let j = 0; j < 2; j++) {
           const pa = at(ta, rs[j]), pb = at(tb, rs[j]), pc = at(tb, rs[j + 1]), pd = at(ta, rs[j + 1]), B = bufAt(pa[0], y, pa[1]);
-          const P = (p, t, r) => V(B, p[0], y, p[1], 0, ny, 0, t * RAD * 3.3, r, fin, 0);
-          quad(B, P(pa, ta, rs[j]), P(pb, tb, rs[j]), P(pc, tb, rs[j + 1]), P(pd, ta, rs[j + 1]), 0, ny, 0);
+          const P = (p) => V(B, p[0], y, p[1], 0, ny, 0, p[0], p[1], fin, 0);      // (world x, z: square tiles, lined up with the floors)
+          quad(B, P(pa), P(pb), P(pc), P(pd), 0, ny, 0);
         }
       }
     };
@@ -595,8 +701,8 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       const tb = Math.min(T.a1 + 30, t + 7.5), ya = G + towerH(t) - 0.35, yb = G + towerH(tb) - 0.35;
       for (let j = 0; j < 2; j++) {
         const pa = at(t, rs[j]), pb = at(tb, rs[j]), pc = at(tb, rs[j + 1]), pd = at(t, rs[j + 1]), B = bufAt(pa[0], ya, pa[1]);
-        quad(B, V(B, pa[0], ya, pa[1], 0, -1, 0, t * RAD * 3.3, rs[j], FIN.cream, 0), V(B, pb[0], yb, pb[1], 0, -1, 0, tb * RAD * 3.3, rs[j], FIN.cream, 0),
-          V(B, pc[0], yb, pc[1], 0, -1, 0, tb * RAD * 3.3, rs[j + 1], FIN.cream, 0), V(B, pd[0], ya, pd[1], 0, -1, 0, t * RAD * 3.3, rs[j + 1], FIN.cream, 0), 0, -1, 0);
+        quad(B, V(B, pa[0], ya, pa[1], 0, -1, 0, pa[0], pa[1], FIN.cream, 0), V(B, pb[0], yb, pb[1], 0, -1, 0, pb[0], pb[1], FIN.cream, 0),
+          V(B, pc[0], yb, pc[1], 0, -1, 0, pc[0], pc[1], FIN.cream, 0), V(B, pd[0], ya, pd[1], 0, -1, 0, pd[0], pd[1], FIN.cream, 0), 0, -1, 0);
       }
     }
     riser(from, G, G + towerH(from), 1);
@@ -624,15 +730,19 @@ export function buildPoolScene(world, renderer, gfx = {}) {
         const ids = arc.map(q => { const p = to3(q[0], q[1], d); return V(B, p[0], p[1], p[2], n[0], n[1], n[2], ...uvOf(q[0], q[1]), o.fin || FIN.cream, 0, lit); });
         for (let k = 0; k < NA; k++) tri(B, ci, ids[k], ids[k + 1], n[0], n[1], n[2]);
       }
-      // the curve through the wall
+      // the curve through the wall: tiled across in the world coordinate through the wall (as the reveals beside it), and
+      // round it by the distance from where it springs (so it carries on the reveal's rows)
+      const vc = o.vAt ? o.vAt(ov) : ov, upper = a0 < Math.PI * 0.75;
+      const vS = (a) => vc + (upper ? 1 : -1) * r * (a0 === 0 || a0 === Math.PI ? a - a0 : a0 + Math.PI / 2 - a);
+      const dU = (d) => (o.depthU === false ? d - d0 : d);
       for (let k = 0; k < NA && !o.noSoffit; k++) {
         const q0 = arc[k], q1 = arc[k + 1];
         const nn = (q) => { const a = to3(q[0], q[1], d0), b = to3(q[0] - q[2] * 0.1, q[1] - q[3] * 0.1, d0); const l = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l, (b[2] - a[2]) / l]; };
         const n0 = nn(q0), n1 = nn(q1), al0 = a0 + (Math.PI / 2) * k / NA, al1 = a0 + (Math.PI / 2) * (k + 1) / NA;
         const p00 = to3(q0[0], q0[1], d0), p10 = to3(q1[0], q1[1], d0), p11 = to3(q1[0], q1[1], d1), p01 = to3(q0[0], q0[1], d1), B = bufAt(p00[0], p00[1], p00[2]);
-        const fin = o.finIn == null ? (o.fin || FIN.cream) : o.finIn, dd = Math.abs(d1 - d0);
-        quad(B, V(B, p00[0], p00[1], p00[2], n0[0], n0[1], n0[2], 0, al0 * r, fin, 0, lit), V(B, p10[0], p10[1], p10[2], n1[0], n1[1], n1[2], 0, al1 * r, fin, 0, lit),
-          V(B, p11[0], p11[1], p11[2], n1[0], n1[1], n1[2], dd, al1 * r, fin, 0, lit), V(B, p01[0], p01[1], p01[2], n0[0], n0[1], n0[2], dd, al0 * r, fin, 0, lit), n0[0] + n1[0], n0[1] + n1[1], n0[2] + n1[2]);
+        const fin = o.finIn == null ? (o.fin || FIN.cream) : o.finIn;
+        quad(B, V(B, p00[0], p00[1], p00[2], n0[0], n0[1], n0[2], dU(d0), vS(al0), fin, 0, lit), V(B, p10[0], p10[1], p10[2], n1[0], n1[1], n1[2], dU(d0), vS(al1), fin, 0, lit),
+          V(B, p11[0], p11[1], p11[2], n1[0], n1[1], n1[2], dU(d1), vS(al1), fin, 0, lit), V(B, p01[0], p01[1], p01[2], n0[0], n0[1], n0[2], dU(d1), vS(al0), fin, 0, lit), n0[0] + n1[0], n0[1] + n1[1], n0[2] + n1[2]);
       }
     }
   };
@@ -674,7 +784,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       rect(z, w.z - w.w / 2, s.y0, s.y1);
       rect(w.z - w.w / 2, w.z + w.w / 2, s.y0, w.y0); rect(w.z - w.w / 2, w.z + w.w / 2, w.y1, s.y1);
       // the capsule: its corners on the slanted wall, and a bright reveal straight back to the glass line
-      const o = { shape: 'capsule', fin: FIN.cream, finIn: FIN.white, uAt: u => w.z - w.w / 2 + u, vAt: v => s.y0 + (w.y0 + v - s.y0) * len / hgt };
+      const o = { shape: 'capsule', fin: FIN.cream, finIn: FIN.white, depthU: false, uAt: u => w.z - w.w / 2 + u, vAt: v => s.y0 + (w.y0 + v - s.y0) * len / hgt };
       const to3 = (u, v, d) => [d < 0.5 ? xAt(w.y0 + v) : s.x - 0.5, w.y0 + v, w.z - w.w / 2 + u];
       shapedHole(o, w.w, w.y1 - w.y0, to3, [[0, n]], 0, 1);
       z = w.z + w.w / 2;
@@ -706,7 +816,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       const along = r.vault === 'z', NS = 12;
       const across = Array.from({ length: NS + 1 }, (_, k) => { const a = Math.PI * k / NS; return (1 - Math.cos(a)) / 2; });      // closer together near the walls
       const l0 = along ? r.z0 : r.x0, l1 = along ? r.z1 : r.x1, c0 = along ? r.x0 : r.z0, c1 = along ? r.x1 : r.z1;
-      const fin = r.ceil === 'smooth' ? FIN.smooth : FIN.cream;
+      const fin = r.ceil === 'smooth' ? FIN.smooth : FIN.cream;      // (a vault is the walls bending over: wall tiles)
       let arcLen = [0];
       for (let k = 1; k <= NS; k++) { const ca = c0 + (c1 - c0) * across[k - 1], cb = c0 + (c1 - c0) * across[k]; arcLen.push(arcLen[k - 1] + Math.hypot(cb - ca, hOf(r, along ? cb : 0, along ? 0 : cb) - hOf(r, along ? ca : 0, along ? 0 : ca))); }
       const fitV = Math.max(0.05, Math.round(arcLen[NS] / 0.05) * 0.05) / arcLen[NS];
@@ -744,6 +854,9 @@ export function buildPoolScene(world, renderer, gfx = {}) {
         if (cy > ROOF + 0.01) continue;
         const room = roomAt(cx, cy - 0.2, cz);
         if (!room || !room.cove || room.vault) continue;
+        // (not inside a round room: its wall is a curve, and coves built along the square cells behind it stuck out of
+        //  it as a stepped, jagged band where the stair tower's wall meets its ceiling)
+        if (plan.rings.some(o => lvl > o.y0 && lvl < o.y1 && Math.hypot(cx - o.x, cz - o.z) < o.R + 0.45)) continue;
         const r = room.cove, fin = room.ceil === 'smooth' ? FIN.smooth : FIN.cream;
         for (const [nx, nz] of SIDES) {
           if (!solidAt(ix + nx, iz + nz, cy - 0.15) || !solidAt(ix + nx, iz + nz, cy - r + 0.03)) continue;       // a wall on this side, right up to the ceiling
@@ -779,6 +892,76 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     }
   }
 
+  // ---- trim (Medium and up): a rounded cove skirting where walls stand on floors (the way pools are tiled: no dirt
+  //      trap at the join, and it hides the hard line there), and a slim white frame round each square skylight ----
+  if (Q >= 1) {
+    const SR = 0.1, NS = 4;                                   // the skirting's radius, and steps round its curve
+    const drawnSpan = (ix, iz, y0, y1) => { const sp = spansAt(ix, iz); return !!sp && sp.some(q => drawn(q) && q.y0 <= y0 && q.y1 >= y1); };
+    const openAbove = (ix, iz, y) => { const sp = spansAt(ix, iz); return !!sp && !sp.some(q => q.y0 < y + 1.2 && q.y1 > y + 0.005); };
+    const inRing = (x, y, z) => plan.rings.some(o => y > o.y0 - 0.1 && y < o.y1 && Math.hypot(x - o.x, z - o.z) < o.R + 0.45);
+    const wallAt = (ix, iz, fy) => drawnSpan(ix, iz, fy + 0.02, fy + 0.3);         // (a real wall: steps and plates are lower)
+    for (let iz = 3; iz < Dc - 3; iz++) for (let ix = 3; ix < Wc; ix++) {
+      if (outdoors(ix, iz) || plan.poolGrid[iz * Wc + ix] >= 0 || edge[iz * Wc + ix]) continue;
+      const sp = spansAt(ix, iz), cx = (ix + 0.5) * CELL, cz = (iz + 0.5) * CELL;
+      // the floors in this cell: the top of a drawn span with room above it (or the bare ground at 0, the exit tunnel)
+      const floors = sp.filter(q => drawn(q) && openAbove(ix, iz, q.y1)).map(q => q.y1);
+      if (!sp.some(q => q.y0 <= 0.01) && openAbove(ix, iz, 0)) floors.push(0);
+      for (const fy of floors) {
+        if (inRing(cx, fy + 0.5, cz)) continue;
+        const wk = fy < WY ? (wkOf(ix, iz) || (inExit(cx, cz) ? 2 : 0)) : 0;
+        for (const [nx, nz] of SIDES) {
+          if (!wallAt(ix + nx, iz + nz, fy)) continue;
+          const wx = cx + nx * 0.25, wz = cz + nz * 0.25, tx = nz, tz = -nx, inx = -nx, inz = -nz;
+          const fin = wallFin(wx + inx * 0.06, fy + 0.5, wz + inz * 0.06);
+          const dn = Math.SQRT1_2;
+          const litAt = (px, pz) => shade(px + inx * 0.04, fy + 0.04, pz + inz * 0.04, inx * dn, dn, inz * dn);
+          // the quarter round: from the wall (at height SR) down to the floor (SR out from the wall)
+          // (uArc: round an outside corner, the angle swept so far: the tiling follows the curve there)
+          const mk = (B, px, pz, ph, lit, dx = inx, dz = inz, uArc = 0) => {
+            const off = SR - SR * Math.cos(ph), y = fy + SR - SR * Math.sin(ph);
+            return V(B, px + dx * off, y, pz + dz * off, dx * Math.cos(ph), Math.sin(ph), dz * Math.cos(ph), (nx ? pz : px) + uArc * off, fy + SR * (1 - ph / (Math.PI / 2)), fin, wk, lit);
+          };
+          const ax = wx - tx * 0.25, az = wz - tz * 0.25, bx = wx + tx * 0.25, bz = wz + tz * 0.25, B = bufAt(wx, fy + 0.05, wz);
+          const la = litAt(ax, az), lb = litAt(bx, bz);
+          for (let k = 0; k < NS; k++) {
+            const p0 = Math.PI / 2 * k / NS, p1 = Math.PI / 2 * (k + 1) / NS;
+            quad(B, mk(B, ax, az, p0, la), mk(B, bx, bz, p0, lb), mk(B, bx, bz, p1, lb), mk(B, ax, az, p1, la), inx, 1, inz);
+          }
+          // an outside corner at either end (the wall turns away): the round swept round the corner
+          for (const sd of [-1, 1]) {
+            const ex = ix + tx * sd, ez = iz + tz * sd;
+            if (wallAt(ex, ez, fy) || wallAt(ex + nx, ez + nz, fy) || !openAbove(ex, ez, fy) || plan.poolGrid[ez * Wc + ex] >= 0) continue;
+            const px = wx + tx * 0.25 * sd, pz = wz + tz * 0.25 * sd, lc = litAt(px, pz), NR = 4;
+            for (let m = 0; m < NR; m++) for (let k = 0; k < NS; k++) {
+              const at = (mm, kk) => {
+                const th = Math.PI / 2 * mm / NR, dx = inx * Math.cos(th) + tx * sd * Math.sin(th), dz = inz * Math.cos(th) + tz * sd * Math.sin(th);
+                return mk(B, px, pz, Math.PI / 2 * kk / NS, lc, dx, dz, th * sd);
+              };
+              quad(B, at(m, k), at(m + 1, k), at(m + 1, k + 1), at(m, k + 1), inx + tx * sd, 1, inz + tz * sd);
+            }
+          }
+        }
+      }
+    }
+    // frames round the square skylights: a band 7 cm wide, 3 cm proud of the ceiling
+    for (const sk of plan.skylights) {
+      if (sk.round) continue;
+      const W2 = 0.07, D2 = 0.03, y = ROOF - D2, lit = shade((sk.x0 + sk.x1) / 2, ROOF - 0.05, sk.z0 - 0.2, 0, -1, 0);
+      const B = bufAt((sk.x0 + sk.x1) / 2, ROOF, (sk.z0 + sk.z1) / 2);
+      const P = (x, yy, z, n) => V(B, x, yy, z, n[0], n[1], n[2], n[1] ? x : n[0] ? z : x, n[1] ? z : yy, FIN.white, 0, lit);
+      const ring = [[sk.x0, sk.z0], [sk.x1, sk.z0], [sk.x1, sk.z1], [sk.x0, sk.z1]];
+      const outR = [[sk.x0 - W2, sk.z0 - W2], [sk.x1 + W2, sk.z0 - W2], [sk.x1 + W2, sk.z1 + W2], [sk.x0 - W2, sk.z1 + W2]];
+      for (let i = 0; i < 4; i++) {
+        const j = (i + 1) % 4, a = ring[i], b = ring[j], c = outR[j], d = outR[i];
+        quad(B, P(a[0], y, a[1], [0, -1, 0]), P(b[0], y, b[1], [0, -1, 0]), P(c[0], y, c[1], [0, -1, 0]), P(d[0], y, d[1], [0, -1, 0]), 0, -1, 0);
+        // its outer edge down from the ceiling, and its inner edge up into the opening
+        const ex = c[0] - d[0], ez = c[1] - d[1], el = Math.hypot(ex, ez), onx = ez / el, onz = -ex / el;      // (outwards from the hole)
+        quad(B, P(d[0], ROOF, d[1], [onx, 0, onz]), P(c[0], ROOF, c[1], [onx, 0, onz]), P(c[0], y, c[1], [onx, 0, onz]), P(d[0], y, d[1], [onx, 0, onz]), onx, 0, onz);
+        quad(B, P(a[0], y, a[1], [-onx, 0, -onz]), P(b[0], y, b[1], [-onx, 0, -onz]), P(b[0], ROOF, b[1], [-onx, 0, -onz]), P(a[0], ROOF, a[1], [-onx, 0, -onz]), -onx, 0, -onz);
+      }
+    }
+  }
+
   // ---- turn the buffers into meshes ----
   const tileMat = tileMaterial(UNI, Q, { side: THREE.DoubleSide });      // both sides: some curved parts were built facing one way only and showed see-through from the other
   const casters = new THREE.Group();
@@ -792,6 +975,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     g.setAttribute('aLight', new THREE.Float32BufferAttribute(B.light, 3));
     g.setAttribute('aGlint', new THREE.Float32BufferAttribute(B.glint, 3));
     g.setAttribute('aFx', new THREE.Float32BufferAttribute(B.fx, 4));
+    g.setAttribute('aOcc', new THREE.Float32BufferAttribute(B.occ, 1));
     g.setIndex(B.idx);
     g.computeBoundingSphere(); g.computeBoundingBox();
     tris += B.idx.length / 3; verts += B.pos.length / 3;
@@ -959,6 +1143,35 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     { const p = c.at(1), rq = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 0, 1), along(0.999));
       put('plain', new THREE.TorusGeometry(0.77, 0.045, 8, 28), p[0], p[1], p[2] + 0.5, s.color, new THREE.Matrix4().compose(new THREE.Vector3(p[0], p[1], p[2]), rq, new THREE.Vector3(1, 1, 1))); }
   }
+  // rust where steel meets wet tile (Medium and up): stains on the floor round the feet of the ladders' rails, the valves'
+  // pipes and the drain's stand, and streaks down the wall under the two valves on walls. Multiplied onto what is
+  // drawn there (so they darken it in its own light), one mesh for all of them.
+  if (Q >= 1) {
+    const tex = (w, h, draw) => { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; };
+    const rust = (g, x, y, r, a) => { const gr = g.createRadialGradient(x, y, 0, x, y, r); gr.addColorStop(0, `rgba(150,92,52,${a})`); gr.addColorStop(0.55, `rgba(176,120,72,${a * 0.55})`); gr.addColorStop(1, 'rgba(200,150,100,0)'); g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); };
+    // (drawn as darkness on white: white multiplies to "no change")
+    const spotTex = tex(128, 128, (g, w) => { g.fillStyle = '#fff'; g.fillRect(0, 0, w, w); for (let i = 0; i < 9; i++) rust(g, 64 + (R() - 0.5) * 40, 64 + (R() - 0.5) * 40, 14 + R() * 30, 0.35 + R() * 0.3); });
+    const streakTex = tex(64, 256, (g, w, h) => {
+      g.fillStyle = '#fff'; g.fillRect(0, 0, w, h);
+      for (let i = 0; i < 8; i++) { const x = 32 + (i % 2 ? 1 : -1) * (9 + R() * 18), len = h * (0.35 + R() * 0.65), gr = g.createLinearGradient(0, 0, 0, len); gr.addColorStop(0, 'rgba(140,84,46,0.55)'); gr.addColorStop(1, 'rgba(190,140,95,0)'); g.fillStyle = gr; g.fillRect(x - 2 - R() * 3, 0, 3 + R() * 5, len); }
+      rust(g, 32, 6, 22, 0.6);
+    });
+    const mat = (map) => new THREE.MeshBasicMaterial({ map, transparent: true, blending: THREE.MultiplyBlending, premultipliedAlpha: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -4, fog: false, toneMapped: false });
+    const spots = [], streaks = [];
+    const spot = (x, y, z, r) => { const g = new THREE.PlaneGeometry(r * 2, r * 2); g.rotateX(-Math.PI / 2); g.rotateY(R() * Math.PI * 2); g.translate(x, y + 0.002, z); spots.push(g); };
+    for (const L of plan.ladders) { const tx = -L.nz, tz = L.nx; for (const sd of [-0.25, 0.25]) spot(L.x + tx * sd + L.nx * 0.62, G, L.z + tz * sd + L.nz * 0.62, 0.16 + R() * 0.06); }
+    for (const v of plan.valves) {
+      const th = Math.atan2(v.nx, v.nz), cx = Math.cos(th), sx = -Math.sin(th);
+      if (v.post) { spot(v.x - v.nx * 0.12, v.y, v.z - v.nz * 0.12, 0.26); continue; }
+      const px = v.x + 0.32 * cx + 0.05 * v.nx, pz = v.z + 0.32 * sx + 0.05 * v.nz;
+      spot(px + v.nx * 0.1, v.y, pz + v.nz * 0.1, 0.24);
+      // the streak down the wall from the pipe's lower bracket
+      const g = new THREE.PlaneGeometry(0.34, 0.5); g.rotateY(th); g.translate(px - v.nx * 0.046, v.y + 0.25, pz - v.nz * 0.046); streaks.push(g);
+    }
+    spot(plan.drain.x + 0.2 * -plan.drain.nx, plan.drain.y, plan.drain.z, 0.36);
+    const merge = (list) => { const pos = [], uv = []; for (const g of list) { const ng = g.index ? g.toNonIndexed() : g; pos.push(...ng.attributes.position.array); uv.push(...ng.attributes.uv.array); g.dispose(); } const o = new THREE.BufferGeometry(); o.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); o.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); o.computeBoundingSphere(); return o; };
+    for (const [list, map] of [[spots, spotTex], [streaks, streakTex]]) if (list.length) { const m = new THREE.Mesh(merge(list), mat(map)); m.renderOrder = 1; group.add(m); }
+  }
   const mergeGeo = (list) => {
     let n = 0; for (const g of list) n += g.attributes.position.count;
     const pos = new Float32Array(n * 3), nor = new Float32Array(n * 3), la = new Float32Array(n * 3), col = new Float32Array(n * 3);
@@ -994,6 +1207,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     g.setAttribute('position', new THREE.Float32BufferAttribute(B.pos, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(B.nor, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(B.uv, 2)); g.setAttribute('aLight', new THREE.Float32BufferAttribute(B.light, 3));
     g.setAttribute('aGlint', new THREE.Float32BufferAttribute(B.glint, 3)); g.setAttribute('aFx', new THREE.Float32BufferAttribute(B.fx, 4));
+    g.setAttribute('aOcc', new THREE.Float32BufferAttribute(B.occ, 1));
     g.setIndex(B.idx); g.computeBoundingSphere();
     const m = new THREE.Mesh(g, tileMat); movers.add(m);
     return m;
@@ -1245,7 +1459,9 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       if (o.axis === 'z') card(w, h, u, y, d); else card(w, h, d, y, u, Math.PI / 2);
     }
     { const sw = plan.slant.windows; card(sw[sw.length - 1].z - sw[0].z + 4, 5, 0.9, (sw[0].y0 + sw[0].y1) / 2, (sw[0].z + sw[sw.length - 1].z) / 2, Math.PI / 2); }
-    for (const r of [...plan.skylights, plan.well]) card(r.x1 - r.x0 + 1, r.z1 - r.z0 + 1, (r.x0 + r.x1) / 2, ROOFT + 1, (r.z0 + r.z1) / 2, 0, -Math.PI / 2);
+    // the skylights and the light well: one sheet of sky lying right on the roof closes every shaft at its top (a small card
+    // a metre above each one let you see past its edge, into the empty grey above the roof, when you looked up at a slant)
+    card(80, 70, 32, ROOFT + 0.002, 26, 0, -Math.PI / 2);
   }
   renderer.setClearColor(0x9a917f, 1);                      // gaps read as shaded tile; the white sky is the cards above
   return { group, theme: { name: 'pool' }, fog: null, sky: null, sun: null, far: Math.min(gfx.viewDistance || 140, 110) };

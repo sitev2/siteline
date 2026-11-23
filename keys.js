@@ -9,6 +9,8 @@ export const ACTIONS = [
   ['chatAll', 'All chat'], ['chatTeam', 'Team chat'], ['note', 'Leave a note (Backrooms)'], ['map', 'Your map (Backrooms)'],
   ['w1', 'Main gun'], ['w2', 'Pistol'], ['w5', 'Bomb'],
   ['score', 'Scoreboard'], ['menu', 'Menu'],
+  // turning with keys (for browsers that won't lock the mouse; they work everywhere)
+  ['turnL', 'Turn left'], ['turnR', 'Turn right'], ['lookU', 'Look up'], ['lookD', 'Look down'],
 ];
 
 export const DEFAULT_KEYS = {
@@ -19,6 +21,7 @@ export const DEFAULT_KEYS = {
   chatAll: 'KeyY', chatTeam: 'KeyU', note: 'KeyN', map: 'KeyM',
   w1: 'Digit1', w2: 'Digit2', w5: 'Digit5',
   score: 'Tab', menu: 'Escape',
+  turnL: 'Comma', turnR: 'Period', lookU: 'PageUp', lookD: 'PageDown',
 };
 
 export function keyMap(keys) { return { ...DEFAULT_KEYS, ...(keys || {}) }; }
@@ -27,7 +30,7 @@ export function keyMap(keys) { return { ...DEFAULT_KEYS, ...(keys || {}) }; }
 export function reverseMap(keys) {
   const k = keyMap(keys), out = {};
   for (const [act, code] of Object.entries(k)) {
-    if (!(act in DEFAULT_KEYS)) continue;      // left over from an older version of the game: ignore
+    if (!(act in DEFAULT_KEYS) || !code) continue;      // left over from an older version of the game / no key: ignore
     out[code] = act;
     const twin = code.replace(/Left$/, 'Right');
     if (twin !== code) out[twin] = out[twin] || act;
@@ -43,7 +46,7 @@ const NAMES = {
   AltLeft: 'Alt', AltRight: 'Right Alt', CapsLock: 'Caps Lock',
   ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→',
   Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'",
-  Comma: ',', Period: '.', Slash: '/', Backslash: '\\',
+  Comma: ',', Period: '.', Slash: '/', Backslash: '\\', PageUp: 'Page Up', PageDown: 'Page Down',
 };
 export function keyLabel(code) {
   if (!code) return '—';

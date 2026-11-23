@@ -263,10 +263,11 @@ function wakeOne(url, limit = WAKE_LIMIT) {
   if (st.waking) return st.waking;
   const t0 = performance.now();
   st.waking = (async () => {
-    while (performance.now() - t0 < limit) {
+    // (a sleeping server usually answers its second or third ask: try again soon, then a little less often)
+    for (let wait = 1500; performance.now() - t0 < limit; wait = Math.min(8000, wait * 1.6)) {
       if (await pingServer(url, Math.min(20000, limit))) { st.up = true; st.checkedAt = performance.now(); return true; }
       st.up = false;
-      await new Promise(r => setTimeout(r, 3000));
+      await new Promise(r => setTimeout(r, wait));
     }
     return false;
   })().finally(() => { st.waking = null; refreshWakeRow(); });
@@ -284,8 +285,8 @@ async function pickServer(onTick) {
     return st.up;
   }));
   const i = quick.indexOf(true);
-  refreshWakeRow();
-  if (i >= 0) return i;
+  // (none answered at once: go straight on to "Waking…" — refreshing the row here flashed "offline" first)
+  if (i >= 0) { refreshWakeRow(); return i; }
   const t0 = performance.now();
   const tick = () => {
     const text = `Waking the game server… ${Math.round((performance.now() - t0) / 1000)} s (can take up to a minute)`;

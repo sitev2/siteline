@@ -219,6 +219,8 @@ export class Game {
 
     this.input = new Input(this.canvas, document.getElementById('touch'), settings);
     this.input.onPauseRequest = () => { if (this.running && !this.settings.touch) this.onPause(); };
+    // some embedded browsers never lock the mouse: say once how to look around without it
+    this.input.onLockError = (hadLock) => { if (this.running && !this.settings.touch && !hadLock) this.hud.lockHint(this.settings.keys); };
     document.body.classList.toggle('touch', !!settings.touch);
     this.hud.prepareRadar(this.world);
     this.hud.show(true);
@@ -1504,11 +1506,12 @@ export class Game {
 
   updateLocal(dt) {
     const me = this.me, inp = this.input;
-    const [lx, ly] = inp.takeLook();
+    const [lx, ly] = inp.takeLook(this.chatOpen || this.buyOpen ? 0 : dt);
     const w = itemDef(me.weapon);
     const zoomK = me.zoom ? w.zoom[me.zoom - 1] / (this.settings.fov || 75) : 1;
     if (me.alive) {
       me.yaw -= lx * zoomK;
+      me.yaw = Math.atan2(Math.sin(me.yaw), Math.cos(me.yaw));      // (kept within −π…π; everything that blends yaws takes the short way round)
       me.pitch = Math.max(-1.45, Math.min(1.45, me.pitch - ly * zoomK));
     }
     if (inp.consume('flashlight')) this.toggleFlashlight();

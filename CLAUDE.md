@@ -32,7 +32,9 @@ The only folder is `server/` (the optional home game server).
 - `world.js` (multi-level map model, collision, wall-bang penetration), `maps.js` (map
   build scripts), `mapview.js` (3D scene; a wall's top/underside is hidden only by a VISIBLE wall touching it — invisible '_' spans and
   props don't count, they left see-through strips, e.g. Flame's upstairs floor edge under the '_rail'), `mapdeco.js` (visual-only dressing read from the span grid: wall caps, windows/doors, lamps, pipes, decals, distant scenery — no collision), `houses.js` (village houses: tiled roofs, windows, shutters, balconies, church/tower/inn details), `models.js` (characters with arm IK + gun models with moving parts, all built in code), `textures.js`, `audio.js` (all sound synthesised in code: 3D positional, per-map reverb, wall muffling, layered gunshots, surface footsteps (per-map loudness: `STEP_VOLUME` in `game.js` → `setStepVolume`; outpost and flame 0.6 = 40 % quieter, owner's request, landings too), reload/bolt/pump sequences timed to `anim.js`, ambience; `__test` renders buffers for checks),
-  `input.js` (keyboard/mouse + touch), `hud.js`, `weapons.js` (weapon stats)
+  `input.js` (keyboard/mouse + touch; where a browser refuses pointer lock — some embedded browsers/webviews refuse every
+  `requestPointerLock` — `lockUnavailable` turns on "drag to look": hold the RIGHT button and move the mouse, left still fires,
+  the lock is still asked for on each click; `onLockError` → `hud.lockHint` toast once a session), `hud.js`, `weapons.js` (weapon stats)
 - `config.js` — network settings and match RULES (2v2 wingman: first to 9, sides swap after round 8, 8–8 draw,
   1:55 rounds, 20 s buy time, bomb/defuse timers, blast size). After a plant, the round ends at once for the attackers
   when every defender is dead (no waiting for the explosion). The bomb preview has no text: the part of the health bar the
@@ -73,7 +75,8 @@ The only folder is `server/` (the optional home game server).
   (`fillIcons()` at start-up), `[[cart]]` tokens in hint / centre / toast text (`iconHTML()` escapes the rest), `icon(name)` in code.
   Don't add emojis to the UI; add an icon to `PATHS` instead. New game .js files must also go in the `files` list in `index.html`. Plain text marks (✓ ✕ → arrows) are fine.
 - No crouching (the owner removed it): no crouch key/button, no `duck` anywhere; everyone is always standing (`PLAYER_HEIGHT`, `EYE`).
-- `keys.js` (rebindable keys), `crosshair.js` (incl. "follow recoil": HUD moves it to the next bullet's spot), `touchlayout.js` (phone button layout), `graphics.js` (presets),
+- `keys.js` (rebindable keys; turnL / turnR / lookU / lookD = , . PgUp PgDn turn the camera with keys, 2.5 rad/s × sensitivity,
+  for browsers without mouse lock; `me.yaw` is wrapped to −π…π after each turn), `crosshair.js` (incl. "follow recoil": HUD moves it to the next bullet's spot), `touchlayout.js` (phone button layout), `graphics.js` (presets),
   `post.js` (own AO / bloom / FXAA, no three.js add-ons; plus the 'look' shaders in the composite pass (owner: "add shaders to make the game look better"; graphics option `look` "Picture shaders", on from Medium up: a little sharpening, a gentle S-curve + 10 % more colour, warm highlights / cool shadows, a faint colour fringe and a soft vignette in the corners, less-than-one-step dither against banding — NOT film grain, the owner removed grain —, and one wider bloom round); the scene and FXAA targets are sRGB 8-bit (`colorSpace: SRGBColorSpace`): plain
   8-bit linear had only a few steps near black, so dark areas showed hard bands and dark yellow broke into red streaks), `anim.js` (draw + inspect poses, `poseViewModel`: first-person hands, reloads, slides, bolts, pumps), `filter.js` (chat filter)
 - Inspects (`INSPECT` / `SPECIAL` in `anim.js`): left side → right side → back, on monotone curves (`tanSoft`: never swing past a pose) plus a
@@ -378,16 +381,29 @@ The only folder is `server/` (the optional home game server).
   - `poolview.js` (+ `poolfx.js` shaders, `poolprops.js`: valve wheels, the drain stand + gauges, floaties, the hatch) — the look: every surface's soft light is baked at load (white sky in windows/skylights + the
     sun's landing patches as lamps, with shadows, blurred fill) and then adapted to how bright the place is overall (`EXPO`: bright halls
     turned down as a whole so sun patches still stand out); the low sun (fixed, `POOL.sun`) comes through ONE shadow picture taken at load.
-    The 5 cm mosaic (and 6×6 sheet seams) is drawn by the tile shader (exact grout filtering: no shimmer), damp shiny floor near water,
+    The 5 cm mosaic (and faint 6×6 sheet seams) is drawn by the tile shader (exact grout filtering per direction: no shimmer, and a
+    wall seen side-on keeps its 5 cm rows), damp shiny floor near water,
     caustics under water and dancing light on walls/ceilings above it (Medium up), teal depth tint, soft haze. Water: gentle swell + rings
     from people (`addRipple`), a real mirror picture on Medium up (`preRender`; Low uses the baked ceiling light instead), sun glints.
     Light shafts + dust specks (Medium up), people's shadows in the sun (Medium up: a small second shadow picture, layer `castLayer`).
     Curved parts are built on top of the grid: rounded pool lips + overflow gutters, round pillars, arches/capsules (`shapedHole`), vaults,
     coves where ceilings curve into walls, the slanted window wall, steel ladders, round floor drains, coloured slide mouths.
+    Tiling is in WORLD metres everywhere (playtest fix pass, SL-xxx in the commits): flat faces use world (x, z) / (z, y) / (x, y)
+    (stair treads, landing and slab undersides too, no more polar uv); pool edges use the world coordinate along straight stretches
+    (`edgeU`, shifted by whole 30 cm sheets) and distance round bends; soffits run in the world coordinate through the wall. Tile
+    sizes are constants in poolfx.js: `MOSAIC` 0.05, `CEIL_TILE` 0.15 (rooms with `ceil: 'big'`: hallway, atrium, slide hall,
+    upstairs; plaster rooms keep plaster). The deck is cut with each pool's shape clipped to its room (`sdfDeck`; the Great Pool's box
+    runs into the grotto), collision still uses the raw shapes. Skylights snap to the 0.5 m grid (the tower's four are 2 m circles),
+    and one white sheet on the roof (ROOFT) closes every skylight shaft. No coves inside round rooms. The tower's top doorway floor
+    stops exactly on the landing's outline (they overlapped at y = 10 and z-fought). Tone curve: fitted ACES (exposure 0.8) +
+    a faint sickly grade (`uGrade`, with 'Picture shaders'). Baked AO (16 grid probes per vertex, `occlusion`, also `aOcc` for
+    grime). High up only (`WEAR` define, per pixel): grime in closed-in places, rare missing/cracked/stained tiles, puddles on damp
+    floor. Medium up: mist on the water, cove skirting at wall bases, frames round square skylights, rust decals under fittings
+    (multiply blending).
   - `poolplay.js` — your first-person arms (`PoolHands`: breaststroke while swimming, hand over hand on a ladder's rails), `poolTint`
     (people's parts under the surface are seen through the water; `setWet`: a soaked suit is darker and shinier, dries over 90 s) and
     `PoolClient` (the level on your screen: applies the host's `{t:'pool', s}` state, plays `{t:'pfx'}` events, the use target and hold-E
-    sends, throwing, the slide ride + its camera, floaties' bobbing, wet footprints that fade, steam hiss).
+    sends, throwing, the slide ride + its camera, floaties' bobbing, steam hiss; no wet footprints: removed at the owner's request, footstep sounds unchanged).
   - THE ORDER (Claude's design; the owner asked for 4 water-based steps, no hints, no logs, no map; later he asked for the side task list: Cross the channel / Heat the pool / Drain the pool / Get out, ticked from `PoolClient.done` in `poolplay.js` and kept ticked, names only, no how-to). Host side: `poolhost.js`
     (`PoolHost`, made in `Server.startPool`; runs in the host's browser and on the home server). Any one player can do each step.
     1 the bridge: pressure plates (`plan.bridges[].plates`, 1 m squares of blue tiles that sink 3 cm) raise a tiled bridge across the deep

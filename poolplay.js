@@ -168,7 +168,6 @@ export class PoolClient {
     this.useSend = 0;
     this.hissAt = 0;
     this.wet = new Map();           // id → how wet their suit is (0 … 1)
-    this.prints = new Footprints(game.scene);
     this.lastValveP = [0, 0, 0];
     this.curves = this.plan.slides.map(sl => slideCurve(sl.path));
   }
@@ -364,72 +363,20 @@ export class PoolClient {
         if (d < 14) sfx.playPool('hiss', { x, y: this.level + 0.4, z }, g.occlusion(x, this.level + 0.5, z), h[k] * 0.7);
       });
     }
-    // wet suits: soaked by deep water, drying slowly; wet boots leave prints on dry tiles that fade
-    const wetStep = (id, p, model, swimming, moved) => {
+    // wet suits: soaked by deep water, drying slowly
+    const wetStep = (id, p, model, swimming) => {
       const b = g.world.bodyAt(p.x, p.z), inWater = b && b.y > p.y + 0.35;
       let w = this.wet.get(id) || 0;
       w = inWater ? Math.min(1, w + dt * (swimming ? 2 : 0.6)) : Math.max(0, w - dt / 90);
       this.wet.set(id, w);
       if (model && model.root.userData.setWet) model.root.userData.setWet(w);
-      if (!b || b.y < p.y - 0.02) this.prints.walk(id, p, w, moved);
     };
-    if (me.alive) wetStep(g.myId, me.pos, null, me.swim, me.onGround);
-    for (const r of g.remotes.values()) if (r.alive && r.model && !r.model.monster && r.rp) wetStep(r.id, r.rp, r.model, false, Math.abs(r.vel ? r.vel.y : 0) < 0.5);
-    this.prints.update(dt);
+    if (me.alive) wetStep(g.myId, me.pos, null, me.swim);
+    for (const r of g.remotes.values()) if (r.alive && r.model && !r.model.monster && r.rp) wetStep(r.id, r.rp, r.model, false);
     if (g.poolHands) g.poolHands.setWet(this.wet.get(g.myId) || 0);
   }
 
-  destroy() { this.prints.dispose(); document.body.classList.remove('pool-ring'); }
+  destroy() { document.body.classList.remove('pool-ring'); }
 }
 const EYE_H = 1.62;
 
-// wet footprints: dark damp ovals on dry tiles, left and right, fading away (a fixed pool of them)
-class Footprints {
-  constructor(scene) {
-    this.n = 80; this.i = 0; this.last = new Map();
-    const geo = new THREE.PlaneGeometry(0.11, 0.26); geo.rotateX(-Math.PI / 2);
-    this.mat = new THREE.MeshBasicMaterial({ color: '#000000', transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3, map: printTexture() });
-    this.mesh = new THREE.InstancedMesh(geo, this.mat, this.n);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.life = new Float32Array(this.n); this.k0 = new Float32Array(this.n);
-    this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(this.n * 3), 3);
-    this.dummy = new THREE.Object3D();
-    for (let i = 0; i < this.n; i++) { this.dummy.position.set(0, -99, 0); this.dummy.updateMatrix(); this.mesh.setMatrixAt(i, this.dummy.matrix); }
-    this.mesh.frustumCulled = false; this.mesh.renderOrder = 2;
-    scene.add(this.mesh);
-  }
-  walk(id, p, wet, onGround) {
-    if (wet < 0.08 || !onGround) return;
-    const L = this.last.get(id);
-    if (!L) { this.last.set(id, { x: p.x, z: p.z, side: 1 }); return; }
-    const d = Math.hypot(p.x - L.x, p.z - L.z);
-    if (d < 0.62) return;
-    if (d > 3) { L.x = p.x; L.z = p.z; return; }
-    const yaw = Math.atan2(p.x - L.x, p.z - L.z), sx = Math.cos(yaw) * 0.11 * L.side, sz = -Math.sin(yaw) * 0.11 * L.side;
-    L.side = -L.side; L.x = p.x; L.z = p.z;
-    const i = this.i++ % this.n;
-    this.dummy.position.set(p.x + sx, p.y + 0.004, p.z + sz); this.dummy.rotation.set(0, yaw, 0); this.dummy.updateMatrix();
-    this.mesh.setMatrixAt(i, this.dummy.matrix);
-    this.life[i] = 1; this.k0[i] = Math.min(1, wet * 1.2);
-    this.mesh.instanceMatrix.needsUpdate = true;
-  }
-  update(dt) {
-    let any = false;
-    for (let i = 0; i < this.n; i++) {
-      if (this.life[i] <= 0) continue;
-      this.life[i] = Math.max(0, this.life[i] - dt / 30);
-      const a = this.life[i] * this.k0[i] * 0.22;
-      this.mesh.instanceColor.setXYZ(i, a, a, a); any = true;
-    }
-    if (any) this.mesh.instanceColor.needsUpdate = true;
-  }
-  dispose() { this.mesh.removeFromParent(); this.mesh.geometry.dispose(); this.mat.dispose(); }
-}
-// a boot print: a soft sole and heel (white = dark on the floor; the strength comes from the instance colour)
-function printTexture() {
-  const c = document.createElement('canvas'); c.width = 32; c.height = 64;
-  const g = c.getContext('2d');
-  const blob = (x, y, rx, ry) => { const gr = g.createRadialGradient(x, y, 0, x, y, Math.max(rx, ry)); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.7, 'rgba(255,255,255,0.7)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.save(); g.translate(x, y); g.scale(rx / Math.max(rx, ry), ry / Math.max(rx, ry)); g.translate(-x, -y); g.fillStyle = gr; g.fillRect(0, 0, 32, 64); g.restore(); };
-  blob(16, 20, 13, 18); blob(16, 50, 10, 11);
-  const t = new THREE.CanvasTexture(c); return t;
-}
