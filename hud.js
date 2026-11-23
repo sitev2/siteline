@@ -4,6 +4,7 @@ import { TEAM_COLORS } from './models.js';
 import { itemName, WEAPON_ICONS } from './weapons.js';
 import { drawCrosshair, crosshairCfg } from './crosshair.js';
 import { icon, iconHTML } from './icons.js';
+import { keyMap, keyLabel } from './keys.js';
 
 const $ = (id) => document.getElementById(id);
 export const TEAM_NAMES = { atk: 'Attackers', def: 'Defenders' };
@@ -223,6 +224,25 @@ export class Hud {
     el.classList.remove('hidden');
     this.set('progress-label', label);
     $('progress-fill').style.width = `${Math.min(100, frac * 100)}%`;
+  }
+
+  // a small note that goes away by itself (doesn't block anything), like the menu's toasts
+  toast(text, ms = 6000) {
+    const box = $('toasts');
+    if (!box) return;
+    const el = document.createElement('div');
+    el.className = 'toast';
+    el.innerHTML = iconHTML(text);
+    box.appendChild(el);
+    setTimeout(() => el.remove(), ms);
+  }
+
+  // the browser won't lock the mouse here (some built-in / embedded browsers): once a session
+  lockHint(keys) {
+    if (Hud.lockHinted) return;
+    Hud.lockHinted = true;
+    const k = keyMap(keys), names = ['turnL', 'turnR', 'lookU', 'lookD'].filter(a => k[a]).map(a => keyLabel(k[a]));
+    this.toast(`Mouse lock isn't available here — hold right-click and move the mouse to look around${names.length ? ` (or turn with ${names.join(' ')})` : ''}`, 9000);
   }
 
   hint(text) {
