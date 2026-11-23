@@ -20,7 +20,7 @@ export function poolUniforms(sunDir) {
     uWaterY: { value: 2.88 }, uGreatY: { value: 2.88 },
     uClipY: { value: -1e6 }, uLite: { value: 0 },
     uHaze: { value: new THREE.Color(0.98, 0.93, 0.80) }, uHazeK: { value: 0.0075 },
-    uExposure: { value: 1.0 },
+    uExposure: { value: 1.0 }, uGrade: { value: 0 },
     uRipples: { value: Array.from({ length: MAX_RIPPLES }, () => new THREE.Vector4(0, 0, -99, 0)) },
     uBlobs: { value: Array.from({ length: 6 }, () => new THREE.Vector4(0, -99, 0, 0)) },
     uRefl: { value: null }, uReflMat: { value: new THREE.Matrix4() }, uReflOn: { value: 0 },
@@ -98,13 +98,21 @@ const SHADOW = /* glsl */`
 `;
 
 const TONE = /* glsl */`
-  uniform float uExposure;
+  uniform float uExposure, uGrade;
   // filmic (ACES) tone curve: bright sun patches and the glare round skylights roll off softly and never clip to flat
   // white, mid-tones keep their brightness (exposure 0.8 matches the old curve there), the darkest corners get a
   // little more depth. The picture is then written out as sRGB (colorspace_fragment).
+  // uGrade (with the graphics option 'Picture shaders'): the Poolrooms' own grade on top, faint: shadows leaning a sickly
+  // green, highlights an old warm yellow, a touch less colour (empty, too-clean, too-quiet)
   vec3 tone(vec3 c) {
     c = max(c, 0.0) * (uExposure * 0.8);
-    return clamp(c * (2.51 * c + 0.03) / (c * (2.43 * c + 0.59) + 0.14), 0.0, 1.0);
+    vec3 t = clamp(c * (2.51 * c + 0.03) / (c * (2.43 * c + 0.59) + 0.14), 0.0, 1.0);
+    if (uGrade > 0.0) {
+      float l = dot(t, vec3(0.2126, 0.7152, 0.0722));
+      vec3 g = t * mix(vec3(0.965, 1.0, 0.975), vec3(1.02, 1.0, 0.945), smoothstep(0.15, 0.85, l));
+      t = mix(t, mix(vec3(l), g, 0.93), uGrade);
+    }
+    return t;
   }
 `;
 
@@ -375,7 +383,14 @@ const WATER_FRAG = /* glsl */`
     // (what lies under the surface is already drawn, tinted by the water over it: the mirror goes on top of it)
     float hz = 1.0 - exp(-dist * uHazeK);
     col = mix(col, tone(uHaze * 0.9) * F, hz * 0.5);
+    #ifdef FINE
+    // a thin warm mist lying on the water: it thickens with distance and veils what lies under the surface too
+    float mist = (1.0 - exp(-dist * 0.03)) * 0.2;
+    vec3 mc = tone(uHaze * clamp(dot(vL, vec3(0.35)) * 1.1 + 0.25, 0.0, 1.2));
+    gl_FragColor = vec4(col + mc * mist * (1.0 - F), 1.0 - (1.0 - F) * (1.0 - mist));
+    #else
     gl_FragColor = vec4(col, F);
+    #endif
     #include <colorspace_fragment>
   }
 `;

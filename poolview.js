@@ -36,6 +36,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   const group = new THREE.Group(), ud = group.userData;
   const R = rng(4242);
   const UNI = poolUniforms(S);
+  UNI.uGrade.value = gfx.look ? 1 : 0;                // (the Poolrooms' own faint colour grade goes with 'Picture shaders')
   const spansAt = (ix, iz) => (ix < 0 || iz < 0 || ix >= Wc || iz >= Dc ? null : world.spans[iz * Wc + ix]);
   const outdoors = (ix, iz) => ix < 3 || iz < 3 || iz >= 101;            // beyond the glazed walls: open sky
   const drawn = s => s.m[0] !== '_';
