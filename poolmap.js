@@ -201,6 +201,7 @@ function makePlan(level) {
   plan.skylights = S;
 
   // ---- how each room is finished: tiled everywhere, or smooth pale walls and ceiling (first match wins) ----
+  // ceil 'big': the tiled halls' ceilings have bigger tiles than the walls (they were bare plaster, which read as untextured)
   // vault: a barrel ceiling along 'x' or 'z' (spring: where it starts to curve); cove: ceilings curve into the walls
   plan.rooms = [
     { name: 'lane', x0: 2, z0: 8, x1: 9, z1: 47, y0: 0, y1: G + 4.6, wall: 'tile', ceil: 'tile', cove: 0.6 },
@@ -212,13 +213,13 @@ function makePlan(level) {
     { name: 'deadend', x0: 34.4, z0: 3, x1: 37.5, z1: 17, y0: 0, y1: G + 2.4, wall: 'smooth', ceil: 'smooth', dark: 0.3 },      // dark: hardly any light gets in
     { name: 'kidney', x0: 11, z0: 28, x1: 35, z1: 50, y0: 0, y1: G + 4.2, wall: 'tile', ceil: 'tile', cove: 0.6 },
     { name: 'channel', x0: 35, z0: 21, x1: 41, z1: 45.5, y0: 0, y1: G + 4.2, wall: 'tile', ceil: 'tile' },
-    { name: 'hallway', x0: 35.5, z0: 47, x1: 58.5, z1: 50, y0: G, y1: G + 3.4, wall: 'tile', ceil: 'smooth', cove: 0.5 },
-    { name: 'atrium', x0: 41, z0: 21, x1: 58, z1: 44, y0: 0, y1: ROOF, wall: 'tile', ceil: 'smooth' },
-    { name: 'slidehall', x0: 41.5, z0: 9, x1: 47, z1: 19.5, y0: 0, y1: ROOF, wall: 'tile', ceil: 'smooth' },
+    { name: 'hallway', x0: 35.5, z0: 47, x1: 58.5, z1: 50, y0: G, y1: G + 3.4, wall: 'tile', ceil: 'big', cove: 0.5 },
+    { name: 'atrium', x0: 41, z0: 21, x1: 58, z1: 44, y0: 0, y1: ROOF, wall: 'tile', ceil: 'big' },
+    { name: 'slidehall', x0: 41.5, z0: 9, x1: 47, z1: 19.5, y0: 0, y1: ROOF, wall: 'tile', ceil: 'big' },
     { name: 'lobby', x0: 54.5, z0: 15.5, x1: 56.5, z1: 20, y0: G, y1: G + 3, wall: 'tile', ceil: 'tile', vault: 'z', spring: G + 2 },
     { name: 'grotto', x0: 58.5, z0: 26, x1: 62.5, z1: 40, y0: 0, y1: G + 3.6, wall: 'tile', ceil: 'tile', vault: 'z', spring: G + 2.6 },
     { name: 'exit', x0: 51, z0: 41, x1: 53, z1: 46.5, y0: 0, y1: 8.5, wall: 'tile', ceil: 'tile' },
-    { name: 'upstairs', x0: 30, z0: 2, x1: 63, z1: 48, y0: U, y1: ROOF, wall: 'tile', ceil: 'smooth', cove: 0.45 },
+    { name: 'upstairs', x0: 30, z0: 2, x1: 63, z1: 48, y0: U, y1: ROOF, wall: 'tile', ceil: 'big', cove: 0.45 },
   ];
   plan.roomAt = (x, y, z) => plan.rooms.find(r => x >= r.x0 - 0.01 && x <= r.x1 + 0.01 && z >= r.z0 - 0.01 && z <= r.z1 + 0.01 && y >= r.y0 - 0.01 && y <= r.y1 + 0.01) || null;
 

@@ -17,7 +17,13 @@ const { G, U, WY, SH, ROOF } = POOL;
 const ROOFT = ROOF + 0.4;
 const S = POOL.sun;                                   // the way the sunlight travels
 const SUN = [3.3, 2.4, 1.4], SKY = [13, 12.6, 11.6], ALB = [0.84, 0.79, 0.66];
-const FIN = { cream: 0, white: 1, blue: 2, smooth: 3, gutter: 4 };
+const FIN = { cream: 0, white: 1, blue: 2, smooth: 3, gutter: 4, ceil: 5 };      // (5: the bigger ceiling tiles)
+// How surfaces are tiled: every surface's uv is in world metres, so the tile shader (poolfx.js) draws the same size of
+// tile everywhere and the grout lines carry on from one piece to the next. Flat floors and ceilings use (x, z), walls
+// facing x use (z, y) and walls facing z (x, y): the world position itself. Curved pieces (round walls, pillars, pool
+// edges, vaults, arches) use the distance along them, started from the world coordinate of the straight piece they
+// carry on from, and height y wherever they stand upright.
+const SHEET = 0.3;                                    // the mosaic's sheets (6 × 5 cm): shifting a pattern by this changes nothing
 const EXPO = { a: 0.34, b: 0.1, p: 1.05 };          // the eye's adaptation (see shade())
 
 class Buf {
@@ -353,7 +359,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       // underside
       if (s.y0 > 0.01 && !spans.some(t => t !== s && drawn(t) && t.y1 >= s.y0 - 0.001 && t.y0 < s.y0 - 0.001)) {
         const r = roomAt(cx, s.y0 - 0.1, cz);
-        flat(x0, z0, x1, z1, s.y0, -1, r && r.ceil === 'smooth' ? FIN.smooth : FIN.cream, 0);
+        flat(x0, z0, x1, z1, s.y0, -1, r && r.ceil === 'smooth' ? FIN.smooth : r && r.ceil === 'big' ? FIN.ceil : FIN.cream, 0);
       }
       // sides
       for (const [nx, nz] of SIDES) {
@@ -450,6 +456,44 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     segs.forEach((s, i) => { if (used[i]) return; for (const e of [0, 1]) if ((ends.get(key(s[e])) || []).length === 1 && !used[i]) outlines.push({ pool: p, pts: walk(i, e), closed: false }); });
     segs.forEach((s, i) => { if (!used[i]) { const pts = walk(i, 0); outlines.push({ pool: p, pts, closed: key(pts[0]) === key(pts[pts.length - 1]) }); } });
   }
+  // u along a pool's edge (metres): on its straight stretches the world coordinate along them, so the grout lines up with
+  // the deck's tiles; round the bends the distance along the edge, stretched a little to meet the next straight stretch
+  // (which is moved by whole sheets to suit: the pattern looks the same)
+  const edgeU = (pts, nrm, len, closed) => {
+    const n = pts.length, total = len[n - 1], runs = [];
+    let cur = null;
+    for (let i = 0; i < n; i++) {
+      const ax = Math.abs(nrm[i][0]) > 0.9995 ? 1 : Math.abs(nrm[i][1]) > 0.9995 ? 0 : -1;      // 1: faces x (runs along z), 0: faces z (runs along x)
+      if (ax < 0 || (cur && cur.ax !== ax)) cur = null;
+      if (ax < 0) continue;
+      if (!cur) { cur = { ax, i0: i, i1: i }; runs.push(cur); } else cur.i1 = i;
+    }
+    const good = runs.filter(r => len[r.i1] - len[r.i0] > 0.3);
+    if (!good.length) { const fit = closed ? Math.max(0.05, Math.round(total / 0.05) * 0.05) / total : 1; return len.map(l => l * fit); }
+    const u = new Array(n), coord = (i, ax) => pts[i][ax];
+    let prev = null;
+    for (const r of good) {
+      const sg = Math.sign(coord(r.i1, r.ax) - coord(r.i0, r.ax)) || 1;
+      let shift = 0;
+      if (prev) shift = Math.round((u[prev.i1] + (len[r.i0] - len[prev.i1]) - sg * coord(r.i0, r.ax)) / SHEET) * SHEET;
+      for (let i = r.i0; i <= r.i1; i++) u[i] = sg * coord(i, r.ax) + shift;
+      if (prev) { const a = prev.i1, b = r.i0, L = (len[b] - len[a]) || 1; for (let i = a + 1; i < b; i++) u[i] = u[a] + (u[b] - u[a]) * (len[i] - len[a]) / L; }
+      prev = r;
+    }
+    const first = good[0], last = good[good.length - 1];
+    if (closed) {
+      // the bend through the loop's start: from the last straight round to the first (a whole number of sheets on)
+      const Lw = total - len[last.i1] + len[first.i0];
+      const K = Math.round((u[last.i1] + Lw - u[first.i0]) / SHEET) * SHEET, target = u[first.i0] + K;
+      const at = (l) => u[last.i1] + (target - u[last.i1]) * l / (Lw || 1);
+      for (let i = last.i1 + 1; i < n; i++) u[i] = at(len[i] - len[last.i1]);
+      for (let i = 0; i < first.i0; i++) u[i] = at(total - len[last.i1] + len[i]) - K;
+    } else {
+      for (let i = 0; i < first.i0; i++) u[i] = u[first.i0] - (len[first.i0] - len[i]);
+      for (let i = last.i1 + 1; i < n; i++) u[i] = u[last.i1] + (len[i] - len[last.i1]);
+    }
+    return u;
+  };
   const LIP = [[0.0, -0.09], [-0.05, -0.06], [-0.06, 0.0], [-0.035, 0.055], [0.03, 0.086], [0.13, 0.092], [0.25, 0.074], [0.33, 0.04], [0.37, 0.004]];
   for (const o of outlines) {
     const p = o.pool, pts = o.pts, n = pts.length;
@@ -458,11 +502,11 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     const nrm = pts.map(q => { const e = 0.03; let gx = p.sdf(q[0] + e, q[1]) - p.sdf(q[0] - e, q[1]), gz = p.sdf(q[0], q[1] + e) - p.sdf(q[0], q[1] - e); const l = Math.hypot(gx, gz) || 1; return [gx / l, gz / l]; });
     const len = [0];
     for (let i = 1; i < n; i++) len.push(len[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
-    const total = len[n - 1], fit = o.closed ? Math.max(0.05, Math.round(total / 0.05) * 0.05) / total : 1;
+    const uu = edgeU(pts, nrm, len, o.closed);
     const wk = p.name === 'great' ? 2 : 1;
     const wallRows = [p.bottom, ...[1.2, 2.1].filter(y => y > p.bottom + 0.3 && y < WY - 0.4), WY - 0.2, G - 0.09];
     for (let i = 0; i < n - 1; i++) {
-      const a = pts[i], b = pts[i + 1], na = nrm[i], nb = nrm[i + 1], ua = len[i] * fit, ub = len[i + 1] * fit;
+      const a = pts[i], b = pts[i + 1], na = nrm[i], nb = nrm[i + 1], ua = uu[i], ub = uu[i + 1];
       const B = bufAt(a[0], G - 1, a[1]);
       // the wall down into the pool (a pale blue band at the waterline)
       for (let r = 0; r < wallRows.length - 1; r++) {
@@ -601,8 +645,8 @@ export function buildPoolScene(world, renderer, gfx = {}) {
         const ta = t0 + (t1 - t0) * k / sub, tb = t0 + (t1 - t0) * (k + 1) / sub;
         for (let j = 0; j < 2; j++) {
           const pa = at(ta, rs[j]), pb = at(tb, rs[j]), pc = at(tb, rs[j + 1]), pd = at(ta, rs[j + 1]), B = bufAt(pa[0], y, pa[1]);
-          const P = (p, t, r) => V(B, p[0], y, p[1], 0, ny, 0, t * RAD * 3.3, r, fin, 0);
-          quad(B, P(pa, ta, rs[j]), P(pb, tb, rs[j]), P(pc, tb, rs[j + 1]), P(pd, ta, rs[j + 1]), 0, ny, 0);
+          const P = (p) => V(B, p[0], y, p[1], 0, ny, 0, p[0], p[1], fin, 0);      // (world x, z: square tiles, lined up with the floors)
+          quad(B, P(pa), P(pb), P(pc), P(pd), 0, ny, 0);
         }
       }
     };
@@ -631,8 +675,8 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       const tb = Math.min(T.a1 + 30, t + 7.5), ya = G + towerH(t) - 0.35, yb = G + towerH(tb) - 0.35;
       for (let j = 0; j < 2; j++) {
         const pa = at(t, rs[j]), pb = at(tb, rs[j]), pc = at(tb, rs[j + 1]), pd = at(t, rs[j + 1]), B = bufAt(pa[0], ya, pa[1]);
-        quad(B, V(B, pa[0], ya, pa[1], 0, -1, 0, t * RAD * 3.3, rs[j], FIN.cream, 0), V(B, pb[0], yb, pb[1], 0, -1, 0, tb * RAD * 3.3, rs[j], FIN.cream, 0),
-          V(B, pc[0], yb, pc[1], 0, -1, 0, tb * RAD * 3.3, rs[j + 1], FIN.cream, 0), V(B, pd[0], ya, pd[1], 0, -1, 0, t * RAD * 3.3, rs[j + 1], FIN.cream, 0), 0, -1, 0);
+        quad(B, V(B, pa[0], ya, pa[1], 0, -1, 0, pa[0], pa[1], FIN.cream, 0), V(B, pb[0], yb, pb[1], 0, -1, 0, pb[0], pb[1], FIN.cream, 0),
+          V(B, pc[0], yb, pc[1], 0, -1, 0, pc[0], pc[1], FIN.cream, 0), V(B, pd[0], ya, pd[1], 0, -1, 0, pd[0], pd[1], FIN.cream, 0), 0, -1, 0);
       }
     }
     riser(from, G, G + towerH(from), 1);
@@ -660,15 +704,19 @@ export function buildPoolScene(world, renderer, gfx = {}) {
         const ids = arc.map(q => { const p = to3(q[0], q[1], d); return V(B, p[0], p[1], p[2], n[0], n[1], n[2], ...uvOf(q[0], q[1]), o.fin || FIN.cream, 0, lit); });
         for (let k = 0; k < NA; k++) tri(B, ci, ids[k], ids[k + 1], n[0], n[1], n[2]);
       }
-      // the curve through the wall
+      // the curve through the wall: tiled across in the world coordinate through the wall (as the reveals beside it), and
+      // round it by the distance from where it springs (so it carries on the reveal's rows)
+      const vc = o.vAt ? o.vAt(ov) : ov, upper = a0 < Math.PI * 0.75;
+      const vS = (a) => vc + (upper ? 1 : -1) * r * (a0 === 0 || a0 === Math.PI ? a - a0 : a0 + Math.PI / 2 - a);
+      const dU = (d) => (o.depthU === false ? d - d0 : d);
       for (let k = 0; k < NA && !o.noSoffit; k++) {
         const q0 = arc[k], q1 = arc[k + 1];
         const nn = (q) => { const a = to3(q[0], q[1], d0), b = to3(q[0] - q[2] * 0.1, q[1] - q[3] * 0.1, d0); const l = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1; return [(b[0] - a[0]) / l, (b[1] - a[1]) / l, (b[2] - a[2]) / l]; };
         const n0 = nn(q0), n1 = nn(q1), al0 = a0 + (Math.PI / 2) * k / NA, al1 = a0 + (Math.PI / 2) * (k + 1) / NA;
         const p00 = to3(q0[0], q0[1], d0), p10 = to3(q1[0], q1[1], d0), p11 = to3(q1[0], q1[1], d1), p01 = to3(q0[0], q0[1], d1), B = bufAt(p00[0], p00[1], p00[2]);
-        const fin = o.finIn == null ? (o.fin || FIN.cream) : o.finIn, dd = Math.abs(d1 - d0);
-        quad(B, V(B, p00[0], p00[1], p00[2], n0[0], n0[1], n0[2], 0, al0 * r, fin, 0, lit), V(B, p10[0], p10[1], p10[2], n1[0], n1[1], n1[2], 0, al1 * r, fin, 0, lit),
-          V(B, p11[0], p11[1], p11[2], n1[0], n1[1], n1[2], dd, al1 * r, fin, 0, lit), V(B, p01[0], p01[1], p01[2], n0[0], n0[1], n0[2], dd, al0 * r, fin, 0, lit), n0[0] + n1[0], n0[1] + n1[1], n0[2] + n1[2]);
+        const fin = o.finIn == null ? (o.fin || FIN.cream) : o.finIn;
+        quad(B, V(B, p00[0], p00[1], p00[2], n0[0], n0[1], n0[2], dU(d0), vS(al0), fin, 0, lit), V(B, p10[0], p10[1], p10[2], n1[0], n1[1], n1[2], dU(d0), vS(al1), fin, 0, lit),
+          V(B, p11[0], p11[1], p11[2], n1[0], n1[1], n1[2], dU(d1), vS(al1), fin, 0, lit), V(B, p01[0], p01[1], p01[2], n0[0], n0[1], n0[2], dU(d1), vS(al0), fin, 0, lit), n0[0] + n1[0], n0[1] + n1[1], n0[2] + n1[2]);
       }
     }
   };
@@ -710,7 +758,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       rect(z, w.z - w.w / 2, s.y0, s.y1);
       rect(w.z - w.w / 2, w.z + w.w / 2, s.y0, w.y0); rect(w.z - w.w / 2, w.z + w.w / 2, w.y1, s.y1);
       // the capsule: its corners on the slanted wall, and a bright reveal straight back to the glass line
-      const o = { shape: 'capsule', fin: FIN.cream, finIn: FIN.white, uAt: u => w.z - w.w / 2 + u, vAt: v => s.y0 + (w.y0 + v - s.y0) * len / hgt };
+      const o = { shape: 'capsule', fin: FIN.cream, finIn: FIN.white, depthU: false, uAt: u => w.z - w.w / 2 + u, vAt: v => s.y0 + (w.y0 + v - s.y0) * len / hgt };
       const to3 = (u, v, d) => [d < 0.5 ? xAt(w.y0 + v) : s.x - 0.5, w.y0 + v, w.z - w.w / 2 + u];
       shapedHole(o, w.w, w.y1 - w.y0, to3, [[0, n]], 0, 1);
       z = w.z + w.w / 2;
@@ -742,7 +790,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       const along = r.vault === 'z', NS = 12;
       const across = Array.from({ length: NS + 1 }, (_, k) => { const a = Math.PI * k / NS; return (1 - Math.cos(a)) / 2; });      // closer together near the walls
       const l0 = along ? r.z0 : r.x0, l1 = along ? r.z1 : r.x1, c0 = along ? r.x0 : r.z0, c1 = along ? r.x1 : r.z1;
-      const fin = r.ceil === 'smooth' ? FIN.smooth : FIN.cream;
+      const fin = r.ceil === 'smooth' ? FIN.smooth : FIN.cream;      // (a vault is the walls bending over: wall tiles)
       let arcLen = [0];
       for (let k = 1; k <= NS; k++) { const ca = c0 + (c1 - c0) * across[k - 1], cb = c0 + (c1 - c0) * across[k]; arcLen.push(arcLen[k - 1] + Math.hypot(cb - ca, hOf(r, along ? cb : 0, along ? 0 : cb) - hOf(r, along ? ca : 0, along ? 0 : ca))); }
       const fitV = Math.max(0.05, Math.round(arcLen[NS] / 0.05) * 0.05) / arcLen[NS];

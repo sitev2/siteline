@@ -122,9 +122,11 @@ const TILE_VERT = /* glsl */`
 `;
 
 // aFx: x = finish (0 cream mosaic, 1 white mosaic, 2 pale blue mosaic, 3 smooth plaster, 4 gutter slot, 5 big cream
-// tiles), y = the water this surface can be under (0 none, 1 a pool, 2 the Great Pool (it drains), 3 a flooded
+// ceiling tiles), y = the water this surface can be under (0 none, 1 a pool, 2 the Great Pool (it drains), 3 a flooded
 // floor), z = how much of the water's reflected light dances on it, w = how wet it is (shinier)
 const TILE_FRAG = /* glsl */`
+  #define MOSAIC 0.05
+  #define CEIL_TILE 0.15
   ${COMMON}
   ${SHADOW}
   ${TONE}
@@ -148,28 +150,35 @@ const TILE_FRAG = /* glsl */`
     float gloss = fin < 2.5 ? 1.0 : fin < 3.5 ? 0.1 : fin < 4.5 ? 0.3 : 1.0;
     vec3 alb = base; vec2 bump = vec2(0.0);
     if (fin < 2.5 || fin > 4.5) {
-      float T = fin > 4.5 ? 0.15 : 0.05;
+      // tile sizes in metres (one number per kind of tile, the same on every surface: every surface's uv is in world
+      // metres, see poolview.js): the 5 cm mosaic on walls, floors and pools, the bigger ceiling tiles
+      float T = fin > 4.5 ? CEIL_TILE : MOSAIC;
       vec2 g = uv / T, id = floor(g), f = fract(g);
       vec2 fw = max(fwidth(g), vec2(1e-4));
-      vec2 e = min(f, 1.0 - f);                                 // how far from the tile's edge
-      float gw = fin > 4.5 ? 0.02 : 0.04;
+      float gw = fin > 4.5 ? 0.035 : 0.04;
       // how much of this pixel is grout: worked out exactly over the pixel's footprint, so there is neither
       // shimmer nor a dark band where the tiles get smaller than a pixel
       vec2 ga = g + gw - 0.5 * fw, gb = g + gw + 0.5 * fw;
       vec2 cov = clamp((floor(gb) * 2.0 * gw + min(fract(gb), 2.0 * gw) - floor(ga) * 2.0 * gw - min(fract(ga), 2.0 * gw)) / fw, 0.0, 1.0);
-      cov = mix(cov, vec2(2.0 * gw), smoothstep(0.45, 1.4, max(fw.x, fw.y)));      // (far off: no stripes, just the average)
+      // far off the lines melt into their average — each way on its own: on a wall seen side-on the squashed lines go
+      // but the rows stay (both used to go at once there, leaving only the sheet seams: it looked like bigger tiles)
+      cov = mix(cov, vec2(2.0 * gw), smoothstep(0.45, 1.4, fw));
       float grout = 1.0 - (1.0 - cov.x) * (1.0 - cov.y);
-      float near = 1.0 - smoothstep(0.15, 0.6, max(fw.x, fw.y));
+      vec2 nearV = 1.0 - smoothstep(0.15, 0.6, fw);
+      float near = nearV.x * nearV.y;
       float h = hash21(id);
       alb = base * (1.0 + (h - 0.5) * 0.07 * near) * (1.0 + (hash21(id + 7.3) - 0.5) * vec3(0.03, 0.0, -0.04) * near);
       alb = mix(alb, base * vec3(0.46, 0.44, 0.42), grout);
-      // mosaic comes in sheets of six by six: their seams and the slight difference from sheet to sheet still
-      // read as tiling from across the hall, when the little tiles have melted together
-      vec2 g6 = g / 6.0, fw6 = fw / 6.0, sa = g6 + 0.012 - 0.5 * fw6, sb = g6 + 0.012 + 0.5 * fw6;
-      vec2 c6 = clamp((floor(sb) * 0.024 + min(fract(sb), 0.024) - floor(sa) * 0.024 - min(fract(sa), 0.024)) / fw6, 0.0, 1.0);
-      float far6 = 1.0 - smoothstep(0.2, 0.7, max(fw6.x, fw6.y));
-      alb *= 1.0 - (1.0 - (1.0 - c6.x) * (1.0 - c6.y)) * 0.42 * (1.0 - near * 0.7);
-      alb *= 1.0 + (hash21(floor(g6) + 3.1) - 0.5) * 0.045 * far6;
+      if (fin < 2.5) {
+        // mosaic comes in sheets of six by six: a faint seam and a slight difference from sheet to sheet keep a hint of
+        // tiling across the hall when the little tiles have melted together (faint: strong seams read as big tiles)
+        vec2 g6 = g / 6.0, fw6 = fw / 6.0, sa = g6 + 0.012 - 0.5 * fw6, sb = g6 + 0.012 + 0.5 * fw6;
+        vec2 c6 = clamp((floor(sb) * 0.024 + min(fract(sb), 0.024) - floor(sa) * 0.024 - min(fract(sa), 0.024)) / fw6, 0.0, 1.0);
+        c6 = mix(c6, vec2(0.024), smoothstep(0.45, 1.4, fw6));
+        vec2 far6 = 1.0 - smoothstep(0.2, 0.7, fw6);
+        alb *= 1.0 - (1.0 - (1.0 - c6.x) * (1.0 - c6.y)) * 0.1 * (1.0 - near * 0.7);
+        alb *= 1.0 + (hash21(floor(g6) + 3.1) - 0.5) * 0.04 * far6.x * far6.y;
+      }
       gloss *= 1.0 - grout * 0.85;
       // each little tile is not quite flat and not quite level: that is what makes the highlights sparkle
       bump = ((vec2(hash21(id + 1.7), hash21(id + 4.1)) - 0.5) * 0.05 + (f - 0.5) * smoothstep(0.30, 0.50, max(abs(f.x - 0.5), abs(f.y - 0.5))) * 0.5) * near;
