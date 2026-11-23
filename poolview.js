@@ -39,6 +39,19 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   const wkOf = (ix, iz) => { const b = bodyIdx(ix, iz); if (!b) return 0; const o = world.bodies[b - 1]; return o.shallow ? 3 : o.name === 'great' ? 2 : 1; };
   const inExit = (x, z) => { const t = plan.exit.tunnel; return x > t.x0 - 0.01 && x < t.x1 + 0.01 && z > t.z0 - 0.01 && z < t.z1 + 0.01; };
   const sdfMin = (x, z) => { let d = 9; for (const p of plan.pools) if (x > p.x0 - 1.5 && x < p.x1 + 1.5 && z > p.z0 - 1.5 && z < p.z1 + 1.5) d = Math.min(d, p.sdf(x, z)); return d; };
+  // the same, but a pool also ends at the room it is clipped to: the Great Pool's shape runs on to x = 60, into the grotto,
+  // and the deck there (and the floor of the three arches between them) was taken for water and never drawn, so the
+  // walls between the arches stood on nothing with the water showing under them. (Only for drawing the deck: the
+  // collision keeps using the pools' own shapes, as before.)
+  const sdfDeck = (x, z) => {
+    let d = 9;
+    for (const p of plan.pools) {
+      if (!(x > p.x0 - 1.5 && x < p.x1 + 1.5 && z > p.z0 - 1.5 && z < p.z1 + 1.5)) continue;
+      const c = p.clip;
+      d = Math.min(d, Math.max(p.sdf(x, z), c[0] - x, x - c[2], c[1] - z, z - c[3]));
+    }
+    return d;
+  };
 
   // ================= the light, worked out once =================
   // Everything that sends light: the white sky seen through each window and skylight, and the patches where the
@@ -317,7 +330,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       if (ix < 0 || iz < 0 || ix >= Wc || iz >= Dc) continue;
       if (!isDeck(ix, iz) && poolCell(ix, iz) < 0) continue;
       let neg = false;
-      for (let j = 0; j <= 2 && !neg; j++) for (let i = 0; i <= 2; i++) if (sdfMin(ix * CELL + i * 0.25, iz * CELL + j * 0.25) < 0) { neg = true; break; }
+      for (let j = 0; j <= 2 && !neg; j++) for (let i = 0; i <= 2; i++) if (sdfDeck(ix * CELL + i * 0.25, iz * CELL + j * 0.25) < 0) { neg = true; break; }
       if (neg || poolCell(ix, iz) >= 0) edge[iz * Wc + ix] = 1;
     }
   }
@@ -394,7 +407,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   for (let iz = 0; iz < Dc; iz++) for (let ix = 0; ix < Wc; ix++) {
     if (!edge[iz * Wc + ix]) continue;
     for (let j = 0; j < 2; j++) for (let i = 0; i < 2; i++) {
-      const poly = dryPoly(ix * CELL + i * H, iz * CELL + j * H, sdfMin);
+      const poly = dryPoly(ix * CELL + i * H, iz * CELL + j * H, sdfDeck);
       if (poly.length < 3) continue;
       const B = bufAt(poly[0][0], G, poly[0][1]);
       const idx = poly.map(p => V(B, p[0], G, p[1], 0, 1, 0, p[0], p[1], FIN.cream, 0));
