@@ -70,3 +70,12 @@ GOOD TO KNOW
 - Only the game server is shared to the internet, nothing else on the ZimaOS box.
 - If https://….ts.net doesn't work but :8787 does: check steps 2–3 (HTTPS + Funnel), then look at
   the siteline-tailscale log.
+
+RELAY KEY (optional: keeps the Metered key out of the web page)
+- With your Metered API key on the server, it hands players their relay login, so their browsers
+  never send the key. In ZimaOS open the SITELINE app's settings, find the environment variables of
+  siteline-game (the PORT 8787 one), add  METERED_API_KEY  with your key as the value, and save
+  (the app restarts).
+- Or, with the Files app, make a text file  /DATA/AppData/siteline/game/server/turn-key.txt  with the
+  key on its first line, then restart the app. Updates leave it alone.
+- Check: http://<ZimaOS address>:8787/turn shows a list starting with [{"urls":"turn: .

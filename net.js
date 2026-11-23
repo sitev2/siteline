@@ -17,16 +17,56 @@ export function normaliseCode(code) {
 }
 
 // ---------- relay (TURN) ----------
-// Short-lived relay login details from Metered (if configured). Only a good answer is kept: a fetch that a
-// school filter blocks or slows down is tried again next time, instead of leaving the game without a relay.
+// Short-lived relay login details. Asked first from the game servers (their /turn address, server/server.mjs: the
+// Metered API key can live there instead of in this page), then — if none answers within a few seconds (asleep,
+// offline, or no key set there) — straight from Metered with the key in config.js, as before. Only a good answer is
+// kept: a fetch that a school filter blocks or slows down is tried again next time, instead of leaving the game
+// without a relay.
 let relayCache = null;
 let relayState = 'none';                 // 'none' (not configured) | 'ok' | 'blocked'
-export function relayConfigured() { return !!(CONFIG.turnApp && CONFIG.turnApiKey); }
+let relayFrom = '';                      // where the login came from (shown by Connection check)
+const directRelay = () => !!(CONFIG.turnApp && CONFIG.turnApiKey);
+function relayServerList() {
+  const list = CONFIG.serverUrl ? [{ name: 'Game server', url: CONFIG.serverUrl }] : (CONFIG.servers || []).filter(s => s && s.url);
+  return list.map(s => ({ name: s.name, url: `${String(s.url).replace(/^ws(s?):\/\//i, 'http$1://').replace(/\/+$/, '')}/turn` }));
+}
+export function relayConfigured() { return directRelay() || relayServerList().length > 0; }
 export function relayStatus() { return relayConfigured() ? relayState : 'none'; }
+export function relaySource() { return relayFrom; }
+const relayOnly = (list) => (Array.isArray(list) ? list.filter(s => s && /^turns?:/.test(String(s.urls))) : []);
+async function relayFromServer(srv, ms) {
+  const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), ms);
+  try {
+    const res = await fetch(srv.url, { signal: ctl.signal, cache: 'no-store' });
+    const relay = relayOnly(await res.json().catch(() => null));
+    if (!relay.length) throw new Error(`HTTP ${res.status}`);
+    return { relay, srv };
+  } finally { clearTimeout(t); }
+}
 // log (optional): a connection log entry (netlog.js) to note each step in
 export async function relayServers({ fresh = false, log = null } = {}) {
   if (!relayConfigured()) { if (log) log.event('relay: none set up in config.js'); return []; }
   if (relayCache && !fresh) { if (log) log.event(`relay: using the login from earlier (${routeList(relayCache)})`); return relayCache; }
+  // 1. the game servers (all at once, the first good answer wins; a sleeping one is not waited for)
+  const srvs = relayServerList();
+  if (srvs.length) {
+    const t0 = performance.now();
+    if (log) log.event(`relay: asking the game server${srvs.length > 1 ? 's' : ''} for login details (${srvs.map(s => s.name).join(', ')})`);
+    try {
+      const { relay, srv } = await Promise.any(srvs.map(s => relayFromServer(s, 3500)));
+      relayCache = relay; relayState = 'ok'; relayFrom = `the game server "${srv.name}"`;
+      if (log) log.event(`relay: OK from ${srv.name} in ${Math.round(performance.now() - t0)} ms — ${routeList(relay)}`);
+      return relay;
+    } catch (e) {
+      if (log) log.event(`relay: no game server gave one in ${Math.round(performance.now() - t0)} ms (asleep, offline or no key set there)`);
+    }
+  }
+  if (!directRelay()) {
+    relayState = 'blocked';
+    console.warn('Relay login unavailable (the game servers gave none, and config.js has no Metered key) — direct connections only');
+    return [];
+  }
+  // 2. Metered itself, with the key in config.js
   const host = `${CONFIG.turnApp}.metered.live`;
   const url = `https://${encodeURIComponent(CONFIG.turnApp)}.metered.live/api/v1/turn/credentials?apiKey=${encodeURIComponent(CONFIG.turnApiKey)}`;
   for (let attempt = 0; attempt < 2; attempt++) {
@@ -41,9 +81,9 @@ export async function relayServers({ fresh = false, log = null } = {}) {
       let list = null;
       try { list = JSON.parse(body); } catch (e) { /* not JSON: a filter's block page, for example */ }
       // keep the relay routes (TURN over UDP, TCP and TLS); its extra STUN entry adds nothing
-      const relay = Array.isArray(list) ? list.filter(s => s && /^turns?:/.test(String(s.urls))) : [];
+      const relay = relayOnly(list);
       if (relay.length) {
-        relayCache = relay; relayState = 'ok';
+        relayCache = relay; relayState = 'ok'; relayFrom = 'metered.live (with the key in config.js)';
         if (log) log.event(`relay: OK in ${Math.round(performance.now() - t0)} ms — ${routeList(relay)}`);
         return relay;
       }

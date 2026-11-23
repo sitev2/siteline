@@ -1,17 +1,17 @@
 // Connection check: tests, one by one, what this network lets through for online games, so a player on a
 // school or work Wi-Fi can see exactly which part is blocked. Runs in the browser; nothing is sent anywhere
 // except the test connections themselves.
-//   1. relay sign-in   — fetching relay (TURN) login details from Metered
+//   1. relay sign-in   — fetching relay (TURN) login details from your game server, or else from Metered
 //   2. matchmaking     — the PeerJS server that finds rooms (0.peerjs.com)
 //   3. direct route    — a STUN answer over UDP (needed for direct player-to-player connections)
 //   4. relay routes    — reaching the relay over UDP, TCP and TLS (port 443)
 //   5. game connection — two test players on this device connecting through the relay and swapping a message
 /* global Peer */
 import { CONFIG } from './config.js';
-import { relayServers, relayConfigured } from './net.js';
+import { relayServers, relayConfigured, relaySource } from './net.js';
 
 export const STEPS = [
-  { id: 'relayLogin', label: 'Relay sign-in', what: 'Gets login details for the relay from metered.live' },
+  { id: 'relayLogin', label: 'Relay sign-in', what: 'Gets login details for the relay (from your game server, or else metered.live)' },
   { id: 'match', label: 'Matchmaking server', what: 'Finds rooms (0.peerjs.com)' },
   { id: 'direct', label: 'Direct connections', what: 'Connecting straight to the other player (UDP)' },
   { id: 'relayUdp', label: 'Relay over UDP', what: 'The fastest relay route' },
@@ -76,7 +76,7 @@ export async function runNetTest(update) {
   else {
     set('relayLogin', 'run');
     relay = await relayServers({ fresh: true });
-    set('relayLogin', relay.length ? 'ok' : 'fail', relay.length ? 'Got relay login details' : 'Blocked or no answer');
+    set('relayLogin', relay.length ? 'ok' : 'fail', relay.length ? `Got relay login details from ${relaySource()}` : 'Blocked or no answer');
   }
 
   // 2. matchmaking server (the test player opens with relay-only settings, ready for test 5)
