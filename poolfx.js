@@ -199,7 +199,7 @@ const TILE_FRAG = /* glsl */`
       // each little tile is not quite flat and not quite level: that is what makes the highlights sparkle; its edges
       // round down into the grout, so the grout reads as sunk between the tiles
       bump = ((vec2(hash21(id + 1.7), hash21(id + 4.1)) - 0.5) * 0.05 + (f - 0.5) * smoothstep(0.30, 0.50, max(abs(f.x - 0.5), abs(f.y - 0.5))) * 0.5) * near;
-      #ifdef FINE
+      #ifdef WEAR
       // wear: now and then a tile is gone (the grey bed shows, dull), cracked, or stained. There are 400 little tiles
       // to a square metre: about one gone in 10 m², one cracked in 5 m², one stained in 1.5 m²
       float rare = hash21(id + 19.7);
@@ -234,7 +234,7 @@ const TILE_FRAG = /* glsl */`
       Np = normalize(N - (Tg * bump.x + Bt * bump.y) * inv);
     }
     float wet = clamp(vFx.w + under, 0.0, 1.0);
-    #ifdef FINE
+    #ifdef WEAR
     // grime where the place is closed in (corners, joins, the feet of walls): from the baked occlusion, blotchy
     if (vOcc > 0.12) {          // (only in the closed-in places: everywhere else the noise is skipped)
       float grime = clamp((vOcc - 0.12) * 2.2, 0.0, 1.0) * (0.5 + 0.5 * vnoise(vW.xz * 1.7 + vW.y * 0.9));
@@ -314,6 +314,7 @@ const TILE_FRAG = /* glsl */`
 export function tileMaterial(U, q, extra = {}) {
   const defines = {};
   if (q >= 1) { defines.FINE = 1; defines.SOFT = 1; defines.DYN = 1; }
+  if (q >= 2) defines.WEAR = 1;           // (High and up: grime, worn tiles, puddles — per pixel, so not on Medium)
   return new THREE.ShaderMaterial({
     uniforms: U, defines, vertexShader: TILE_VERT, fragmentShader: TILE_FRAG, ...extra,
   });
