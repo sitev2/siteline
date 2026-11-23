@@ -525,7 +525,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     };
     // angles: plenty of them, and extra ones across each doorway
     const cuts = new Set();
-    const N = Math.round(o.R * 9);
+    const N = Math.round(o.R * 16);              // (about 2 cm off the true circle between corners: no visible facets where it meets the ceiling)
     for (let k = 0; k < N; k++) cuts.add(Math.round((k / N * Math.PI * 2) * 1e4) / 1e4);
     for (const g of gaps) for (let k = 0; k <= 12; k++) { let t = g.th - g.half + g.half * 2 * k / 12; t = ((t % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2); cuts.add(Math.round(t * 1e4) / 1e4); }
     const list = [...cuts].sort((a, b) => a - b);
@@ -767,6 +767,9 @@ export function buildPoolScene(world, renderer, gfx = {}) {
         if (cy > ROOF + 0.01) continue;
         const room = roomAt(cx, cy - 0.2, cz);
         if (!room || !room.cove || room.vault) continue;
+        // (not inside a round room: its wall is a curve, and coves built along the square cells behind it stuck out of
+        //  it as a stepped, jagged band where the stair tower's wall meets its ceiling)
+        if (plan.rings.some(o => lvl > o.y0 && lvl < o.y1 && Math.hypot(cx - o.x, cz - o.z) < o.R + 0.45)) continue;
         const r = room.cove, fin = room.ceil === 'smooth' ? FIN.smooth : FIN.cream;
         for (const [nx, nz] of SIDES) {
           if (!solidAt(ix + nx, iz + nz, cy - 0.15) || !solidAt(ix + nx, iz + nz, cy - r + 0.03)) continue;       // a wall on this side, right up to the ceiling
