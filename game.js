@@ -256,9 +256,7 @@ export class Game {
     if (this.gar) {
       const ud = this.builtMap.group.userData;
       // the order so far (a late joiner gets it in the start message): power, how far the shutter is wound
-      this.garSt = { power: !!(gar && gar.power), crank: (gar && gar.crank) || 0, batts: new Set((gar && gar.batts) || []) };
-      for (const i of this.garSt.batts) ud.setBattery(i, false);
-      this.batt = 1;                        // my flashlight's battery (it only runs down in Level 1)
+      this.garSt = { power: !!(gar && gar.power), crank: (gar && gar.crank) || 0 };
       ud.setPower(this.garSt.power);
       const sh = this.world.doors.find(d => d.lock === 'shutter');
       ud.setShutter(sh && sh.open ? 1 : this.garSt.crank);
@@ -294,7 +292,6 @@ export class Game {
     document.body.classList.remove('br-mode', 'pool-mode');
     if (this.pool) { const rb = document.getElementById('btn-inspect'); rb.innerHTML = icon('search'); rb.setAttribute('aria-label', 'Inspect weapon'); }
     if (this.builtMap && this.builtMap.group.userData.dispose) this.builtMap.group.userData.dispose();
-    document.getElementById('br-batt').classList.add('hidden');
     if (this.br && !this.pool) { const jb = document.getElementById('btn-jump'); jb.innerHTML = icon('jump'); jb.setAttribute('aria-label', 'Jump'); }
     if (this.fx) this.fx.destroy();
     if (this.poolc) this.poolc.destroy();
@@ -503,14 +500,6 @@ export class Game {
         const f = this.world.def.gar.fuse;
         sfx.playBR('power', { x: f.x, y: f.y + 1.3, z: f.z }, 0, 1.6);
         this.hud.center('', m.id === this.myId ? 'The power is back. Now the shutter: upstairs, north-west' : `${m.name} turned the power back on`, '#cfe6ff', 4);
-        return;
-      }
-      case 'batt': {
-        // someone picked a battery up (the host decided who): it is gone, and theirs is full again
-        if (!this.gar) return;
-        this.garSt.batts.add(m.i);
-        this.builtMap.group.userData.setBattery(m.i, false);
-        if (m.id === this.myId) { this.batt = 1; sfx.playEquip(); this.hud.center('', 'Fresh battery', '#e8dc8a', 2); }
         return;
       }
       case 'crank': {
@@ -755,7 +744,6 @@ export class Game {
 
   placeMe(x, y, z, yaw) {
     this.spawnedAt = this.clock;
-    if (this.gar) this.batt = 1;
     Object.assign(this.me, {
       alive: true, hp: 100, yaw, pitch: 0, spectate: null, zoom: 0, rezoom: 0, recoilIdx: 0, recP: 0, recY: 0,
       fireInacc: 0, hurtP: 0, hurtY: 0, tag: 0, landPen: 0, landSlow: 0, using: false, burstLeft: 0, reloading: 0,
@@ -1119,7 +1107,6 @@ export class Game {
 
   toggleFlashlight() {
     if ((!this.night && !this.br) || this.pool || !this.me.alive) return;      // (the Poolrooms are bright: no flashlight)
-    if (this.gar && !this.me.light && this.batt <= 0) { sfx.playClick(); this.hud.center('', 'The battery is dead: find another', '#ff8a6a', 2.5); return; }
     this.me.light = !this.me.light;
     this.transport.send({ t: 'light', on: this.me.light });
     sfx.playClick();
@@ -1129,9 +1116,7 @@ export class Game {
     if (!this.night && !this.br) return;
     const me = this.me, cam = this.camera;
     const on = me.alive && me.light;
-    // Level 1: a battery nearly flat makes the light stutter
-    const t = this.clock, low = this.gar && this.batt < 0.12;
-    this.flashK = low ? (Math.sin(t * 23) + Math.sin(t * 57) * 0.6 + Math.sin(t * 3.1) > -0.4 ? 0.55 + this.batt * 3 : 0.08) : 1;
+    this.flashK = 1;
     this.myLight.intensity = on ? (this.br ? 12.8 : 9) * this.flashK : 0;
     if (on) {
       const fwd = TMP.set(0, 0, -1).applyQuaternion(cam.quaternion);
@@ -1550,13 +1535,7 @@ export class Game {
         const u = this.useTarget();
         if (this.pool) this.poolc.use(u);
         else if (u && u.kind === 'fuse') this.transport.send({ t: 'fuse' });
-        else if (u && u.kind === 'batt') this.transport.send({ t: 'batt', i: u.i });
         else if (u && u.kind !== 'crank') this.transport.send(u.kind === 'door' ? { t: 'door', i: u.i } : u.kind === 'switch' ? { t: 'switch', i: u.i } : { t: 'boost' });
-      }
-      // Level 1: the flashlight runs its battery down while it is on (about two and a half minutes a battery)
-      if (this.gar && me.light) {
-        this.batt = Math.max(0, this.batt - dt / 150);
-        if (this.batt <= 0) { me.light = false; this.transport.send({ t: 'light', on: false }); sfx.playClick(); this.hud.center('', 'Your flashlight has gone out: find a battery', '#ff8a6a', 3); }
       }
       // Level 1: the crank turns for as long as E / the hand button is held at it
       this.cranking = false;
@@ -2321,11 +2300,6 @@ export class Game {
       const sh = this.world.doors.find(d => d.lock === 'shutter');
       if (!this.garSt.power && near(P.fuse, 1.7)) return { kind: 'fuse' };
       if (sh && !sh.open && near(P.crank, 1.7)) return { kind: 'crank' };
-      // a battery on the floor (not while mine is still nearly full)
-      if (this.batt < 0.9) for (let i = 0; i < P.batteries.length; i++) {
-        const b = P.batteries[i];
-        if (!this.garSt.batts.has(i) && Math.abs(b.y - me.pos.y) < 1.5 && Math.hypot(b.x - me.pos.x, b.z - me.pos.z) < 1.7) return { kind: 'batt', i };
-      }
     }
     if (this.keySpot && !this.keyTaken && Math.hypot(this.keySpot.x - me.pos.x, this.keySpot.z - me.pos.z) < 1.4) return { kind: 'key' };
     for (let i = 0; i < this.switchSpots.length; i++) {
@@ -2773,7 +2747,6 @@ export class Game {
       // (alone in there, the two-player parts work for one: the host's brSolo)
       const alone = (me.alive && !me.escaped ? 1 : 0) + [...this.remotes.values()].filter(r => r.team !== 'monster' && r.alive && !r.escaped).length < 2;
       if (u && u.kind === 'fuse') hint = `${press} to switch the power back on`;
-      else if (u && u.kind === 'batt') hint = `${press} to take the battery`;
       else if (u && u.kind === 'crank') hint = !this.garSt.power ? "The crank won't turn without power: find the fuse box" : this.cranking ? '' : `${touch ? 'Hold [[hand]]' : `Hold ${this.key('use')}`} to wind the shutter up (it will hear it)`;
       else if (this.boostMe) hint = this.boostMe.climber ? 'Up on their shoulders… reaching for the key' : 'Holding them up…';
       else if (u && u.kind === 'key') hint = alone ? `The key is up on that shelf. ${press} to jump for it` : `The key is up on that shelf. ${press} to climb on a teammate's shoulders (they stand here too)`;
@@ -2791,14 +2764,6 @@ export class Game {
       else if (!me.alive && me.escaped && !this.escapeScene) hint = 'You got out. Watching the others…';
     }
     hud.hint(hint);
-    // Level 1: the battery bar
-    const bb = document.getElementById('br-batt');
-    bb.classList.toggle('hidden', !this.gar || !me.alive);
-    if (this.gar) {
-      const w = `${Math.round(this.batt * 100)}%`, fill = document.getElementById('br-batt-fill');
-      if (fill.style.width !== w) fill.style.width = w;
-      bb.classList.toggle('low', this.batt < 0.2); bb.classList.toggle('on', !!me.light);
-    }
     const useBtn = document.getElementById('btn-use');
     useBtn.classList.toggle('hidden', use !== 'plant' && use !== 'defuse' && !pick);
     useBtn.classList.toggle('pick', !!pick && use !== 'plant' && use !== 'defuse');

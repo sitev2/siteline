@@ -1,5 +1,5 @@
 // Checks Level 1 (the garage): from the start a player can walk to the fuse box, the crank, the lift (with the
-// shutter up), every side room and every battery, on both floors, and the shapeshifter's walking grid joins both
+// shutter up), every side room, on both floors, and the shapeshifter's walking grid joins both
 // floors by the ramps and by the stairs. Usage: node check_gar.mjs [map]   (map: print both floors)
 import { resolveMap } from './maps.js';
 import { World, CELL, STEP } from './world.js';
@@ -36,7 +36,6 @@ for (const level of ['easy', 'normal', 'hard']) {
   reach('the lift', { x: (plan.lift.x0 + plan.lift.x1) / 2, z: (plan.lift.z0 + plan.lift.z1) / 2 }, plan.lift.y);
   reach('the monster start', plan.monster);
   plan.rooms.forEach((r, i) => reach(`side room ${i} (${r.name})`, { x: (r.x0 + r.x1) / 2, z: (r.z0 + r.z1) / 2 }, floorY(r.floor)));
-  plan.batteries.forEach((b, i) => reach(`battery ${i}`, b));
   plan.bays.forEach((b, i) => { if (b.car == null) reach(`empty bay ${i}`, { x: b.x, z: (b.z0 + b.z1) / 2 }, floorY(b.f)); });
   // both floors are joined by the ramps alone, and by the stairs alone
   const inAny = (list) => (t) => list.some(r => nav.x[t] > r.x0 && nav.x[t] < r.x1 && nav.z[t] > r.z0 && nav.z[t] < r.z1);
@@ -61,7 +60,7 @@ for (const level of ['easy', 'normal', 'hard']) {
     if (!nav.path(m, nav.nearest(x, y, z), nav.n * 2)) fail(`no route for the monster to ${x}, ${y}, ${z}`);
   }
   const area = (GAR.size[0] - 2) * (GAR.size[1] - 2) * 2;
-  console.log(`${level}: ${nav.n} walking spots, ${plan.cars.length} cars, ${plan.bays.length} bays, ${plan.rooms.length} side rooms, ${plan.batteries.length} batteries, ${area} m² on two floors`);
+  console.log(`${level}: ${nav.n} walking spots, ${plan.cars.length} cars, ${plan.bays.length} bays, ${plan.rooms.length} side rooms, ${area} m² on two floors`);
   if (process.argv[2] === 'map' && level === 'easy') {
     for (const f of [1, 0]) {
       console.log(f ? '--- upper floor (P1) ---' : '--- lower floor (P2) ---');

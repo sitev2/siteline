@@ -274,14 +274,6 @@ body.br-mode #br-tasks { display: block; }
 /* "Run complete": each level's time, then the whole run in bold, above the players */
 #over-stats .run-levels { margin-bottom: 14px; }
 #over-stats .run-levels .run-total td { font-weight: 700; border-top: 1px solid rgba(255,255,255,.25); color: #9dffb5; }      /* the Poolrooms: nothing on screen tells you what to do */
-/* Level 1: the flashlight's battery, under the tasks */
-#br-batt { display: flex; align-items: center; gap: .5em; margin-top: .9em; color: rgba(255,255,255,.85); }
-#br-batt.hidden { display: none; }
-#br-batt svg { width: 1.5em; height: 1.5em; }
-#br-batt .bb { width: 6.5em; height: .5em; border: 1px solid rgba(255,255,255,.55); border-radius: .2em; overflow: hidden; }
-#br-batt-fill { display: block; height: 100%; width: 100%; background: #e8dc8a; }
-#br-batt.low #br-batt-fill { background: #ff6b4a; }
-#br-batt.on .bb { box-shadow: 0 0 .5em rgba(232,220,138,.5); }
 body.br-mode #topbar { display: none !important; }
 .br-tasks-title { font: 600 .73em var(--body); letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.75); margin-bottom: .55em; }
 #br-task-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .35em; }
