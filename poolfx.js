@@ -236,9 +236,11 @@ const TILE_FRAG = /* glsl */`
     float wet = clamp(vFx.w + under, 0.0, 1.0);
     #ifdef FINE
     // grime where the place is closed in (corners, joins, the feet of walls): from the baked occlusion, blotchy
-    float grime = clamp((vOcc - 0.12) * 2.2, 0.0, 1.0) * (0.5 + 0.5 * vnoise(vW.xz * 1.7 + vW.y * 0.9));
-    alb *= mix(vec3(1.0), vec3(0.84, 0.8, 0.69), grime);
-    gloss *= 1.0 - 0.5 * grime;
+    if (vOcc > 0.12) {          // (only in the closed-in places: everywhere else the noise is skipped)
+      float grime = clamp((vOcc - 0.12) * 2.2, 0.0, 1.0) * (0.5 + 0.5 * vnoise(vW.xz * 1.7 + vW.y * 0.9));
+      alb *= mix(vec3(1.0), vec3(0.84, 0.8, 0.69), grime);
+      gloss *= 1.0 - 0.5 * grime;
+    }
     // little puddles standing on the damp floor near the water: flat, darker, shiny as a mirror
     if (vFx.w > 0.25 && N.y > 0.9 && under < 0.5) {
       float pd = smoothstep(0.64, 0.72, vnoise(vW.xz * 0.9 + 4.3) + vFx.w * 0.22);
