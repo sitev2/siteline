@@ -199,21 +199,6 @@ const TILE_FRAG = /* glsl */`
       // each little tile is not quite flat and not quite level: that is what makes the highlights sparkle; its edges
       // round down into the grout, so the grout reads as sunk between the tiles
       bump = ((vec2(hash21(id + 1.7), hash21(id + 4.1)) - 0.5) * 0.05 + (f - 0.5) * smoothstep(0.30, 0.50, max(abs(f.x - 0.5), abs(f.y - 0.5))) * 0.5) * near;
-      #ifdef WEAR
-      // wear: now and then a tile is gone (the grey bed shows, dull), cracked, or stained. There are 400 little tiles
-      // to a square metre: about one gone in 10 m², one cracked in 5 m², one stained in 1.5 m²
-      float rare = hash21(id + 19.7);
-      if (fin < 2.5 && near > 0.01) {
-        if (rare < 0.00025) {
-          float bed = (1.0 - grout) * near;
-          alb = mix(alb, base * vec3(0.5, 0.48, 0.43), bed); gloss *= 1.0 - 0.9 * bed; bump *= 1.0 - bed;
-        } else if (rare < 0.00075) {
-          float cl = abs(f.y - 0.5 - (f.x - 0.5) * (0.6 * hash21(id + 2.9) - 0.3) - 0.04 * sin(f.x * 23.0 + h * 9.0));
-          float crack = 1.0 - smoothstep(0.012, 0.012 + 1.5 * max(fw.x, fw.y), cl);
-          alb *= 1.0 - 0.55 * crack * near * (1.0 - grout);
-        } else if (rare < 0.0025) alb *= mix(vec3(1.0), vec3(0.95, 0.92, 0.84), near);
-      }
-      #endif
     } else if (fin < 3.5) {
       // smooth painted plaster: only the faintest unevenness
       alb *= 0.97 + 0.03 * sin(uv.x * 0.9 + sin(uv.y * 0.7) * 1.3) * sin(uv.y * 1.1 + 0.4);
@@ -314,7 +299,7 @@ const TILE_FRAG = /* glsl */`
 export function tileMaterial(U, q, extra = {}) {
   const defines = {};
   if (q >= 1) { defines.FINE = 1; defines.SOFT = 1; defines.DYN = 1; }
-  if (q >= 2) defines.WEAR = 1;           // (High and up: grime, worn tiles, puddles — per pixel, so not on Medium)
+  if (q >= 2) defines.WEAR = 1;           // (High and up: grime in corners and puddles — per pixel, so not on Medium)
   return new THREE.ShaderMaterial({
     uniforms: U, defines, vertexShader: TILE_VERT, fragmentShader: TILE_FRAG, ...extra,
   });

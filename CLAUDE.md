@@ -399,8 +399,8 @@ The only folder is `server/` (the optional home game server).
     and one white sheet on the roof (ROOFT) closes every skylight shaft. No coves inside round rooms. The tower's top doorway floor
     stops exactly on the landing's outline (they overlapped at y = 10 and z-fought). Tone curve: fitted ACES (exposure 0.8) +
     a faint sickly grade (`uGrade`, with 'Picture shaders'). Baked AO (16 grid probes per vertex, `occlusion`, also `aOcc` for
-    grime). High up only (`WEAR` define, per pixel): grime in closed-in places, rare missing/cracked/stained tiles, puddles on damp
-    floor. Medium up: mist on the water, cove skirting at wall bases, frames round square skylights, rust decals under fittings
+    grime). High up only (`WEAR` define, per pixel): grime in closed-in places, puddles on damp floor. No missing / cracked /
+    stained tiles (the owner removed them: "remove the dirty tiles"). Medium up: mist on the water, cove skirting at wall bases, frames round square skylights, rust decals under fittings
     (multiply blending).
   - `poolplay.js` — your first-person arms (`PoolHands`: breaststroke while swimming, hand over hand on a ladder's rails), `poolTint`
     (people's parts under the surface are seen through the water; `setWet`: a soaked suit is darker and shinier, dries over 90 s) and
