@@ -551,8 +551,31 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     if (o.core) cylinder(o.x, o.z, o.core, o.y0, o.y1, FIN.white, 0);
   }
   // the floor in the tower's top doorway, between the corridor and the stair's landing (the landing is drawn only up to the
-  // round wall, and the doorway's own cells are invisible stair collision, so a strip there was left open: you saw down the stairwell)
-  { const g = plan.rings[0].gaps[1]; flat(g.x0, g.z0, g.x1 - 0.4, g.z1, g.y0, 1, FIN.cream, 0); flat(g.x0, g.z0, g.x1 - 0.4, g.z1, g.y0 - 0.35, -1, FIN.cream, 0); }
+  // round wall, and the doorway's own cells are invisible stair collision, so a strip there was left open: you saw down the stairwell).
+  // It stops exactly on the landing's own outline (the same straight pieces the landing is drawn with: every 15° on top, every
+  // 7.5° underneath), so the two never overlap: they did, both at y = U, and fought (a jagged edge across the floor).
+  {
+    const g = plan.rings[0].gaps[1], T = plan.tower, RAD = Math.PI / 180;
+    const strip = (y, ny, step) => {
+      const pts = [];
+      for (let th = T.a1; th <= T.a1 + 30 + 1e-6; th += step) pts.push([T.x + Math.cos((th + 90) * RAD) * T.R, T.z + Math.sin((th + 90) * RAD) * T.R]);
+      const edgeX = (z) => {
+        for (let k = 0; k + 1 < pts.length; k++) {
+          const a = pts[k], b = pts[k + 1];
+          if ((z - a[1]) * (z - b[1]) <= 0 && a[1] !== b[1]) return a[0] + (b[0] - a[0]) * (z - a[1]) / (b[1] - a[1]);
+        }
+        return g.x0;
+      };
+      const zs = [g.z0, g.z1, ...pts.map(q => q[1]).filter(z => z > g.z0 + 1e-4 && z < g.z1 - 1e-4)].sort((a, b) => a - b);
+      for (let k = 0; k + 1 < zs.length; k++) {
+        const za = zs[k], zb = zs[k + 1], B = bufAt(g.x0 + 0.3, y - ny * 0.3, (za + zb) / 2);
+        quad(B, V(B, g.x0, y, za, 0, ny, 0, g.x0, za, FIN.cream, 0), V(B, edgeX(za), y, za, 0, ny, 0, edgeX(za), za, FIN.cream, 0),
+          V(B, edgeX(zb), y, zb, 0, ny, 0, edgeX(zb), zb, FIN.cream, 0), V(B, g.x0, y, zb, 0, ny, 0, g.x0, zb, FIN.cream, 0), 0, ny, 0);
+      }
+    };
+    strip(g.y0, 1, 15);              // (the landing's top: sector() below, two pieces over its 30°)
+    strip(g.y0 - 0.35, -1, 7.5);     // (its underside: the slab below, in 7.5° pieces)
+  }
   {
     const T = plan.tower, RAD = Math.PI / 180;
     const at = (th, r) => [T.x + Math.cos((th + 90) * RAD) * r, T.z + Math.sin((th + 90) * RAD) * r];
