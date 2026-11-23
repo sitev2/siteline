@@ -387,7 +387,7 @@ The only folder is `server/` (the optional home game server).
   - `poolplay.js` — your first-person arms (`PoolHands`: breaststroke while swimming, hand over hand on a ladder's rails), `poolTint`
     (people's parts under the surface are seen through the water; `setWet`: a soaked suit is darker and shinier, dries over 90 s) and
     `PoolClient` (the level on your screen: applies the host's `{t:'pool', s}` state, plays `{t:'pfx'}` events, the use target and hold-E
-    sends, throwing, the slide ride + its camera, floaties' bobbing, wet footprints that fade, steam hiss).
+    sends, throwing, the slide ride + its camera, floaties' bobbing, steam hiss; no wet footprints: removed at the owner's request, footstep sounds unchanged).
   - THE ORDER (Claude's design; the owner asked for 4 water-based steps, no hints, no logs, no map; later he asked for the side task list: Cross the channel / Heat the pool / Drain the pool / Get out, ticked from `PoolClient.done` in `poolplay.js` and kept ticked, names only, no how-to). Host side: `poolhost.js`
     (`PoolHost`, made in `Server.startPool`; runs in the host's browser and on the home server). Any one player can do each step.
     1 the bridge: pressure plates (`plan.bridges[].plates`, 1 m squares of blue tiles that sink 3 cm) raise a tiled bridge across the deep
