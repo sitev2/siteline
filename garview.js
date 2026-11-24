@@ -18,7 +18,9 @@ export const TUBE = { uTube: { value: new THREE.Vector3(1, 1, 1) } };
 const TUBE_COL = [0.86, 0.95, 1.0], SODIUM = [1.0, 0.56, 0.18];
 
 // a baked-light material: vertex colours (sodium light) + the tubes' share + flashlights (brview's addFlash)
-export function garMaterial(params = {}) {
+// alb: the geometry carries its own paint (aAlb, litGeo): props' colours sit in the baked vertex colours, so without it
+// a flashlight took them as white and they lit up white (owner: "when you flash your light on objects it turns white")
+export function garMaterial(params = {}, alb = false) {
   const m = new THREE.MeshBasicMaterial({ vertexColors: true, ...params });
   addFlash(m);
   const inner = m.onBeforeCompile;
@@ -28,8 +30,12 @@ export function garMaterial(params = {}) {
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nattribute vec3 aTube; uniform vec3 uTube;')
       .replace('#include <color_vertex>', `#include <color_vertex>\nvColor.rgb += vec3(${TUBE_COL.join(', ')}) * dot(aTube, uTube);`);
+    if (alb) {
+      sh.vertexShader = sh.vertexShader.replace('#include <common>', '#include <common>\nattribute vec3 aAlb; varying vec3 vAlb;').replace('#include <begin_vertex>', '#include <begin_vertex>\nvAlb = aAlb;');
+      sh.fragmentShader = sh.fragmentShader.replace('#include <common>', '#include <common>\nvarying vec3 vAlb;').replace('vec3 flashAlbedo = diffuseColor.rgb;', 'vec3 flashAlbedo = diffuseColor.rgb * vAlb;');
+    }
   };
-  m.customProgramCacheKey = () => 'garflash';
+  m.customProgramCacheKey = () => (alb ? 'garflash-alb' : 'garflash');
   return m;
 }
 
@@ -400,18 +406,20 @@ export function buildGarageScene(world, renderer, gfx = {}) {
   };
   // paint a merged prop geometry with the light at its place: colours × sodium light, and its tube share
   const litGeo = (geo, x, y, z) => {
-    const g = geo.clone(), L = propLight(x, y, z), C = g.attributes.color, n = C.count, tube = new Float32Array(n * 3);
+    const g = geo.clone(), L = propLight(x, y, z), C = g.attributes.color, n = C.count, tube = new Float32Array(n * 3), alb = new Float32Array(n * 3);
     for (let i = 0; i < n; i++) {
       const r = C.getX(i), gg = C.getY(i), b = C.getZ(i), lum = (r + gg + b) / 3;
+      alb[i * 3] = r; alb[i * 3 + 1] = gg; alb[i * 3 + 2] = b;
       C.setXYZ(i, r * L[0] * 1.6, gg * L[1] * 1.6, b * L[2] * 1.6);
       tube[i * 3] = lum * L[3] * 1.6; tube[i * 3 + 1] = lum * L[4] * 1.6; tube[i * 3 + 2] = lum * L[5] * 1.6;
     }
     g.setAttribute('aTube', new THREE.BufferAttribute(tube, 3));
+    g.setAttribute('aAlb', new THREE.BufferAttribute(alb, 3));
     return g;
   };
   group.userData.propLight = propLight;
   group.userData.litGeo = litGeo;
-  const propMat = garMaterial({});
+  const propMat = garMaterial({}, true);
   group.userData.propMat = propMat;
   // every fixed prop goes into one mesh
   const props = [];
@@ -483,15 +491,16 @@ export function buildGarageScene(world, renderer, gfx = {}) {
   group.userData.crankTurn = (dir) => { crankTo += dir > 0 ? -Math.PI * 2 : Math.PI * 0.6; };
   if (props.length) { const m = new THREE.Mesh(mergeLit(props), propMat); group.add(m); }
   function mergeLit(list) {
-    const pos = [], col = [], tube = [], v = new THREE.Vector3();
+    const pos = [], col = [], tube = [], alb = [], v = new THREE.Vector3();
     for (const p of list) {
-      const P = p.geo.attributes.position, C = p.geo.attributes.color, T = p.geo.attributes.aTube;
-      for (let i = 0; i < P.count; i++) { v.fromBufferAttribute(P, i).applyMatrix4(p.m); pos.push(v.x, v.y, v.z); col.push(C.getX(i), C.getY(i), C.getZ(i)); tube.push(T.getX(i), T.getY(i), T.getZ(i)); }
+      const P = p.geo.attributes.position, C = p.geo.attributes.color, T = p.geo.attributes.aTube, A = p.geo.attributes.aAlb;
+      for (let i = 0; i < P.count; i++) { v.fromBufferAttribute(P, i).applyMatrix4(p.m); pos.push(v.x, v.y, v.z); col.push(C.getX(i), C.getY(i), C.getZ(i)); tube.push(T.getX(i), T.getY(i), T.getZ(i)); alb.push(A.getX(i), A.getY(i), A.getZ(i)); }
     }
     const g = new THREE.BufferGeometry();
     g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
     g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
     g.setAttribute('aTube', new THREE.Float32BufferAttribute(tube, 3));
+    g.setAttribute('aAlb', new THREE.Float32BufferAttribute(alb, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(new Float32Array(pos.length / 3 * 2), 2));
     g.computeVertexNormals(); g.computeBoundingSphere();
     return g;
@@ -661,7 +670,7 @@ export function buildGarageScene(world, renderer, gfx = {}) {
       mm.compose(new THREE.Vector3(c.x, 0, c.z), new THREE.Quaternion().setFromEuler(new THREE.Euler(0, carYaw(c), 0)), new THREE.Vector3(1, -1, 1));
       flip.push({ geo: litGeo(carGeometry(c.kind, CAR_PAINTS[c.col], c.flat), c.x, 0, c.z), m: mm.clone() });
     }
-    if (flip.length) { const m = new THREE.Mesh(mergeLit(flip), garMaterial({ side: THREE.DoubleSide })); group.add(m); }
+    if (flip.length) { const m = new THREE.Mesh(mergeLit(flip), garMaterial({ side: THREE.DoubleSide }, true)); group.add(m); }
     // a wet, darker rim round each puddle
     const [rc, rg] = canvas(64);
     const gr = rg.createRadialGradient(32, 32, 14, 32, 32, 32); gr.addColorStop(0, 'rgba(0,0,0,0.55)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); rg.fillStyle = gr; rg.fillRect(0, 0, 64, 64);
