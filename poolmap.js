@@ -468,3 +468,25 @@ export function setBridge(world, br, solid) {
     world.spans[i] = list;
   }
 }
+
+// A pool's curved side only stops you once you are below the deck (mapDef.solid above), so dropping in right at the
+// edge — above all into the drained Great Pool, off its lip — could leave you inside the side itself, where every
+// step is blocked (owner: "jumping into the empty pool on the ledge makes you stuck"). Players' games call this
+// after every move: below the deck in a pool and boxed in where you stand → the nearest spot (rings out to 1.5 m)
+// where you are free. water: only spots over water (floating). Returns { x, z }, or null when nothing needs doing.
+export function poolUnstickSpot(world, x, y, z, r, height, water = false) {
+  const plan = world.def.pool;
+  if (!plan || y >= POOL.G - 0.05 || (!water && plan.poolAt(x, z) < 0)) return null;
+  const step = water ? 0.1 : 0.42;
+  const free = (px, pz) => (!water || world.bodyAt(px, pz)) && !world.blocked(px, pz, r, y, step, height);
+  if (free(x, z)) return null;
+  const dd = water ? 0.1 : 0.05;
+  for (let d = dd; d <= 1.5 + 1e-6; d += dd) {
+    const n = Math.max(8, Math.round(d * 40));
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2, px = x + Math.cos(a) * d, pz = z + Math.sin(a) * d;
+      if (free(px, pz)) return { x: px, z: pz };
+    }
+  }
+  return null;
+}
