@@ -1,7 +1,6 @@
-// Shapes of the things standing about in Level 1's garage: old cars, traffic cones, drain pipes. Built in code
-// (our own plain designs), as one merged geometry each with the paint in its vertex colours. The scene (garview.js)
-// uses them for the real props, and the shapeshifter's model (shiftmodel.js) uses the very same shapes when it
-// pretends to be one, so a copy can't be told from the real thing by its shape.
+// Shapes of the things in Level 1's garage: old cars, traffic cones, drain pipes, the side rooms' furniture, the fuses
+// and the fuse box. Built in code (our own plain designs), as one merged geometry each with the paint in its vertex
+// colours; the scene (garview.js) lights them with its baked light.
 import * as THREE from 'three';
 
 export const CAR_PAINTS = ['#7d2f28', '#2f4a63', '#8a8f8c', '#3d5a44', '#b9b3a0', '#2a2b2e', '#9a6a2a'];
@@ -116,4 +115,90 @@ export function riserGeometry(h = 3) {
   riser = mergeParts(parts);
   riser.computeBoundingSphere();
   return riser;
+}
+
+// ---------- side-room furniture and the fuses (Level 1's first step) ----------
+// Each piece is built facing +z (its front, into the room), its back on the wall at z = -depth/2, centred on x;
+// garview.js turns it to face the room (yaw) and lights it like the other props.
+const box = (w, h, d, x, y, z, color, extra = {}) => ({ geo: new THREE.BoxGeometry(w, h, d), color, m: T(x, y, z), ...extra });
+const cyl = (r, h, x, y, z, color, seg = 10) => ({ geo: new THREE.CylinderGeometry(r, r, h, seg), color, m: T(x, y, z) });
+// the heights of a rack's shelves (their tops), as in garmap's fuse spots
+export const SHELF_TOPS = [0.45, 0.95, 1.45, 1.83];
+// steel racking: four orange posts, grey boards, junk on the shelves (kept clear of `keep`: [x, shelf] spots)
+export function shelfGeometry(len, depth, R = Math.random, keep = []) {
+  const parts = [], post = '#b4652b', board = '#686d71';
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) parts.push(box(0.04, 1.86, 0.04, sx * (len / 2 - 0.03), 0.93, sz * (depth / 2 - 0.03), post));
+  for (const top of SHELF_TOPS) {
+    parts.push(box(len, 0.025, depth - 0.02, 0, top - 0.0125, 0, board));
+    parts.push(box(len, 0.05, 0.02, 0, top - 0.03, depth / 2 - 0.02, post));                 // the front edge
+  }
+  // what is left on the shelves: cardboard boxes, paint tins, a coil of hose (never on a fuse's spot)
+  for (let s = 0; s < 3; s++) for (let x = -len / 2 + 0.2; x < len / 2 - 0.15; x += 0.3 + R() * 0.35) {
+    if (keep.some(([kx, ks]) => ks === s && Math.abs(kx - x) < 0.32) || R() < 0.3) continue;
+    const top = SHELF_TOPS[s], r = R();
+    if (r < 0.5) { const w = 0.2 + R() * 0.15, h = 0.12 + R() * 0.2; parts.push(box(w, h, depth * (0.5 + R() * 0.3), x, top + h / 2, (R() - 0.5) * 0.06, ['#8a6a45', '#7a5c3c', '#9a7a52'][Math.floor(R() * 3)])); }
+    else if (r < 0.8) { const n = 1 + Math.floor(R() * 3); for (let k = 0; k < n; k++) parts.push(cyl(0.06, 0.14, x + k * 0.13 - 0.1, top + 0.07, (R() - 0.5) * 0.1, ['#7d7f80', '#5c6b4a', '#8a3a2a'][Math.floor(R() * 3)])); }
+    else parts.push({ geo: new THREE.TorusGeometry(0.1, 0.03, 6, 12).rotateX(Math.PI / 2), color: '#2c3a2e', m: T(x, top + 0.04, 0) });
+  }
+  return mergeParts(parts);
+}
+// an attendant's desk: a worn top on steel legs, a drawer, a clipboard, a mug, an old phone
+export function deskGeometry(len, depth) {
+  const parts = [], steel = '#4f5559', top = '#6a5a44';
+  parts.push(box(len, 0.04, depth + 0.1, 0, 0.74, 0.05, top));
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) parts.push(box(0.04, 0.72, 0.04, sx * (len / 2 - 0.05), 0.36, sz * (depth / 2 - 0.02) + 0.05, steel));
+  parts.push(box(0.42, 0.18, depth, len / 2 - 0.3, 0.62, 0.05, steel));
+  parts.push(box(0.2, 0.02, 0.012, len / 2 - 0.3, 0.62, depth / 2 + 0.1, '#9a9c9e'));            // the drawer handle
+  parts.push(box(0.22, 0.012, 0.3, -len / 2 + 0.55, 0.766, 0.02, '#8a6a3a'), box(0.2, 0.004, 0.27, -len / 2 + 0.55, 0.774, 0.025, '#d9d4c4', { flat: 1 }));   // clipboard
+  parts.push(cyl(0.04, 0.09, len / 2 - 0.25, 0.805, -0.05, '#c9c2b0'));                           // a mug
+  parts.push(box(0.18, 0.07, 0.2, len / 2 - 0.65, 0.795, -0.04, '#262728'), box(0.2, 0.03, 0.05, len / 2 - 0.65, 0.845, -0.04, '#1c1d1e'));   // a phone
+  return mergeParts(parts);
+}
+// a hook board on the wall: a panel with a row of hooks, keys and tags hanging on some (none on a fuse's hook)
+export function boardGeometry(len, R = Math.random, keep = []) {
+  const parts = [box(len, 0.5, 0.02, 0, 1.55, 0, '#6e5f48')];
+  for (let x = -len / 2 + 0.1; x < len / 2 - 0.05; x += 0.15) {
+    parts.push(box(0.01, 0.01, 0.06, x, 1.62, 0.04, '#9a9c9e'));
+    if (keep.some(k => Math.abs(k - x) < 0.1) || R() < 0.35) continue;
+    parts.push(box(0.035, 0.07, 0.004, x, 1.56, 0.05, ['#c9b24a', '#b84a3a', '#d9d4c4', '#4a6a9a'][Math.floor(R() * 4)]), box(0.012, 0.045, 0.004, x, 1.505, 0.05, '#a8a9a4'));
+  }
+  return mergeParts(parts);
+}
+
+// the fuse: a cartridge fuse ("knife-blade" style), about 16 cm, a pale ceramic body with a red band, brass caps and
+// blades. Lies along x. on: 'shelf' / 'desk' (in a little open cardboard box) or 'hook' (strapped to a card on a hook).
+function fuseParts(holder = null) {
+  const r90 = new THREE.Matrix4().makeRotationZ(Math.PI / 2);
+  const along = (geo) => geo.applyMatrix4(r90);
+  const parts = [
+    { geo: along(new THREE.CylinderGeometry(0.021, 0.021, 0.09, 12)), color: '#dcd6c4' },
+    { geo: along(new THREE.CylinderGeometry(0.0225, 0.0225, 0.016, 12)), color: '#a8321f', m: T(0.012, 0, 0) },
+    { geo: along(new THREE.CylinderGeometry(0.0222, 0.0222, 0.012, 12)), color: '#c9a23a', m: T(-0.02, 0, 0) },
+  ];
+  for (const s of [-1, 1]) {
+    parts.push({ geo: along(new THREE.CylinderGeometry(0.026, 0.026, 0.02, 12)), color: '#b08a3e', m: T(s * 0.055, 0, 0) });
+    parts.push(box(0.03, 0.034, 0.005, s * 0.078, 0, 0, '#c8a95a'));
+  }
+  if (holder === 'box') parts.push(box(0.2, 0.015, 0.08, 0, -0.03, 0, '#8a6a45'), box(0.2, 0.04, 0.006, 0, -0.012, 0.037, '#7a5c3c'), box(0.2, 0.04, 0.006, 0, -0.012, -0.037, '#7a5c3c'), box(0.006, 0.04, 0.08, 0.097, -0.012, 0, '#7a5c3c'), box(0.006, 0.04, 0.08, -0.097, -0.012, 0, '#7a5c3c'));
+  if (holder === 'card') parts.push(box(0.2, 0.09, 0.004, 0, 0.01, -0.024, '#cfc6ae'), box(0.012, 0.06, 0.004, -0.04, 0.0, 0.024, '#3a3a3a'), box(0.012, 0.06, 0.004, 0.04, 0.0, 0.024, '#3a3a3a'));
+  return parts;
+}
+export function fuseGeometry(on = 'shelf') { return mergeParts(fuseParts(on === 'hook' ? 'card' : on === 'shelf' || on === 'desk' ? 'box' : null)); }
+// a fuse to hold in a hand (no box or card): its own lit materials, for players' models and your own hand
+export function fuseMesh() {
+  const g = new THREE.Group();
+  for (const p of fuseParts()) { const m = new THREE.Mesh(p.geo, new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.5, metalness: /b08a|c8a9/.test(p.color) ? 0.7 : 0.05 })); if (p.m) m.applyMatrix4(p.m); g.add(m); }
+  return g;
+}
+// the fuse box's front: a grey steel box with a placard, four empty slots (dark sockets with brass clips) in a row and
+// the main breaker lever. Its lamps and the fuses in the slots are drawn separately (they change).
+export function fuseBoxGeometry(slots) {
+  const parts = [box(0.7, 0.95, 0.18, 0, 0, 0, '#59605a'), box(0.62, 0.86, 0.02, 0, 0, 0.1, '#6f7770'),
+    box(0.3, 0.08, 0.012, 0, 0.36, 0.116, '#c9b54a', { flat: 1 }), box(0.05, 0.14, 0.05, 0.24, -0.3, 0.13, '#a52a1e'), box(0.09, 0.05, 0.03, 0.24, -0.38, 0.12, '#2a2c2e')];
+  for (const x of slots) {
+    parts.push(box(0.085, 0.24, 0.015, x, -0.02, 0.112, '#141617', { flat: 1 }));
+    for (const s of [-1, 1]) parts.push(box(0.05, 0.022, 0.02, x, -0.02 + s * 0.095, 0.12, '#a8893e'));
+    parts.push(box(0.07, 0.05, 0.012, x, 0.19, 0.114, '#2a2c2e'));                               // each lamp's bezel
+  }
+  return mergeParts(parts);
 }

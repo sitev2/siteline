@@ -1,10 +1,12 @@
 // Checks Level 1 (the garage): from the start a player can walk to the fuse box, the crank, the lift (with the
-// shutter up), every side room, on both floors, and the shapeshifter's walking grid joins both
-// floors by the ramps and by the stairs. Usage: node check_gar.mjs [map]   (map: print both floors)
+// shutter up), every side room, on both floors; with every ordinary door shut the fuse box, the crank and the door of
+// every side room can still be walked to, and every fuse spot in every room (a fuse can be in any 4 of the 7) is in
+// reach from inside its room once its door is open; the creature's walking grid joins both floors by the ramps and by
+// the stairs. Usage: node check_gar.mjs [map]   (map: print both floors)
 import { resolveMap } from './maps.js';
 import { World, CELL, STEP } from './world.js';
 import { NavGrid } from './bots.js';
-import { GAR, floorY } from './garmap.js';
+import { GAR, floorY, FUSES } from './garmap.js';
 
 let bad = 0;
 const fail = (t) => { bad++; console.log('  FAIL', t); };
@@ -36,7 +38,41 @@ for (const level of ['easy', 'normal', 'hard']) {
   reach('the lift', { x: (plan.lift.x0 + plan.lift.x1) / 2, z: (plan.lift.z0 + plan.lift.z1) / 2 }, plan.lift.y);
   reach('the monster start', plan.monster);
   plan.rooms.forEach((r, i) => reach(`side room ${i} (${r.name})`, { x: (r.x0 + r.x1) / 2, z: (r.z0 + r.z1) / 2 }, floorY(r.floor)));
-  plan.bays.forEach((b, i) => { if (b.car == null) reach(`empty bay ${i}`, { x: b.x, z: (b.z0 + b.z1) / 2 }, floorY(b.f)); });
+  // ---- the fuses: with every ordinary door shut, the fuse box, the crank and every side room's door can be walked to;
+  // with a room's door open, each of its fuse spots is in reach (the host takes a fuse from 2 m, the hand button
+  // shows from 1.5 m) from somewhere inside it ----
+  if (plan.rooms.length < FUSES) fail('fewer side rooms than fuses');
+  {
+    const w2 = new World(resolveMap('garage', level));
+    w2.doors.forEach((d, i) => w2.setDoor(i, !!d.lock && d.lock !== 'shutter' ? d.open : false));
+    const shut = new NavGrid(w2);
+    const flood2 = (nv, from) => { const sn = new Uint8Array(nv.n), q = [from]; sn[from] = 1; for (let k = 0; k < q.length; k++) { const e = nv.edges[q[k]]; for (let j = 0; j < e.length; j += 2) if (!sn[e[j]] && Math.abs(nv.y[e[j]] - nv.y[q[k]]) <= STEP + 0.01) { sn[e[j]] = 1; q.push(e[j]); } } return sn; };
+    const sn = flood2(shut, shut.nearest(plan.start.x, plan.start.y, plan.start.z));
+    const can = (name, x, y, z) => { const i = shut.nearest(x, y, z); if (i < 0 || !sn[i] || Math.hypot(shut.x[i] - x, shut.z[i] - z) > 1.6 || Math.abs(shut.y[i] - y) > 0.3) fail(`with the doors shut, cannot walk to ${name}`); };
+    can('the fuse box', plan.fuse.x, plan.fuse.y, plan.fuse.z + 0.8);
+    can('the crank', plan.crank.x, plan.crank.y, plan.crank.z + 0.8);
+    plan.rooms.forEach((r, k) => {
+      const d = w2.doors.find(dd => dd.room === k), y = floorY(r.floor);
+      if (!d) { fail(`side room ${k} has no door`); return; }
+      const s = Math.sign((d.cx - (r.x0 + r.x1) / 2) * d.nx + (d.cz - (r.z0 + r.z1) / 2) * d.nz) || 1;
+      can(`the door of side room ${k}`, d.cx + d.nx * s * 0.9, y, d.cz + d.nz * s * 0.9);
+      // that door open: every spot in the room in reach from inside it
+      const w3 = new World(resolveMap('garage', level));
+      w3.doors.forEach((dd, i) => w3.setDoor(i, dd.room === k));
+      const nv = new NavGrid(w3), s3 = flood2(nv, nv.nearest(plan.start.x, plan.start.y, plan.start.z));
+      if (!r.spots || !r.spots.length) fail(`side room ${k} has no fuse spot`);
+      for (const S of r.spots || []) {
+        let best = Infinity;
+        for (let i = 0; i < nv.n; i++) {
+          if (!s3[i] || Math.abs(nv.y[i] - y) > 0.3 || nv.x[i] < r.x0 || nv.x[i] > r.x1 || nv.z[i] < r.z0 || nv.z[i] > r.z1) continue;
+          best = Math.min(best, Math.hypot(nv.x[i] - S.x, nv.z[i] - S.z));
+        }
+        if (!(best < 1.2)) fail(`side room ${k}: the fuse spot at ${S.x}, ${S.z} (${S.on}) is out of reach (${best.toFixed(2)} m)`);
+        if (S.y < 0.3 || S.y > 1.8) fail(`side room ${k}: a fuse spot at an odd height (${S.y} m)`);
+        if (!(r.furn || []).some(f => S.x >= f.x0 - 0.06 && S.x <= f.x1 + 0.06 && S.z >= f.z0 - 0.06 && S.z <= f.z1 + 0.06)) fail(`side room ${k}: a fuse spot not on any furniture`);
+      }
+    });
+  }
   // both floors are joined by the ramps alone, and by the stairs alone
   const inAny = (list) => (t) => list.some(r => nav.x[t] > r.x0 && nav.x[t] < r.x1 && nav.z[t] > r.z0 && nav.z[t] < r.z1);
   const lower = node({ x: 30, z: 26 }, 0);

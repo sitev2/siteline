@@ -22,6 +22,10 @@ const PATHS = {
   note: `<path ${S} d="M5 3h10l4 4v14H5z"/><path ${S} d="M15 3v4h4M8 11h8M8 14.5h8M8 18h5"/>`,
   search: `<circle ${S} cx="10.5" cy="10.5" r="6"/><path ${S} d="M15 15l5.5 5.5"/>`,
   light: `<path ${S} d="M6 3h12l-2.5 6h-7z"/><path ${S} d="M8.5 9h7v12h-7z"/><path ${S} d="M12 12.5v3"/>`,
+  // two people, one a step behind the other (the garage's teammate count)
+  team: `<circle ${S} cx="9" cy="7" r="3"/><path ${S} d="M3 20v-1.5A5 5 0 0 1 8 13.5h2a5 5 0 0 1 5 5V20"/><path ${S} d="M15.5 4.3a3 3 0 0 1 0 5.4M17.5 13.7a5 5 0 0 1 3.5 4.8V20"/>`,
+  // a cartridge fuse: a body with a band, end caps and blades (the garage's fuses)
+  fuse: `<rect ${S} x="7.5" y="8" width="9" height="8" rx="1"/><path ${F} d="M4 6.5h3.5v11H4zM16.5 6.5H20v11h-3.5zM11 8h2v8h-2z"/><path ${L(2.4)} d="M1.5 12H4M20 12h2.5"/>`,
   hand: `<path ${S} d="M8 13V6.5a1.5 1.5 0 0 1 3 0V11M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V6a1.5 1.5 0 0 1 3 0v6M17 12V9.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1a6 6 0 0 1-4.9-2.6l-2.8-4a1.5 1.5 0 0 1 2.4-1.8L8 14.5"/>`,
   moon: `<path ${S} d="M20 14.5A8.5 8.5 0 1 1 9.5 4a6.8 6.8 0 0 0 10.5 10.5z"/>`,
   skull: `<path ${S} d="M12 3a7 7 0 0 0-7 7c0 2.4 1.2 4.3 3 5.4V19h8v-3.6c1.8-1.1 3-3 3-5.4a7 7 0 0 0-7-7z"/><circle ${F} cx="9.3" cy="10.5" r="1.6"/><circle ${F} cx="14.7" cy="10.5" r="1.6"/><path ${S} d="M10.5 19v2M13.5 19v2"/>`,

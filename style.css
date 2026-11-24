@@ -276,6 +276,16 @@ body.br-mode #br-tasks { display: block; }
 #over-stats .run-levels .run-total td { font-weight: 700; border-top: 1px solid rgba(255,255,255,.25); color: #9dffb5; }      /* the Poolrooms: nothing on screen tells you what to do */
 body.br-mode #topbar { display: none !important; }
 .br-tasks-title { font: 600 .73em var(--body); letter-spacing: .14em; text-transform: uppercase; color: rgba(255,255,255,.75); margin-bottom: .55em; }
+/* Level 1: how many of you there are (an icon and a number) and the fuse you carry, above the task list */
+#br-mates, #br-carry { display: flex; align-items: center; gap: .4em; font: 700 1.25em var(--body); color: #fff; margin-bottom: .45em; }
+#br-mates.hidden, #br-carry.hidden { display: none; }
+#br-mates .ico, #br-carry .ico { width: 1.35em; height: 1.35em; }
+#br-carry { color: #f0d28a; }
+/* Level 1: the crank's ring (canvas, drawn in code), and on phones the one big tap button in its middle */
+#crank-ring { position: fixed; left: 0; top: 0; pointer-events: none; z-index: 5; }
+#crank-ring.hidden { display: none; }
+#touch #btn-crank { background: rgba(240,160,64,.22); border-color: rgba(255,255,255,.55); font-size: 2rem; }
+#touch #btn-crank.hidden, body.layout-edit #touch #btn-crank { display: none !important; }
 #br-task-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .35em; }
 #br-task-list li { display: flex; gap: .55em; align-items: baseline; font: 600 1em var(--body); color: rgba(255,255,255,.8); line-height: 1.25; }
 #br-task-list li .n { flex: none; width: 1.1em; text-align: right; font-variant-numeric: tabular-nums; }

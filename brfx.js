@@ -132,12 +132,12 @@ export const LOGS = [
     stick(g, 53, 252, 0.7); stick(g, 203, 252, 0.7);
   } },
   // 12: Level 1's one log (the garage), taped up by the start
-  { text: "Car park, two floors. Power: fuse box, north wall, downstairs. Then wind the shutter up by hand: the lift is behind it. Count the cars. One was not here before.", draw(g) {
-    pen(g, 2.2); const car = (x, y) => { g.strokeRect(x, y, 44, 14); line(g, x + 8, y, x + 13, y - 10, x + 31, y - 10, x + 36, y); g.beginPath(); g.arc(x + 10, y + 15, 4, 0, 7); g.stroke(); g.beginPath(); g.arc(x + 34, y + 15, 4, 0, 7); g.stroke(); };
-    car(30, 214); car(92, 214); car(154, 214);
-    g.fillStyle = '#f3efe2'; g.fillRect(170, 218, 3, 3); g.fillRect(180, 218, 3, 3);
-    g.fillStyle = 'rgba(35,35,48,0.9)'; g.fillRect(170, 219, 3, 2); g.fillRect(180, 219, 3, 2);
-    g.font = '30px "Segoe Print", "Comic Sans MS", cursive'; g.fillStyle = 'rgba(170,30,30,0.85)'; g.fillText('?', 204, 212);
+  { text: "Car park, two floors. The fuse box downstairs, north wall, is missing its four fuses: look in the little rooms. Then wind the shutter up by hand, in time with it. The lift is behind it. Count us. Then count us again.", draw(g) {
+    // four of us in suits, one of them not quite right
+    pen(g, 2.2); const man = (x, y) => { g.beginPath(); g.arc(x, y, 7, 0, 7); g.stroke(); line(g, x, y + 7, x, y + 30); line(g, x - 10, y + 15, x + 10, y + 15); line(g, x, y + 30, x - 8, y + 46); line(g, x, y + 30, x + 8, y + 46); };
+    man(50, 190); man(95, 190); man(140, 190); man(185, 190);
+    g.font = '30px "Segoe Print", "Comic Sans MS", cursive'; g.fillStyle = 'rgba(170,30,30,0.85)'; g.fillText('?', 198, 182);
+    g.fillStyle = 'rgba(35,35,48,0.85)'; g.font = '18px "Segoe Print", "Comic Sans MS", cursive'; g.fillText('1 2 3 4', 70, 258);
   } },
 ];
 
@@ -659,7 +659,7 @@ export class BackroomsFX {
 
   updateDread(dt) {
     const g = this.g, me = g.me, cam = g.camera.position, mon = this.monster();
-    // (Level 1: a disguised shapeshifter is not felt at all: no heartbeat, no shake)
+    // (Level 1: while it is a copy of someone it is not felt at all: no heartbeat, no shake, no breathing)
     const here = !!(mon && mon.alive && mon.model && mon.model.root.visible && (!g.gar || mon.revealed));
     const mp = here ? mon.model.root.position : null;
     const d = here ? Math.hypot(mp.x - cam.x, mp.z - cam.z) : Infinity;
@@ -852,23 +852,28 @@ export class BackroomsFX {
         fog.color.copy(this.fogBase).multiplyScalar(Math.max(0.015, Math.min(1, this.dim * 1.1)));
       }
     }
-    // flashlights light the baked walls too (up to four, nearest first)
+    // flashlights light the baked walls too (up to four, nearest first), but not behind walls: each one's shadow
+    // ring (flashshadow.js, filled by game.js; your own lamp needs none: it only lights what you can see)
     const list = [];
     const me = g.me, cam = g.camera;
     if (me.alive && me.light) {
       const f = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
-      list.push({ p: cam.position.clone().addScaledVector(f, 0.2), d: f, dist: 0, k: g.flashK == null ? 1 : g.flashK });
+      list.push({ p: cam.position.clone().addScaledVector(f, 0.2), d: f, dist: 0, k: g.flashK == null ? 1 : g.flashK, row: -1, yr: null });
     }
     for (const r of g.remotes.values()) {
-      if (!r.alive || !r.light || r.team === 'monster') continue;
+      if (!r.alive || !r.light || (r.team === 'monster' && !(r.model && r.model.shifter && r.model.root.visible))) continue;      // (Level 1: its copy's flashlight is a real one)
       const cy = Math.cos(r.rp.pitch);
       const d = new THREE.Vector3(-Math.sin(r.rp.yaw) * cy, Math.sin(r.rp.pitch), -Math.cos(r.rp.yaw) * cy);
-      list.push({ p: new THREE.Vector3(r.rp.x, r.rp.y + EYE - 0.15, r.rp.z), d, dist: Math.hypot(r.rp.x - cam.position.x, r.rp.z - cam.position.z) });
+      const row = g.flashRows ? g.flashRows.get(r.id) : null;
+      list.push({ p: new THREE.Vector3(r.rp.x, r.rp.y + EYE - 0.15, r.rp.z), d, dist: Math.hypot(r.rp.x - cam.position.x, r.rp.z - cam.position.z), row: row == null ? -1 : row, yr: g.flashHeights ? g.flashHeights(r.rp.y) : null });
     }
     list.sort((a, b) => a.dist - b.dist);
+    if (g.flashShadow) FLASH.uFlashRing.value = g.flashShadow.tex;
     for (let i = 0; i < 4; i++) {
       const L = list[i];
       FLASH.uFlashOn.value[i] = L ? (L.k == null ? 1 : L.k) : 0;
+      FLASH.uFlashRow.value[i] = L ? L.row : -1;
+      if (L) FLASH.uFlashYR.value[i].set(L.yr ? L.yr[0] : -1000, L.yr ? L.yr[1] : 1000);
       if (L) { FLASH.uFlashPos.value[i].copy(L.p); FLASH.uFlashDir.value[i].copy(L.d); }
     }
   }
