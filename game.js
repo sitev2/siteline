@@ -26,7 +26,7 @@ import { icon } from './icons.js';
 import { BackroomsFX, LOGS } from './brfx.js';
 import { BR, wallFace } from './brmap.js';
 import { FUSES, GAR } from './garmap.js';
-import { POOL } from './poolmap.js';
+import { POOL, poolUnstickSpot } from './poolmap.js';
 import { PoolHands, PoolClient, poolTint } from './poolplay.js';
 import { FALL_KILL } from './poolhost.js';
 import { makeShifterModel, animateShifter, TAKE, takePull } from './shiftmodel.js';
@@ -1748,6 +1748,8 @@ export class Game {
     const wasGround = me.onGround;
     me.onGround = this.world.move(me.pos, v, dt, PLAYER_RADIUS, me.onGround || swim, PLAYER_HEIGHT, plats);
     if (pw) this.poolFloat(dt);
+    // (dropped in right at a pool's edge, e.g. off the drained Great Pool's lip: out of its side, poolmap.js)
+    if (pw && !me.swim) { const sp = poolUnstickSpot(this.world, me.pos.x, me.pos.y, me.pos.z, PLAYER_RADIUS, PLAYER_HEIGHT); if (sp) { me.pos.x = sp.x; me.pos.z = sp.z; } }
     const under = me.onGround ? plats.find(pl => Math.abs(pl.top - me.pos.y) < 0.02 && (me.pos.x - pl.x) ** 2 + (me.pos.z - pl.z) ** 2 < pl.r * pl.r) : null;
     if ((under && under.id) !== me.standingOn) { me.standingOn = under ? under.id : null; me.mateLast = under ? { x: under.x, z: under.z } : null; }
     if (!me.onGround) {
@@ -1802,18 +1804,10 @@ export class Game {
   }
   // Falling in close to a pool's side (or a wall) could leave you inside its edge: the edge only blocks below the
   // deck, so you dropped into it from above and then every stroke was blocked (owner: "you get stuck"). If the
-  // spot you float at is blocked, move to the nearest free spot of water (rings out to 1.5 m).
+  // spot you float at is blocked, move to the nearest free spot of water (poolmap.js poolUnstickSpot).
   poolUnstick() {
-    const me = this.me, W = this.world, y = me.pos.y;
-    const free = (x, z) => W.bodyAt(x, z) && !W.blocked(x, z, PLAYER_RADIUS, y, 0.1, PLAYER_HEIGHT);
-    if (free(me.pos.x, me.pos.z)) return;
-    for (let d = 0.1; d <= 1.5; d += 0.1) {
-      const n = Math.max(8, Math.round(d * 40));
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2, x = me.pos.x + Math.cos(a) * d, z = me.pos.z + Math.sin(a) * d;
-        if (free(x, z)) { me.pos.x = x; me.pos.z = z; return; }
-      }
-    }
+    const me = this.me, sp = poolUnstickSpot(this.world, me.pos.x, me.pos.y, me.pos.z, PLAYER_RADIUS, PLAYER_HEIGHT, true);
+    if (sp) { me.pos.x = sp.x; me.pos.z = sp.z; }
   }
   // a ladder: push towards it (from the water, or from a drained pool's floor) to climb; step off the deck at one
   // and you catch it; pull away to go down. Returns true while you are on one.

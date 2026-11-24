@@ -7,6 +7,7 @@
 //   - no pillar stands in the water, every ladder works, the curved stair reaches the upper floor;
 //   - the way out is shut while the Great Pool is full and open once it is drained.
 //   - every slide's tube runs inside solid wall from its mouth to its outlet;
+//   - walking or jumping off the edge into the drained Great Pool, all the way round it, never leaves you stuck in its side;
 //   - the order, played on the real host code with pretend players (1 and 2 of them, every difficulty): the plates
 //     raise the bridge (alone it stays up a while; never onto a swimmer), each valve heats its own lane and can't be
 //     turned back, only all three unlock the drain (so the grotto's, only reached by the green slide, is needed), the drain
@@ -19,7 +20,8 @@ globalThis.performance = { now: () => (globalThis.__sim ? simNow : realNow()) };
 globalThis.setInterval = () => 0;
 import { resolveMap } from './maps.js';
 import { World, CELL, STEP, PLAYER_RADIUS } from './world.js';
-import { POOL, POOL_LEVELS, hotLanes, slideCurve } from './poolmap.js';
+import { POOL, POOL_LEVELS, hotLanes, slideCurve, poolUnstickSpot } from './poolmap.js';
+import { PLAYER_HEIGHT, GRAVITY } from './world.js';
 
 const { G, U, WY } = POOL;
 let bad = 0;
@@ -211,6 +213,37 @@ for (const level of ['easy', 'normal', 'hard']) {
     if (Math.hypot(e[0] - (sl.out.x + sl.out.nx * 1.2), e[2] - (sl.out.z + sl.out.nz * 1.2)) > 0.7) fail(`the ${sl.name} slide's path doesn't end at its outlet`);
     console.log(`slide ${sl.name}: ${c.total.toFixed(1)} m of tube, ${(sl.path[0][1] - e[1]).toFixed(1)} m down`);
   }
+}
+
+// ---- off the lip into the drained Great Pool (owner: "jumping into the empty pool on the ledge makes you stuck") ----
+// The pool's curved side only blocks you below the deck, so a drop right at the edge could leave you inside it. Walk or
+// jump in from all round it (walking and sprinting, letting go of the keys after a moment, as players do), moving
+// exactly as the game does (World.move, then poolUnstickSpot): you must land on the pool floor free to walk away.
+{
+  const w = new World(resolveMap('pool', 'normal')), P = w.def.pool, great = w.bodies.find(b => b.name === 'great');
+  great.y = great.bottom;
+  const gp = P.pools.find(p => p.name === 'great'), JUMP_V = Math.sqrt(2 * GRAVITY * 54 * 0.0254);
+  let tries = 0, stuck = 0, eg = '';
+  for (let a = 0; a < 360; a += 2) for (const sp of [2.7, 4.5]) for (const jump of [false, true]) for (const let_go of [0.15, 0.3, 0.6]) {
+    const cx = 53, cz = 33, ang = a * Math.PI / 180;
+    let x = cx + Math.cos(ang) * 12, z = cz + Math.sin(ang) * 12;
+    for (let i = 0; i < 40; i++) { const d = gp.sdf(x, z), l = Math.hypot(cx - x, cz - z); x += (cx - x) / l * (d - 0.5); z += (cz - z) / l * (d - 0.5); }
+    if (w.blocked(x, z, R, G, 0.1) || w.groundAt(x, z, R, G + 0.1, STEP) < G - 0.01) continue;
+    tries++;
+    const p = { x, y: G, z }, l = Math.hypot(cx - x, cz - z), v = { x: (cx - x) / l * sp, y: jump ? JUMP_V : 0, z: (cz - z) / l * sp };
+    let og = true;
+    for (let t = 0; t < 3; t += 1 / 60) {
+      if (t > let_go) { v.x = 0; v.z = 0; }
+      og = w.move(p, v, 1 / 60, R, og, PLAYER_HEIGHT);
+      const s2 = poolUnstickSpot(w, p.x, p.y, p.z, R, PLAYER_HEIGHT); if (s2) { p.x = s2.x; p.z = s2.z; }
+    }
+    if (p.y > G - 0.5) continue;                     // (never went in)
+    let away = 0;
+    for (let k = 0; k < 16; k++) { const b = k / 16 * Math.PI * 2, q = { x: p.x, y: p.y, z: p.z }, vv = { x: Math.cos(b) * 2.7, y: 0, z: Math.sin(b) * 2.7 }; let g = true; for (let s3 = 0; s3 < 12; s3++) g = w.move(q, vv, 1 / 60, R, g, PLAYER_HEIGHT); if (Math.hypot(q.x - p.x, q.z - p.z) > 0.2) away++; }
+    if (away < 4 || w.blocked(p.x, p.z, R, p.y, STEP, PLAYER_HEIGHT)) { stuck++; if (!eg) eg = `${p.x.toFixed(2)}, ${p.y.toFixed(2)}, ${p.z.toFixed(2)}`; }
+  }
+  if (stuck) fail(`${stuck} of ${tries} drops into the drained Great Pool left you stuck in its side, e.g. at ${eg}`);
+  console.log(`off the lip into the drained Great Pool: ${tries} drops, ${stuck} stuck`);
 }
 
 // ---- the order on the real host code ----
