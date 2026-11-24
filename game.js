@@ -89,7 +89,7 @@ export class Game {
 
     // ---- renderer (graphics settings: graphics.js) ----
     const G = this.gfx = quality && typeof quality === 'object' ? quality : resolveGraphics(null, !!settings.touch);
-    this.night = !!night;
+    this.night = !!night && this.world.def.theme !== 'backrooms';     // (the Backrooms deathmatch map has its own baked light)
     const usePost = G.ao || G.bloom || G.look || G.aa === 'fxaa';
     this.nativeAA = G.aa === 'msaa' && !usePost;     // (the screen's own MSAA can only be chosen now; applyGraphics uses PostFX's instead)
     this.renderer = new THREE.WebGLRenderer({ antialias: this.nativeAA, powerPreference: 'high-performance' });
@@ -326,7 +326,9 @@ export class Game {
       R.shadowMap.enabled = G.shadows !== 'off';
       R.shadowMap.type = G.shadows === 'high' || G.shadows === 'ultra' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
     }
-    if (!this.br && ['shadows', 'textures', 'viewDistance', 'modelDetail', 'effects'].some(changed)) this.rebuildMap();
+    // (the Backrooms deathmatch map is baked like the Backrooms levels: its doors live in the picture)
+    const baked = this.br || this.world.def.theme === 'backrooms';
+    if (!baked && ['shadows', 'textures', 'viewDistance', 'modelDetail', 'effects'].some(changed)) this.rebuildMap();
     else if (changed('textures') || changed('viewDistance')) {
       const aniso = { low: 1, medium: 4, high: R.capabilities.getMaxAnisotropy() }[G.textures || 'medium'] || 4;
       this.mapGroup.traverse(o => { const m = o.material; if (m && m.map && m.map.anisotropy !== aniso) { m.map.anisotropy = aniso; m.map.needsUpdate = true; } });
@@ -1707,8 +1709,12 @@ export class Game {
       return;
     }
     const use = this.eligibleUse();
-    // E / ✋ with nothing to plant or defuse: swap for the gun you're looking at
-    if (inp.consume('use') && use !== 'plant' && use !== 'defuse' && use !== 'look') this.tryPick();
+    // E / ✋ with nothing to plant or defuse: swap for the gun you're looking at; in a deathmatch on a map with doors
+    // (the Backrooms one), else open or shut the door in front of you
+    if (inp.consume('use') && use !== 'plant' && use !== 'defuse' && use !== 'look' && !this.tryPick() && this.dm) {
+      const di = this.doorTarget();
+      if (di >= 0) this.transport.send({ t: 'door', i: di });
+    }
     if (inp.consume('drop')) this.dropWeapon();
     const wasUsing = me.using;
     me.using = (use === 'plant' || use === 'defuse') && inp.useHeld;
@@ -3058,6 +3064,8 @@ export class Game {
     else if (pick) {
       const cur = me.inv[WEAPONS[pick.w].slot];
       hint = `${touch ? 'Tap [[hand]]' : `Press ${this.key('use')}`} to ${cur ? `swap your ${itemName(cur)} for` : 'pick up'} the ${itemName(pick.w)}`;
+    } else if (me.alive && this.dm && this.world.doors.length && this.doorTarget() >= 0) {
+      hint = `${touch ? 'Tap [[hand]]' : `Press ${this.key('use')}`} to ${this.world.doors[this.doorTarget()].open ? 'shut' : 'open'} the door`;
     } else if (me.alive && me.melee && me.weapon !== me.melee && this.clock < (this.spoonHintUntil || 0)) {
       const rm = reverseMap(this.settings.keys), code = Object.keys(rm).find(c => rm[c] === 'w3');
       hint = touch ? '[[spoon]] Tap [[swap]] for the spoon' : code ? `[[spoon]] Press ${keyLabel(code)} for the spoon` : '[[spoon]] Scroll the mouse wheel for the spoon';
@@ -3098,7 +3106,8 @@ export class Game {
     }
     hud.hint(hint);
     const useBtn = document.getElementById('btn-use');
-    useBtn.classList.toggle('hidden', use !== 'plant' && use !== 'defuse' && !pick);
+    const dmDoor = this.dm && me.alive && this.world.doors.length > 0 && this.doorTarget() >= 0;
+    useBtn.classList.toggle('hidden', use !== 'plant' && use !== 'defuse' && !pick && !dmDoor);
     useBtn.classList.toggle('pick', !!pick && use !== 'plant' && use !== 'defuse');
     if (this.br) useBtn.classList.toggle('hidden', !this.useTarget() || !!this.ring);
     const altBtn = document.getElementById('btn-alt');

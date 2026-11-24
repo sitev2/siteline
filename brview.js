@@ -330,6 +330,7 @@ const LOCK_TINT = { red: new THREE.Color(0.82, 0.74, 0.66), heavy: new THREE.Col
 
 export function buildBackroomsScene(world, renderer, gfx = {}) {
   const plan = world.def.br, H = BR.ceiling, Wc = world.w, Dc = world.h;
+  FLASH.uFlashOn.value.fill(0);              // (no flashlight left on from an earlier game: brfx.js fills them in the Backrooms)
   // which section's look a point has (0 A … 3 D)
   const lookAt = (x, z) => { const s = brSection(plan, x, z); return LOOKS[s === 4 ? 3 : Math.max(0, s)]; };
   const group = new THREE.Group();
@@ -1085,6 +1086,7 @@ export function buildBackroomsScene(world, renderer, gfx = {}) {
   const fogCols = LOOKS.map(l => new THREE.Color(l.fog[0] / 255, l.fog[1] / 255, l.fog[2] / 255));
   group.userData.fogAt = (x, z) => fogCols[LOOKS.indexOf(lookAt(x, z))];
   const far = Math.min(gfx.viewDistance || 140, 60);
-  const fog = new THREE.Fog('#9a8f55', 5, Math.max(30, far * 0.72));
+  // (the deathmatch map: a lighter haze, so people can be seen across a hall)
+  const fog = plan.dm ? new THREE.Fog('#9a8f55', 9, Math.max(40, far)) : new THREE.Fog('#9a8f55', 5, Math.max(30, far * 0.72));
   return { group, theme: { name: 'backrooms' }, fog, sky: null, sun: null, far };
 }
