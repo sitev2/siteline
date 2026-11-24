@@ -705,14 +705,6 @@ export class BotBrain {
     const wading = p.y < 0.3 && this.world.waterAt(p.x, p.z) > 0;   // canal water slows everyone
     const max = (w ? runSpeed(w, false) : 250 * U) * speedK * (wading ? 0.72 : 1);
     const tx = move ? move[0] * max : 0, tz = move ? move[1] * max : 0;
-    // a shut door just ahead (Backrooms deathmatch): open it, as a player would (their walking grid has every door open)
-    if (move && this.world.doors.length && this.s.toggleDoor) {
-      this.world.doors.forEach((d, i) => {
-        if (d.open || d.lock || d.broken) return;
-        const dx = d.cx - p.x, dz = d.cz - p.z, dd = Math.hypot(dx, dz);
-        if (dd < 1.6 && (dx * move[0] + dz * move[1]) / (dd || 1) > 0.2) this.s.toggleDoor(i, true, p);
-      });
-    }
     const k = Math.min(1, dt * (move ? 8 : 14 + this.L.smart * 10));      // good players stop dead to shoot
     v.x += (tx - v.x) * k; v.z += (tz - v.z) * k;
     const ox = p.x, oz = p.z;

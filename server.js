@@ -33,6 +33,9 @@ function cleanName(n) {
   return s || 'Player';
 }
 
+// deathmatch's automatic doors (autoDoors): open when someone is this close (m), shut after this long (s) with nobody near
+const AUTO_DOOR = { reach: 2.6, shut: 3 };
+
 export class Server {
   // ownerId: the player allowed to change settings and start the match.
   // localId: a player running in the same browser (no ping needed) — null on a dedicated server.
@@ -280,7 +283,7 @@ export class Server {
       case 'pick': return this.onPick(p, msg);
       case 'note': return this.onNote(p, msg);
       case 'door':
-        if ((this.phase === 'br' || this.phase === 'dm') && p.alive && !p.escaped && Number.isInteger(msg.i)) {
+        if (this.phase === 'br' && p.alive && !p.escaped && Number.isInteger(msg.i)) {      // (deathmatch doors are automatic: autoDoors)
           const d = this.world.doors[msg.i];
           if (d && Math.hypot(d.cx - p.x, d.cz - p.z) < 2.4 && Math.abs((d.y || 0) - p.y) < 1.5) { if (d.lock === 'shutter') return; if (d.lock) this.teamDoor(msg.i, p); else this.toggleDoor(msg.i, !d.open, p); }
         }
@@ -995,6 +998,7 @@ export class Server {
       this.navGrid();
       this.world.doors.forEach((d, i) => this.world.setDoor(i, d.open));
       this.doorAt = this.world.doors.map(() => 0);
+      this.doorNear = [];
     }
     this.dm = true;
     this.round = 1;
@@ -1421,6 +1425,24 @@ export class Server {
         }
       }
     }
+  }
+
+  // Deathmatch doors are automatic (owner's request): a door opens by itself when anyone alive comes within
+  // AUTO_DOOR.reach of it (early enough that nobody runs into it, even with some lag), and shuts by itself once
+  // nobody has been that close for AUTO_DOOR.shut seconds. Nobody opens or shuts them by hand.
+  autoDoors(now) {
+    const last = this.doorNear || (this.doorNear = []);
+    this.world.doors.forEach((d, i) => {
+      if (d.lock || d.broken) return;
+      let near = null, nd = AUTO_DOOR.reach;
+      for (const p of this.players.values()) {
+        if (!p.alive || p.dummy || Math.abs((d.y || 0) - (p.y || 0)) > 1.5) continue;
+        const dd = Math.hypot(d.cx - p.x, d.cz - p.z);
+        if (dd < nd) { nd = dd; near = p; }
+      }
+      if (near) { last[i] = now; if (!d.open) this.toggleDoor(i, true, near); }
+      else if (d.open && now - (last[i] || 0) > AUTO_DOOR.shut * 1000) this.toggleDoor(i, false, null);
+    });
   }
 
   // open or shut a door (players with E / the hand button, the monster when one is in its way)
@@ -1965,6 +1987,7 @@ export class Server {
     if (!this.world || this.phase === 'lobby') return;
     if (this.bots.size) for (const brain of this.bots.values()) brain.update(dt, now / 1000);
     if (this.phase !== 'over') this.autoPickup();
+    if (this.phase === 'dm' && this.world.doors.length) this.autoDoors(now);
     // waiting for a team that left: the clocks stand still until they are back or the minute is up
     if (this.hold) {
       if (!['freeze', 'live', 'planted', 'end'].includes(this.phase)) this.hold = null;
