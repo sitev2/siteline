@@ -327,7 +327,7 @@ The only folder is `server/` (the optional home game server).
     light on the walls (`userData.setPower(on)`: OFF until all four fuses are in). No fog, no dark zones. Puddles: the floor is cut away
     and an upside-down copy of the ceiling, lamps, pillars and nearby cars lies under dark water (a cheap true reflection; people are
     not reflected, the copy neither). Also `setShutter(0…1)`, `setDoor`, `kickDoor`, `lightAt(x, z, y)`, `propLight` / `litGeo` /
-    `propMat`, drips, `placeFuses(list)` / `showFuse(i, on)` (the fuses in their rooms, drawn 1.3× life size so they can be spotted),
+    `propMat` (props keep their paint in a separate `aAlb` attribute, `garMaterial(params, true)`: their vertex colours are paint × baked light, and the flashlight used to take them as white — owner: "flash your light on objects, it turns white", v2.2), drips, `placeFuses(list)` / `showFuse(i, on)` (the fuses in their rooms, drawn 1.3× life size so they can be spotted),
     `setFuses(n)` (the box's 4 slot lamps: dark red → green, a fuse standing in each filled slot), `crankTurn(±1)` (the handle spins a
     whole turn for a good press, jerks back for a mistake).
   - The thing in the garage (owner's design, Nov 2026; it REPLACED the prop-disguise shapeshifter: no cars / cones / pipes, no "heap of
