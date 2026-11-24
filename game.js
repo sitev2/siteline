@@ -3125,7 +3125,7 @@ export class Game {
       const since = (performance.now() - me.deathTime) / 1000;
       let text = me.killedBy ? `Killed by ${me.killedBy}` : 'You are dead';
       const watching = !!(target && target.alive && since > 2 && !this.escapeScene && !this.engulfMe);
-      if (watching) text = touch ? 'Tap \u25C0 \u25B6 to watch someone else' : 'Click / right-click to watch someone else';
+      if (watching) text = touch ? 'Tap the arrows to watch someone else' : 'Click / right-click to watch someone else';
       if ((this.practice || this.dm) && !this.br) text = me.killedBy ? `Killed by ${me.killedBy} — respawning…` : 'Respawning…';
       if (this.br && this.escapeScene) text = null;     // (the ending scene says it)
       else if (this.br && !(target && since > 2)) text = me.escaped ? 'You escaped!' : me.killedBy === 'It' ? 'It caught you' : me.killedBy === 'the fall' ? 'You fell into the dark' : 'You are out';

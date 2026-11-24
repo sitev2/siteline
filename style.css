@@ -336,6 +336,8 @@ body.br-mode #topbar { display: none !important; }
   font-family: var(--display); color: #fff; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
 #spec-bar.hidden { display: none; }
 #spec-bar button { width: 52px; height: 44px; border-radius: 10px; border: 2px solid rgba(255,255,255,.45); background: rgba(10,11,13,.7); color: #fff; font-size: 1.2rem; cursor: pointer; }
+#spec-bar button i[data-icon] { display: inline-flex; width: 100%; height: 100%; align-items: center; justify-content: center; }
+#spec-bar button .ico { width: 22px; height: 22px; }
 #spec-bar button:active { background: rgba(240,160,64,.45); border-color: var(--accent); }
 #spec-name { background: rgba(10,11,13,.75); padding: 8px 14px; border-radius: 8px; min-width: 110px; text-align: center; white-space: nowrap; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; }
 #death { left: 50%; top: 70%; transform: translateX(-50%); background: rgba(10,11,13,.75); padding: 8px 16px; border-radius: 8px; font-size: 1rem; white-space: nowrap; }

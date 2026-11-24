@@ -86,7 +86,7 @@ The only folder is `server/` (the optional home game server).
   (`inspectTrick`: wrist cock, ~0.3 s full turn, catch; the gun turns about `pivot`, the hand only flicks; left hand lets go). `settle` (jump
   soaking) is an exactly-solved spring: a step-by-step one froze below ~32 fps and left the gun turned a bit more after every reload.
 - Switching who you watch while dead (v2.3; it didn't work on phones): click / mouse wheel down = next, right-click / wheel up = the one
-  before, and a `#spec-bar` (◀ name ▶, outside `#touch`, z-index above it, plain click handlers) under the death text on every device
+  before, and a `#spec-bar` (`prev` icon, name, `next` icon — icons, not ◀ ▶ characters, which phones draw as emojis; outside `#touch`, z-index above it, plain click handlers) under the death text on every device
   (`Game.spectatable()` / `cycleSpectate(dir)`; not on the practice range or in deathmatch, which respawn you).
 - Graphics changed in a game apply at once (owner's request, v2.3): main.js `liveGfx()` → `Game.applyGraphics(G)`: render scale, FPS cap,
   AA / AO / bloom / picture shaders (a new `PostFX`; MSAA then goes through PostFX, the screen's own MSAA is fixed at start, `nativeAA`),
