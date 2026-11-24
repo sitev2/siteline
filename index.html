@@ -27,7 +27,7 @@
       for (var i = 0; i < files.length; i++) imports['./' + files[i] + '.js'] = './' + files[i] + '.js?v=' + v;
       window.SITELINE_V = v;
       // the small "Version" line at the bottom of the home page: the time this page was published (UTC), so it changes by itself with every update
-      var NUMBER = '2.2';      // the version number: raise it by hand with each update (1.0 → 1.1 → …); the date after it is automatic
+      var NUMBER = '2.3';      // the version number: raise it by hand with each update (1.0 → 1.1 → …); the date after it is automatic
       document.addEventListener('DOMContentLoaded', function () {
         var el = document.getElementById('version'), d = new Date(v);
         if (el && !isNaN(d)) el.textContent = 'Version ' + NUMBER + ' · ' + d.toISOString().slice(0, 10).replace(/-/g, '.');
@@ -110,6 +110,13 @@
   <div id="br-map" class="hidden"><canvas id="br-map-canvas" width="512" height="512"></canvas><small id="br-map-tip">Your map: only where you have been</small></div>
   <div id="note-read" class="hidden"><canvas id="note-read-canvas" width="256" height="256"></canvas><small id="note-read-who"></small></div>
   <div id="br-black" class="hidden"></div>
+
+  <!-- watching someone after you died: switch who you watch (taps on phones, clicks on PC) -->
+  <div id="spec-bar" class="hidden">
+    <button id="spec-prev" aria-label="Watch the previous player">&#9664;</button>
+    <span id="spec-name"></span>
+    <button id="spec-next" aria-label="Watch the next player">&#9654;</button>
+  </div>
 
   <!-- ================= TOUCH CONTROLS ================= -->
   <div id="touch">

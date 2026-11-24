@@ -332,6 +332,12 @@ body.br-mode #topbar { display: none !important; }
 #progress .bar { height: 8px; background: rgba(0,0,0,.55); border-radius: 4px; overflow: hidden; }
 #progress-fill { height: 100%; width: 0; background: var(--accent); }
 #hint { left: 50%; bottom: calc(118px + var(--sab)); transform: translateX(-50%); background: rgba(10,11,13,.7); padding: 6px 14px; border-radius: 8px; font-size: .95rem; white-space: nowrap; }
+#spec-bar { position: fixed; left: 50%; top: calc(70% + 46px); transform: translateX(-50%); z-index: 31; display: flex; align-items: center; gap: 10px;
+  font-family: var(--display); color: #fff; touch-action: manipulation; user-select: none; -webkit-user-select: none; }
+#spec-bar.hidden { display: none; }
+#spec-bar button { width: 52px; height: 44px; border-radius: 10px; border: 2px solid rgba(255,255,255,.45); background: rgba(10,11,13,.7); color: #fff; font-size: 1.2rem; cursor: pointer; }
+#spec-bar button:active { background: rgba(240,160,64,.45); border-color: var(--accent); }
+#spec-name { background: rgba(10,11,13,.75); padding: 8px 14px; border-radius: 8px; min-width: 110px; text-align: center; white-space: nowrap; max-width: 46vw; overflow: hidden; text-overflow: ellipsis; }
 #death { left: 50%; top: 70%; transform: translateX(-50%); background: rgba(10,11,13,.75); padding: 8px 16px; border-radius: 8px; font-size: 1rem; white-space: nowrap; }
 
 #vitals { left: calc(16px + var(--sal)); right: calc(16px + var(--sar)); bottom: calc(14px + var(--sab)); display: flex; justify-content: space-between; align-items: end; gap: 12px; text-shadow: 0 1px 4px rgba(0,0,0,.8); }

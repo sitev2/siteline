@@ -91,7 +91,8 @@ export class Game {
     const G = this.gfx = quality && typeof quality === 'object' ? quality : resolveGraphics(null, !!settings.touch);
     this.night = !!night;
     const usePost = G.ao || G.bloom || G.look || G.aa === 'fxaa';
-    this.renderer = new THREE.WebGLRenderer({ antialias: G.aa === 'msaa' && !usePost, powerPreference: 'high-performance' });
+    this.nativeAA = G.aa === 'msaa' && !usePost;     // (the screen's own MSAA can only be chosen now; applyGraphics uses PostFX's instead)
+    this.renderer = new THREE.WebGLRenderer({ antialias: this.nativeAA, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.max(0.5, Math.min(3, Math.min(window.devicePixelRatio || 1, 2) * (G.renderScale || 1))));
     this.renderer.setSize(window.innerWidth, window.innerHeight, false);   // false: the canvas keeps filling the page (style.css)
     this.renderer.shadowMap.enabled = G.shadows !== 'off';
@@ -177,6 +178,9 @@ export class Game {
     // the Backrooms on this screen: snatches, notes, hallucinations, flashlights on the baked walls
     this.fx = this.br ? new BackroomsFX(this, this.builtMap) : null;
     if (this.fx) this.fx.startNotes(this.pendingNotes);
+    // dead: the ◀ ▶ buttons under "Watching …" switch who you watch (a tap on a phone, a click on a PC without the mouse lock)
+    document.getElementById('spec-prev').onclick = (e) => { e.preventDefault(); if (!this.me.alive) this.cycleSpectate(-1); };
+    document.getElementById('spec-next').onclick = (e) => { e.preventDefault(); if (!this.me.alive) this.cycleSpectate(1); };
 
     // ---- state ----
     this.me = {
@@ -300,6 +304,64 @@ export class Game {
     }
   }
 
+  // Settings → Graphics changed during a game: apply it now, no need to leave (owner's request). Render scale, FPS cap,
+  // anti-aliasing, AO, bloom, picture shaders and effects take effect at once. On the 2v2 / deathmatch maps a change of
+  // shadows, textures, view distance or model detail rebuilds the map's picture (a second or so). The Backrooms levels
+  // keep their light (it is baked when the level loads, and the doors, fuses, notes… live in it): there only the
+  // texture sharpness and how far you can see change.
+  applyGraphics(G) {
+    const old = this.gfx || {}, R = this.renderer;
+    const changed = (k) => String(old[k]) !== String(G[k]);
+    this.gfx = G;
+    if (changed('renderScale')) R.setPixelRatio(Math.max(0.5, Math.min(3, Math.min(window.devicePixelRatio || 1, 2) * (G.renderScale || 1))));
+    if (['ao', 'bloom', 'look', 'aa'].some(changed)) {
+      if (this.post) this.post.dispose();
+      const msaa = G.aa === 'msaa' && !this.nativeAA;
+      const usePost = G.ao || G.bloom || G.look || G.aa === 'fxaa' || msaa;
+      this.post = usePost ? new PostFX(R, { ao: !!G.ao, bloom: !!G.bloom, fxaa: G.aa === 'fxaa', msaa: G.aa === 'msaa', look: !!G.look }) : null;
+    }
+    if (changed('modelDetail')) setModelDetail(G.modelDetail);      // (players and guns made from now on)
+    const shadowsChanged = changed('shadows');
+    if (shadowsChanged) {
+      R.shadowMap.enabled = G.shadows !== 'off';
+      R.shadowMap.type = G.shadows === 'high' || G.shadows === 'ultra' ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    }
+    if (!this.br && ['shadows', 'textures', 'viewDistance', 'modelDetail', 'effects'].some(changed)) this.rebuildMap();
+    else if (changed('textures') || changed('viewDistance')) {
+      const aniso = { low: 1, medium: 4, high: R.capabilities.getMaxAnisotropy() }[G.textures || 'medium'] || 4;
+      this.mapGroup.traverse(o => { const m = o.material; if (m && m.map && m.map.anisotropy !== aniso) { m.map.anisotropy = aniso; m.map.needsUpdate = true; } });
+    }
+    if (shadowsChanged) {
+      // night lamps throw shadows too when shadows are on (2v2 only)
+      this.lampShadows = !this.br && R.shadowMap.enabled;
+      const lamp = (l) => { if (!l) return; l.castShadow = this.lampShadows; if (this.lampShadows) { l.shadow.mapSize.set(512, 512); l.shadow.bias = -0.0008; l.shadow.normalBias = 0.03; l.shadow.camera.near = 0.3; } };
+      lamp(this.myLight);
+      for (const f of this.flash.values()) lamp(f.spot);
+      // every material works out its shaders again (with or without shadows)
+      for (const sc of [this.scene, this.vmScene]) sc.traverse(o => { const ms = Array.isArray(o.material) ? o.material : o.material ? [o.material] : []; for (const m of ms) m.needsUpdate = true; });
+    }
+  }
+
+  // build the (2v2 / deathmatch) map's picture again with the current graphics settings; the collision world stays
+  rebuildMap() {
+    const oldGroup = this.mapGroup;
+    const built = buildMapScene(this.world, this.renderer, this.gfx, this.night);
+    this.scene.remove(oldGroup);
+    if (oldGroup.userData.dispose) oldGroup.userData.dispose();
+    oldGroup.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+    this.scene.add(built.group);
+    this.scene.fog = built.fog;
+    this.builtMap = built;
+    this.mapGroup = built.group;
+    this.mapUpdate = built.group.userData.update || null;
+    this.setDoorView = built.group.userData.setDoor || null;
+    this.sky = [];
+    this.billboards = [];
+    built.group.traverse(o => { if (o.userData.sky) this.sky.push(o); if (o.userData.billboard) this.billboards.push(o); });
+    this.camera.far = Math.max(120, built.far + 40);
+    this.camera.updateProjectionMatrix();
+  }
+
   destroy() {
     this.running = false;
     document.body.classList.remove('br-mode', 'pool-mode');
@@ -310,6 +372,8 @@ export class Game {
     if (this.br && !this.pool) { const jb = document.getElementById('btn-jump'); jb.innerHTML = icon('jump'); jb.setAttribute('aria-label', 'Jump'); }
     if (this.fx) this.fx.destroy();
     if (this.poolc) this.poolc.destroy();
+    document.getElementById('spec-bar').classList.add('hidden');
+    document.getElementById('spec-prev').onclick = document.getElementById('spec-next').onclick = null;
     sfx.stopAmbience();
     this.cancelReloadSfx();
     this.closeChat();
@@ -1583,8 +1647,12 @@ export class Game {
     if (this.buyOpen && !this.canBuy()) this.toggleBuy(false);
 
     if (!me.alive) {
-      // spectating: click/tap cycles players
-      if (inp.consume('click') && performance.now() - me.deathTime > 1500) this.cycleSpectate();
+      // spectating: a click (or the mouse wheel down) watches the next player, a right-click (or wheel up) the one before;
+      // on phones the ◀ ▶ buttons (spec-bar) do it
+      const canSwitch = performance.now() - me.deathTime > 1500;
+      const fwd = inp.consume('click') | inp.consume('next'), back = inp.consume('alt') | inp.consume('prev');
+      if (canSwitch && fwd) this.cycleSpectate(1);
+      else if (canSwitch && back) this.cycleSpectate(-1);
       for (const a of ['jump', 'reload', 'alt', 'w1', 'w2', 'w3', 'w5', 'next', 'prev', 'swap', 'drop', 'use', 'inspect', 'flashlight']) inp.consume(a);
       return;
     }
@@ -2215,13 +2283,20 @@ export class Game {
     return eye.lerp(p, 0.9);
   }
 
-  cycleSpectate() {
+  // who you can watch while dead: your living teammates (anyone alive if none)
+  spectatable() {
     const list = [...this.remotes.values()].filter(r => r.alive && !r.dummy && r.team !== 'monster' && !r.escaped);
     const mates = list.filter(r => this.isMate(r));
-    const pool = mates.length ? mates : list;
+    return mates.length ? mates : list;
+  }
+
+  // dir 1: the next player, -1: the one before
+  cycleSpectate(dir = 1) {
+    const pool = this.spectatable();
     if (!pool.length) { this.me.spectate = null; return; }
     const i = pool.findIndex(r => r.id === this.me.spectate);
-    this.me.spectate = pool[(i + 1) % pool.length].id;
+    const k = i < 0 ? (dir > 0 ? 0 : pool.length - 1) : (i + (dir > 0 ? 1 : -1) + pool.length) % pool.length;
+    this.me.spectate = pool[k].id;
   }
 
   // ---------- remote interpolation ----------
@@ -2701,6 +2776,13 @@ export class Game {
     }
     const sn = (this.fx && this.fx.camera(cam)) || (this.poolc && me.alive && this.poolc.rideCamera());
     if (sn) { x = sn.x; y = sn.y; z = sn.z; yaw = sn.yaw; pitch = sn.pitch; roll = sn.roll; spec = null; }
+    // the Backrooms' low ceilings: the camera never pokes up through the ceiling over it (it did when you were lifted
+    // up by the tall one, held up near the ceiling, or watched someone on the stairs). Not while a ceiling hole pulls
+    // you up into it (that is the snatch: fx.mine). Levels 0 and 1 only (the Poolrooms' slides and hatch go through on purpose).
+    if (this.br && !this.pool && !(this.fx && this.fx.mine)) {
+      const ceil = this.world.ceilingAt(x, z, 0.12, y - 1);
+      if (y > ceil - 0.15) y = ceil - 0.15;
+    }
     if (spec && !itemDef(spec.w)) spec = null;
     this.specTarget = spec;
     cam.position.set(x, y, z);
@@ -3042,12 +3124,22 @@ export class Game {
       const target = me.spectate && this.remotes.get(me.spectate);
       const since = (performance.now() - me.deathTime) / 1000;
       let text = me.killedBy ? `Killed by ${me.killedBy}` : 'You are dead';
-      if (target && since > 2) text = `Spectating ${target.name} — ${touch ? 'tap' : 'click'} to switch`;
-      if (this.practice || this.dm) text = me.killedBy ? `Killed by ${me.killedBy} — respawning…` : 'Respawning…';
+      const watching = !!(target && target.alive && since > 2 && !this.escapeScene && !this.engulfMe);
+      if (watching) text = touch ? 'Tap \u25C0 \u25B6 to watch someone else' : 'Click / right-click to watch someone else';
+      if ((this.practice || this.dm) && !this.br) text = me.killedBy ? `Killed by ${me.killedBy} — respawning…` : 'Respawning…';
       if (this.br && this.escapeScene) text = null;     // (the ending scene says it)
       else if (this.br && !(target && since > 2)) text = me.escaped ? 'You escaped!' : me.killedBy === 'It' ? 'It caught you' : me.killedBy === 'the fall' ? 'You fell into the dark' : 'You are out';
       hud.death(text);
-    } else hud.death(null);
+      // the ◀ name ▶ bar (practice ranges and deathmatch respawn you in a moment: no bar there)
+      const bar = document.getElementById('spec-bar'), showBar = watching && (this.br || (!this.practice && !this.dm));
+      bar.classList.toggle('hidden', !showBar);
+      if (showBar) {
+        const nm = document.getElementById('spec-name'), many = this.spectatable().length > 1;
+        if (nm.textContent !== target.name) nm.textContent = target.name;
+        document.getElementById('spec-prev').classList.toggle('hidden', !many);
+        document.getElementById('spec-next').classList.toggle('hidden', !many);
+      }
+    } else { hud.death(null); document.getElementById('spec-bar').classList.add('hidden'); }
 
     // scoreboard
     // (Level 1: whoever it looks like shows as alive, and nobody's catches are counted: the list gives nothing away)

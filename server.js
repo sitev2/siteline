@@ -145,11 +145,10 @@ export class Server {
       const rec = this.brGone && this.brGone.get(p.name.toLowerCase());
       if (rec) { this.brGone.delete(p.name.toLowerCase()); Object.assign(p, { lives: rec.lives, escaped: rec.escaped, escapeTime: rec.escapeTime, brDeath: rec.brDeath }); }
       this.send(id, this.startMsg());
-      // someone who left and comes back is dead (they watch until the next try); only brand-new players start alive
-      // (the Poolrooms: no joining mid-game. They watch the others until it is over, or until it starts again)
+      // (the Poolrooms: no joining mid-game. Newcomers watch the others until it is over, or until it starts again)
       if (this.phase === 'br' && this.pool && !rec) { p.brDeath = 'late'; this.later(0.5, () => this.send(id, { t: 'toast', text: 'The others are already in the Poolrooms: you are watching them' })); }
       else if (this.phase === 'br' && !rec) this.later(0.3, () => this.brSpawn(p));
-      else if (rec) this.send(id, { t: 'toast', text: rec.escaped ? 'You already got out.' : 'You left this game, so you watch until it starts again.' });
+      else if (rec && this.phase === 'br') this.brRejoin(p, rec);
     } else if (this.phase === 'dm') {
       // jump straight into a running deathmatch
       p.team = 'ffa';
@@ -223,9 +222,9 @@ export class Server {
     if (this.bomb.carrier === id && this.bomb.state === 'carried') this.dropBomb(p);
     this.rememberLeaver(p);
     if (this.br && !p.bot && !p.dummy && this.phase === 'br') {
-      // (a dead player who leaves and comes back must not come back alive, and keeps the lives they had left)
+      // (leaving and coming back costs one life: brRejoin)
       if (!this.brGone) this.brGone = new Map();
-      this.brGone.set(p.name.toLowerCase(), { lives: p.lives ?? BR_LIVES, escaped: !!p.escaped, escapeTime: p.escapeTime, brDeath: p.brDeath });
+      this.brGone.set(p.name.toLowerCase(), { lives: p.lives ?? BR_LIVES, escaped: !!p.escaped, escapeTime: p.escapeTime, brDeath: p.brDeath, alive: !!p.alive, respawning: !!p.respawning });
     }
     this.players.delete(id);
     if (id === this.ownerId) {
@@ -1341,6 +1340,30 @@ export class Server {
       team: 'atk', w: 'none', inv: { primary: null, secondary: null }, ammo: {}, armor: 0, helmet: false, kit: false,
       money: 0, alive: false, escaped: false, escapeTime: null, brDeath: null, use: false, lives: BR_LIVES, respawning: false,
     });
+  }
+
+  // someone who left a running Backrooms game comes back (owner's rule): leaving costs one life, nothing more.
+  // Alive when they left: one life less, then back in the start room if they have any left. Caught and waiting to come
+  // back when they left (that life is already gone): back in the start room. Out of lives, or already out: they watch.
+  // The Poolrooms have no lives: whoever was in there when they left comes back in at the start.
+  brRejoin(p, rec) {
+    const say = (text) => this.later(0.5, () => this.send(p.id, { t: 'toast', text }));
+    const back = () => { p.respawning = true; this.later(0.3, () => { p.respawning = false; this.brSpawn(p); }); };
+    if (rec.escaped) { say('You already got out.'); return; }
+    if (this.pool) {
+      if (rec.alive || rec.respawning) { p.brDeath = null; back(); say('Back in the Poolrooms.'); }
+      else say('You left this game, so you watch until it starts again.');
+      return;
+    }
+    if (rec.alive) p.lives = Math.max(0, (rec.lives ?? BR_LIVES) - 1);
+    if ((rec.alive || rec.respawning) && p.lives > 0) {
+      p.brDeath = null;
+      back();
+      say(rec.alive ? `You left the game, so you lost a life. Lives left: ${p.lives}` : `Back in the start room. Lives left: ${p.lives}`);
+    } else {
+      say('No lives left: you watch the others.');
+      this.later(0.4, () => this.brCheck());
+    }
   }
 
   brSpawn(p, i = Math.floor(Math.random() * this.world.spawns.atk.length)) {
