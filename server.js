@@ -280,7 +280,7 @@ export class Server {
       case 'pick': return this.onPick(p, msg);
       case 'note': return this.onNote(p, msg);
       case 'door':
-        if (this.phase === 'br' && p.alive && !p.escaped && Number.isInteger(msg.i)) {
+        if ((this.phase === 'br' || this.phase === 'dm') && p.alive && !p.escaped && Number.isInteger(msg.i)) {
           const d = this.world.doors[msg.i];
           if (d && Math.hypot(d.cx - p.x, d.cz - p.z) < 2.4 && Math.abs((d.y || 0) - p.y) < 1.5) { if (d.lock === 'shutter') return; if (d.lock) this.teamDoor(msg.i, p); else this.toggleDoor(msg.i, !d.open, p); }
         }
@@ -831,7 +831,7 @@ export class Server {
     return {
       t: 'start', map: this.settings.map, settings: this.settings, roster: this.roster(), practice: this.practice, phase: this.phase,
       mode: this.br ? 'br' : this.dm ? 'dm' : 'wingman', variant: this.variant,
-      doors: this.br && this.world ? this.world.doors.map(d => (d.broken ? 2 : d.open ? 1 : 0)) : undefined,     // 2 = kicked in
+      doors: (this.br || this.dm) && this.world && this.world.doors.length ? this.world.doors.map(d => (d.broken ? 2 : d.open ? 1 : 0)) : undefined,     // 2 = kicked in
       notes: this.br ? this.notes : undefined,
       key: this.br && this.brKey ? (this.brKey.holder ? 1 : 0) : undefined,      // the red key isn't on its shelf
       crossed: this.br && !this.gar && !this.pool && this.brCrossed ? 1 : undefined,      // someone has crossed the pit hall
@@ -989,6 +989,13 @@ export class Server {
     this.fixMap();
     this.variant = isDmMap(this.settings.map) ? dmVariant(n) : null;
     this.world = new World(resolveMap(this.settings.map, this.variant));
+    // maps with doors (Backrooms deathmatch): the bots' walking grid is made with every door open (they open the
+    // ones in their way), then the doors that start shut are shut
+    if (this.world.doors.length) {
+      this.navGrid();
+      this.world.doors.forEach((d, i) => this.world.setDoor(i, d.open));
+      this.doorAt = this.world.doors.map(() => 0);
+    }
     this.dm = true;
     this.round = 1;
     this.bomb = this.freshBomb();

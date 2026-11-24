@@ -128,6 +128,16 @@ The only folder is `server/` (the optional home game server).
   Upstairs floor H 3.2 m; barrel → truck (bed 1.3, cab 2.4) → balcony jump route (tested in game).
 - Maps: 2v2 `outpost`, `foundry`, `frostline`, `canal`, `flame` (one bomb site each, plus `dm` spawns for 3-player deathmatch);
   deathmatch `quarry`, `railyard` (`mode: 'dm'`, small/large variants via `build(b, size)`; `resolveMap()` in `maps.js`)
+- `backroomsdm` = "Backrooms" deathmatch map (owner's request, v2.5): `brdm.js` (`brDmPlan(size)` / `brDmDef`; MAPS entry has
+  `resolve(v)`, which `resolveMap` calls). ONE fixed layout per size (fixed seeds in `BRDM_SIZES`), drawn by `brview.js` (theme
+  'backrooms', `def.br` = the plan with `dm: true`; lighter fog, no dark zones / pits / monster). Owner: roomier than Level 0 ("more
+  spaced out") and keep doors; big one no bigger than Railyard's large: small 9 × 7 rooms = 38 × 30 m (8 spawns, 7 doors), large
+  14 × 12 = 58 × 50 m (16 spawns, 16 doors). Halls of 2×2…3×3 rooms, wide openings, plain doorways and doorways with doors, pillar halls
+  and short free-standing walls; light colour by quarter (LOOKS). Doors in deathmatch: host accepts `{t:'door'}` in phase 'dm',
+  `startDeathmatch` builds the bots' NavGrid with every door open then shuts the ones that start shut, start message carries `doors`;
+  E / hand button opens/shuts (after a gun pickup, game.js) with a hint; bots open shut doors in their way (`BotBrain.physics`).
+  Its doors have `pen: true`: bullets go through a shut door (half damage) but it still blocks bots' sight. Night mode is ignored on it,
+  and graphics changes don't rebuild it (baked, like the Backrooms levels). `world.cellKind` treats '_ceiling' as overhead (minimap).
 - Deathmatch rules: `RULES.dm` in `config.js` (2–6 players, owner's request; 3 = a 2v2 map, 2 = small, 4–6 = large, which has 16 spawns;
   Practice allows up to 5 bots); server phase `'dm'`, everyone on team `'ffa'` during the match
 - The Backrooms (`settings.mode = 'br'`; server phase `'br'`, `this.br`): **public** (the owner made it public after testing):

@@ -16,6 +16,7 @@
 import { backroomsMap } from './brmap.js';
 import { garageMap } from './garmap.js';
 import { poolMap } from './poolmap.js';
+import { brDmDef } from './brdm.js';
 
 const EAST = -Math.PI / 2, WEST = Math.PI / 2, NORTH = 0, SOUTH = Math.PI;
 // Wraps a builder so a block of map script can be placed with an offset
@@ -913,6 +914,20 @@ export const MAPS = {
       for (const [x, z, yaw] of [[4, 8, EAST], [56, 8, WEST], [4, 46, EAST], [56, 46, WEST], [30, 10, SOUTH], [36, 48, WEST], [8, 30, EAST], [52, 26, WEST]]) base.spawn('dm', x, z, yaw);
     },
   },
+
+  // The Backrooms as a deathmatch map (owner's request): one fixed layout per size, roomier than Level 0, with
+  // doors. Built by brdm.js and drawn by brview.js (theme 'backrooms'); resolveMap calls `resolve`.
+  backroomsdm: {
+    name: 'Backrooms',
+    description: 'Deathmatch. Yellow wallpaper, damp carpet, buzzing lights: big open halls, pillar rooms and doors you can shut (and shoot through). The large version is a bigger maze of halls.',
+    mode: 'dm',
+    theme: 'backrooms',
+    sizes: { small: [38, 30], large: [58, 50] },
+    size: [58, 50],
+    massHeight: 4,
+    resolve(v) { return brDmDef(this, v); },
+    build(b) { brDmDef(this, 'small').build(b); },
+  },
 };
 
 // ---------- helpers for choosing maps ----------
@@ -931,6 +946,7 @@ export function resolveMap(id, variant) {
   const d = MAPS[id] || MAPS.outpost;
   if (!d.sizes) return d;
   const v = d.sizes[variant] ? variant : 'small';
+  if (d.resolve) return d.resolve(v);
   return { ...d, variant: v, size: d.sizes[v], build: b => d.build(b, v), checkPoints: v === 'large' && d.largeCheckPoints ? d.largeCheckPoints : d.checkPoints };
 }
 

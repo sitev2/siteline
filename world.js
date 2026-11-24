@@ -299,7 +299,7 @@ export class World {
       const list = this.spans[c].filter(s => s.m !== '_door');
       // (d.y: the floor the door stands on — the garage has doors upstairs; d.h: a taller gap, the roller shutter)
       const y = d.y || 0;
-      if (!open) { list.push({ y0: y, y1: y + (d.lock === 'shutter' ? 2.35 : 2.15), m: '_door', pen: false, prop: -1 }); list.sort((a, b) => a.y0 - b.y0); }
+      if (!open) { list.push({ y0: y, y1: y + (d.lock === 'shutter' ? 2.35 : 2.15), m: '_door', pen: !!d.pen, prop: -1 }); list.sort((a, b) => a.y0 - b.y0); }
       this.spans[c] = list;
     }
   }
@@ -516,7 +516,7 @@ export class World {
     let tallSolid = false, upper = false, cover = false, over = false;
     for (const s of spans) {
       if (s.y0 < 0.1 && s.y1 >= 2.2 && !s.pen && s.m !== 'truck') tallSolid = true;
-      else if (s.y0 >= 2.5) { if (s.m === 'roof') over = true; else upper = true; }
+      else if (s.y0 >= 2.5) { if (s.m === 'roof' || s.m === '_ceiling') over = true; else upper = true; }      // (_ceiling: the Backrooms' ceiling)
       else if (s.pen || s.m === 'truck' || s.m === 'low' || s.m === 'stairs' || s.y1 < 2.5) cover = true;
     }
     if (tallSolid && !upper) return 2;
