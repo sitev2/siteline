@@ -85,6 +85,16 @@ The only folder is `server/` (the optional home game server).
   small hand sway; an inspect cut short blends out over 0.13 s (`vmInspect` in `game.js`). The Deagle spins FORWARDS round the trigger finger
   (`inspectTrick`: wrist cock, ~0.3 s full turn, catch; the gun turns about `pivot`, the hand only flicks; left hand lets go). `settle` (jump
   soaking) is an exactly-solved spring: a step-by-step one froze below ~32 fps and left the gun turned a bit more after every reload.
+- Switching who you watch while dead (v2.3; it didn't work on phones): click / mouse wheel down = next, right-click / wheel up = the one
+  before, and a `#spec-bar` (◀ name ▶, outside `#touch`, z-index above it, plain click handlers) under the death text on every device
+  (`Game.spectatable()` / `cycleSpectate(dir)`; not on the practice range or in deathmatch, which respawn you).
+- Graphics changed in a game apply at once (owner's request, v2.3): main.js `liveGfx()` → `Game.applyGraphics(G)`: render scale, FPS cap,
+  AA / AO / bloom / picture shaders (a new `PostFX`; MSAA then goes through PostFX, the screen's own MSAA is fixed at start, `nativeAA`),
+  shadows (renderer + lamps + every material `needsUpdate`), effects. 2v2 / deathmatch maps: shadows, textures, view distance, model detail
+  or effects rebuild the map picture (`Game.rebuildMap`, collision untouched). Backrooms levels keep their baked look (only texture
+  sharpness changes live; their state lives in the scene).
+- Backrooms Levels 0 and 1: the camera is kept 15 cm under the ceiling over it (`updateCamera`, after `fx.camera`; owner saw the screen go
+  into the ceiling, e.g. lifted by the tall one, `caughtCamera`). Not during a ceiling-hole snatch (`fx.mine`, on purpose) or in the Poolrooms.
 - Spectating shows the watched player's view: their gun in first person (`this.specTarget` / `this.view` in `updateCamera`; the
   view-model block reads `V` = me or a stand-in built from the remote: weapon, scope level, reloading, last shot, spoon swings),
   their scope, their crosshair style (sent as a share code in a `xh` message → `p.xh` in the roster) and their health/armour/gun
@@ -297,8 +307,11 @@ The only folder is `server/` (the optional home game server).
   Sounds in `audio.js` (fluorescent buzz bed, clank/servo/slam, screech/grab). Account stats are not reported for this mode.
 - Backrooms lives (PR #77): in Level 0 and Level 1 everyone has 3 lives (`BR_LIVES` in `server.js`): caught or fallen, you are back in the
   start room after 7 s; the game ends when everyone is out of lives, escaped or gone, and when everyone is dead the same level starts again
-  5 s after the results. Leaving and rejoining keeps your lives, and a dead player who rejoins stays dead (`brGone`). NOT in the Poolrooms:
-  there, when everyone is dead, the Poolrooms start again (`brCheck`, `check_pool.mjs`).
+  5 s after the results. NOT in the Poolrooms: there, when everyone is dead, the Poolrooms start again (`brCheck`, `check_pool.mjs`).
+  Leaving and coming back (owner's rule, v2.3) just costs ONE life (`brGone` remembers the leaver, `Server.brRejoin`): alive when you left =
+  one life less, then back in the start room if any are left; caught and waiting to come back when you left = back in the start room (no
+  extra loss); out of lives / escaped = you watch. In the Poolrooms (no lives) whoever was alive comes back in at the start; new
+  friends still only watch there. `node check_rejoin.mjs` checks it on the real host code.
 - Backrooms online takes 2–6 players (owner's rule; was 2–4): `RULES.br` in `config.js`. The lobby's Start is off outside that and says so, and `Server.startMatch` refuses too.
   Room size depends on the mode: `Server.roomMax()` (6 for the Backrooms and deathmatch, `CONFIG.maxPlayers` 4 for 2v2) — `HostNet` (`capacity`)
   and `server/server.mjs` turn the next joiner away; a room of 5–6 switched to 2v2 can't start ("2v2 takes 4 players at most").

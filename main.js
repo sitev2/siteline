@@ -1265,12 +1265,14 @@ function bindSettings() {
         `<option value="${v}" ${String(cur[key]) === String(v) ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`).join('');
   };
   app.renderGfx = renderGfx;
+  // changed during a game: the game takes it straight away (no need to leave and start again)
+  const liveGfx = app.liveGfx = () => { if (app.game && app.game.applyGraphics) { try { app.game.applyGraphics(resolvedQuality()); } catch (err) { console.warn('graphics change', err); } } };
   $('set-preset').addEventListener('change', e => {
     const g = settings.graphics;
     // switching to Custom starts from whatever was showing
     if (e.target.value === 'custom' && g.preset !== 'custom') { const { preset, ...cur } = resolveGraphics(g, isTouchDevice()); g.custom = cur; void preset; }
     g.preset = e.target.value;
-    renderGfx(); saveSettings();
+    renderGfx(); saveSettings(); liveGfx();
   });
   $('gfx-custom').addEventListener('change', e => {
     const key = e.target.dataset.gfx;
@@ -1279,7 +1281,7 @@ function bindSettings() {
     const raw = e.target.value;
     const val = opt[2].map(c => c[0]).find(v => String(v) === raw);
     settings.graphics.custom = { ...settings.graphics.custom, [key]: val };
-    saveSettings();
+    saveSettings(); liveGfx();
   });
   renderGfx();
   void PRESETS;
@@ -1373,7 +1375,7 @@ function onLogin() {
     setVolume(settings.volume);
     setAmbienceVolume(settings.ambience == null ? 0.6 : settings.ambience);
     try { const { touch, ...rest } = settings; localStorage.setItem(STORE, JSON.stringify(rest)); } catch (e) { /* ignore */ }
-    app.syncGeneral && app.syncGeneral(); app.renderKeys && app.renderKeys(); app.syncCrosshair && app.syncCrosshair(); app.renderGfx && app.renderGfx();
+    app.syncGeneral && app.syncGeneral(); app.renderKeys && app.renderKeys(); app.syncCrosshair && app.syncCrosshair(); app.renderGfx && app.renderGfx(); app.liveGfx && app.liveGfx();
     applyTouchLayout(settings.touchLayout);
     toast('Loaded your saved settings');
   } else saveSettings();   // first login: upload this device's settings
