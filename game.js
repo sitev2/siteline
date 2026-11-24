@@ -1709,12 +1709,8 @@ export class Game {
       return;
     }
     const use = this.eligibleUse();
-    // E / ✋ with nothing to plant or defuse: swap for the gun you're looking at; in a deathmatch on a map with doors
-    // (the Backrooms one), else open or shut the door in front of you
-    if (inp.consume('use') && use !== 'plant' && use !== 'defuse' && use !== 'look' && !this.tryPick() && this.dm) {
-      const di = this.doorTarget();
-      if (di >= 0) this.transport.send({ t: 'door', i: di });
-    }
+    // E / ✋ with nothing to plant or defuse: swap for the gun you're looking at (deathmatch doors open by themselves)
+    if (inp.consume('use') && use !== 'plant' && use !== 'defuse' && use !== 'look') this.tryPick();
     if (inp.consume('drop')) this.dropWeapon();
     const wasUsing = me.using;
     me.using = (use === 'plant' || use === 'defuse') && inp.useHeld;
@@ -3064,8 +3060,6 @@ export class Game {
     else if (pick) {
       const cur = me.inv[WEAPONS[pick.w].slot];
       hint = `${touch ? 'Tap [[hand]]' : `Press ${this.key('use')}`} to ${cur ? `swap your ${itemName(cur)} for` : 'pick up'} the ${itemName(pick.w)}`;
-    } else if (me.alive && this.dm && this.world.doors.length && this.doorTarget() >= 0) {
-      hint = `${touch ? 'Tap [[hand]]' : `Press ${this.key('use')}`} to ${this.world.doors[this.doorTarget()].open ? 'shut' : 'open'} the door`;
     } else if (me.alive && me.melee && me.weapon !== me.melee && this.clock < (this.spoonHintUntil || 0)) {
       const rm = reverseMap(this.settings.keys), code = Object.keys(rm).find(c => rm[c] === 'w3');
       hint = touch ? '[[spoon]] Tap [[swap]] for the spoon' : code ? `[[spoon]] Press ${keyLabel(code)} for the spoon` : '[[spoon]] Scroll the mouse wheel for the spoon';
@@ -3106,8 +3100,7 @@ export class Game {
     }
     hud.hint(hint);
     const useBtn = document.getElementById('btn-use');
-    const dmDoor = this.dm && me.alive && this.world.doors.length > 0 && this.doorTarget() >= 0;
-    useBtn.classList.toggle('hidden', use !== 'plant' && use !== 'defuse' && !pick && !dmDoor);
+    useBtn.classList.toggle('hidden', use !== 'plant' && use !== 'defuse' && !pick);
     useBtn.classList.toggle('pick', !!pick && use !== 'plant' && use !== 'defuse');
     if (this.br) useBtn.classList.toggle('hidden', !this.useTarget() || !!this.ring);
     const altBtn = document.getElementById('btn-alt');

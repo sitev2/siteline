@@ -133,10 +133,11 @@ The only folder is `server/` (the optional home game server).
   'backrooms', `def.br` = the plan with `dm: true`; lighter fog, no dark zones / pits / monster). Owner: roomier than Level 0 ("more
   spaced out") and keep doors; big one no bigger than Railyard's large: small 9 × 7 rooms = 38 × 30 m (8 spawns, 7 doors), large
   14 × 12 = 58 × 50 m (16 spawns, 16 doors). Halls of 2×2…3×3 rooms, wide openings, plain doorways and doorways with doors, pillar halls
-  and short free-standing walls; light colour by quarter (LOOKS). Doors in deathmatch: host accepts `{t:'door'}` in phase 'dm',
-  `startDeathmatch` builds the bots' NavGrid with every door open then shuts the ones that start shut, start message carries `doors`;
-  E / hand button opens/shuts (after a gun pickup, game.js) with a hint; bots open shut doors in their way (`BotBrain.physics`).
-  Its doors have `pen: true`: bullets go through a shut door (half damage) but it still blocks bots' sight. Night mode is ignored on it,
+  and short free-standing walls; light colour by quarter (LOOKS). Deathmatch doors are AUTOMATIC (owner's request, v2.6): the host's
+  `autoDoors()` (every tick in phase 'dm') opens a door when anyone alive is within `AUTO_DOOR.reach` 2.6 m of it (early enough that
+  nobody runs into it, even with some lag) and shuts it once nobody has been that close for `AUTO_DOOR.shut` 3 s; no E / hand button
+  for them (the host ignores `{t:'door'}` outside the Backrooms). `startDeathmatch` builds the bots' NavGrid with every door open, then
+  shuts the ones that start shut; the start message carries `doors`. Its doors have `pen: true`: bullets go through a shut door (half damage) but it still blocks bots' sight. Night mode is ignored on it,
   and graphics changes don't rebuild it (baked, like the Backrooms levels). `world.cellKind` treats '_ceiling' as overhead (minimap).
 - Deathmatch rules: `RULES.dm` in `config.js` (2–6 players, owner's request; 3 = a 2v2 map, 2 = small, 4–6 = large, which has 16 spawns;
   Practice allows up to 5 bots); server phase `'dm'`, everyone on team `'ffa'` during the match
