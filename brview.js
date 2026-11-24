@@ -4,6 +4,7 @@
 // real shadows from walls and pillars (soft edges: each panel is sampled at three points), light
 // bounced back off the yellow carpet, and darker corners. At runtime it costs almost nothing.
 import * as THREE from 'three';
+import { FLASH_GLSL } from './flashshadow.js';
 import { CELL, hash2 } from './world.js';
 import { BR, rng, wallFace, brSection, inPitHall } from './brmap.js';
 
@@ -237,10 +238,17 @@ function exitTexture(renderer) {
 // The walls, floor and ceiling are unlit (their light is baked into them), so the usual three.js lights don't
 // touch them. Instead their shader adds up to four flashlight cones itself; game code fills these uniforms.
 // uDark: the lights die around the monster — (x, z, radius, strength 0..1); brfx.js moves it every frame
+// uFlashRow / uFlashRing / uFlashYR: each light's shadow ring (flashshadow.js: no light behind a wall; -1 = none, for
+// your own lamp: it only lights what you can see anyway) and the heights it may light (its own floor in the garage)
+const NO_RING = new THREE.DataTexture(new Uint8Array([255, 255, 0, 255]), 1, 1, THREE.RGBAFormat);
+NO_RING.needsUpdate = true;
 export const FLASH = {
   uFlashPos: { value: [0, 1, 2, 3].map(() => new THREE.Vector3()) },
   uFlashDir: { value: [0, 1, 2, 3].map(() => new THREE.Vector3(0, -1, 0)) },
   uFlashOn: { value: [0, 0, 0, 0] },
+  uFlashRow: { value: [-1, -1, -1, -1] },
+  uFlashYR: { value: [0, 1, 2, 3].map(() => new THREE.Vector2(-1000, 1000)) },
+  uFlashRing: { value: NO_RING },
   uDark: { value: new THREE.Vector4(0, 0, 1, 0) },
 };
 const DARK_FN = `uniform vec4 uDark;
@@ -278,6 +286,8 @@ export function addFlash(material) {
 varying vec3 vFlashPos; varying vec3 vFlashN;
 ${DARK_FN}
 uniform vec3 uFlashPos[4]; uniform vec3 uFlashDir[4]; uniform float uFlashOn[4];
+uniform float uFlashRow[4]; uniform vec2 uFlashYR[4]; uniform sampler2D uFlashRing;
+${FLASH_GLSL}
 vec3 flashLight(vec3 P, vec3 N) {
   vec3 s = vec3(0.0);
   for (int i = 0; i < 4; i++) {
@@ -289,7 +299,9 @@ vec3 flashLight(vec3 P, vec3 N) {
     float core = smoothstep(0.86, 0.995, c);
     float cone = core * core * 1.15 + 0.07 * smoothstep(0.7, 0.95, c);
     float lam = abs(dot(N, L)) * 0.85 + 0.15;
-    s += uFlashOn[i] * cone * lam * 1.84 / (1.0 + d * d * 0.022);      // (20 % dimmer: owner's request)
+    if (cone < 0.001) continue;
+    // (none behind a wall, or through the deck to the other floor: flashshadow.js)
+    s += uFlashOn[i] * cone * lam * 1.84 / (1.0 + d * d * 0.022) * flashSeen(uFlashRing, uFlashRow[i], uFlashPos[i], uFlashYR[i], P);      // (20 % dimmer: owner's request)
   }
   return s * vec3(1.0, 0.95, 0.82);
 }`)

@@ -181,6 +181,23 @@ export class Hud {
     });
   }
 
+  // Level 1: how many of you there are, by the task list (an icon and a number, nothing more); null hides it
+  setMates(n) {
+    if (this.cache.brMates === n) return;
+    this.cache.brMates = n;
+    const el = $('br-mates');
+    el.classList.toggle('hidden', n == null);
+    if (n != null) el.innerHTML = `${icon('team')}<b>${n}</b>`;
+  }
+  // Level 1: what you carry (a fuse), as a small icon under the count; null hides it
+  setCarry(what) {
+    if (this.cache.brCarry === what) return;
+    this.cache.brCarry = what;
+    const el = $('br-carry');
+    el.classList.toggle('hidden', !what);
+    if (what) el.innerHTML = icon(what);
+  }
+
   setScore(score, round, alive, myTeam, practice) {
     this.set('tname-atk', 'ATK');
     this.set('tname-def', 'DEF');
@@ -194,7 +211,7 @@ export class Hud {
   }
 
   killfeed(killer, victim, weapon, head) {
-    if (weapon === 'ceiling' || weapon === 'corner') return;     // nobody saw what happened
+    if (weapon === 'ceiling' || weapon === 'corner' || weapon === 'shifter') return;     // nobody saw what happened (Level 1: nor is it told)
     const row = document.createElement('div');
     row.className = 'kf';
     // weapon silhouette (or the bomb), a headshot mark, then the victim

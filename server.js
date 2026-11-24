@@ -7,7 +7,7 @@ import { RULES, CONFIG } from './config.js';
 import { NavGrid, BotBrain, BOT_NAMES } from './bots.js';
 import { MonsterBrain, outerCorners } from './monster.js';
 import { ShifterBrain } from './shifter.js';
-import { GAR_LEVELS, garLevel } from './garmap.js';
+import { garLevel, crankRule, FUSES } from './garmap.js';
 import { POOL } from './poolmap.js';
 import { PoolHost } from './poolhost.js';
 import { BR_LEVELS, brLevel, brVariant, wallFace, brSection } from './brmap.js';
@@ -214,6 +214,7 @@ export class Server {
     if (!p) return;
     if (this.brKey) this.dropKey(p);
     if (this.pool && this.poolHost) this.poolHost.drop(p);
+    if (this.gar && this.garSt) this.garDrop(p);
     this.bots.delete(id);
     // a friend left a practice game: a bot takes their place again
     if (this.botCfg && !p.bot && id !== this.localId && this.phase !== 'lobby' && this.phase !== 'over') {
@@ -288,12 +289,9 @@ export class Server {
       case 'switch':
         if (this.phase === 'br' && p.alive && !p.escaped && Number.isInteger(msg.i)) this.pressSwitch(p, msg.i);
         return;
-      case 'fuse':
-        if (this.phase === 'br' && this.gar && p.alive && !p.escaped) this.garFuse(p);
-        return;
-      case 'crank':
-        // (sent several times a second while E / the hand button is held at the crank)
-        if (this.phase === 'br' && this.gar && p.alive && !p.escaped) p.crankAt = performance.now();
+      // Level 1 (the garage): take a fuse, put it in the box, and the crank's rhythm game
+      case 'fuseTake': case 'fuseIn': case 'crankOn': case 'crankOff': case 'crankTap':
+        if (this.phase === 'br' && this.gar && this.garSt && p.alive && !p.escaped) this.garMsg(p, msg);
         return;
       case 'boost':
         if (this.phase === 'br' && p.alive && !p.escaped) this.tryBoost(p);
@@ -751,6 +749,7 @@ export class Server {
     tgt.alive = false;
     if (this.brKey) this.dropKey(tgt);
     if (this.pool && this.poolHost) this.poolHost.drop(tgt);
+    if (this.gar && this.garSt) this.garDrop(tgt);
     tgt.deaths++;
     tgt.use = false;
     if (attacker && attacker !== tgt) {
@@ -837,8 +836,7 @@ export class Server {
       notes: this.br ? this.notes : undefined,
       key: this.br && this.brKey ? (this.brKey.holder ? 1 : 0) : undefined,      // the red key isn't on its shelf
       crossed: this.br && !this.gar && !this.pool && this.brCrossed ? 1 : undefined,      // someone has crossed the pit hall
-      gar: this.gar && this.garSt ? { power: this.garSt.power, crank: r2(this.garSt.crank) } : undefined,      // Level 1's order so far
-      block: this.gar && this.world ? this.world.block : undefined,              // Level 1: where the shapeshifter is parked as a car
+      gar: this.gar && this.garSt ? this.garState() : undefined,      // Level 1's order so far: fuses, power, the shutter
       pool: this.pool && this.poolHost ? this.poolHost.state() : undefined,      // Level 2: bridges, valves, heat, the drain, the floaties
     };
   }
@@ -1090,9 +1088,9 @@ export class Server {
     this.humans().forEach((p, i) => this.brSpawn(p, i));
   }
 
-  // ---------- Level 1 of the Backrooms: the garage (garmap.js) and its shapeshifter (shifter.js) ----------
-  // (So far: the map, the doors and the monster. Still to come: the three steps of the order —
-  // fuse box, crank, lift — and running on into it from Level 0's exit. See CLAUDE.md.)
+  // ---------- Level 1 of the Backrooms: the garage (garmap.js) and the thing in it (shifter.js) ----------
+  // The order (owner's design): find the 4 fuses (side rooms) → the fuse box (power) → wind the shutter up at the
+  // crank (a rhythm game) → the lift. See CLAUDE.md.
   // carry: straight on from Level 0's exit, as one run (the clock keeps going, everyone is alive again)
   startGarage(carry = false) {
     if (!this.humans().length) return;
@@ -1110,7 +1108,7 @@ export class Server {
     for (const p of this.humans()) { if (fresh) p.lobbyTeam = p.team; this.brPrepare(p); this.brGone = null; p.kills = 0; p.deaths = 0; }
     const m = this.world.def.gar.monster;
     const mp = {
-      id: 'monster', name: 'It', team: 'monster', x: m.x, y: m.y, z: m.z, yaw: 0, pitch: 0, w: 's:true:lump:none', hp: 100, alive: true,
+      id: 'monster', name: 'It', team: 'monster', x: m.x, y: m.y, z: m.z, yaw: 0, pitch: 0, w: 's:copy:~:still', hp: 100, alive: true, light: false,
       kills: 0, deaths: 0, lastShot: 0, use: false, moved: 0, dummy: false, bot: true, ping: 0, squad: 0, money: 0,
       inv: { primary: null, secondary: null }, armor: 0, helmet: false, kit: false, hs: 0, dmg: 0, ammo: {},
     };
@@ -1121,8 +1119,15 @@ export class Server {
     this.corners = null; this.cornerUsed = true;
     this.notes = []; this.noteSeq = 0;
     this.keySpot = null; this.switchSpots = []; this.brKey = { holder: null }; this.switchDown = {}; this.switchAt = []; this.boost = null;
-    // the order (owner's design): 1 the fuse box turns the power on, 2 someone winds the shutter up, 3 the lift
-    this.garSt = { power: false, crank: 0, at: performance.now(), sentAt: 0, heardAt: 0, toldAt: 0 };
+    // the order (owner's design): 1 four fuses, each in a different side room (4 of the 7, picked at random) and on
+    // one of its spots (a shelf, the desk, a hook), into the fuse box → the power; 2 wind the shutter up; 3 the lift
+    const plan = this.world.def.gar;
+    const rooms = plan.rooms.map((r, i) => i).sort(() => Math.random() - 0.5).slice(0, FUSES).sort((a, b) => a - b);
+    const fuses = rooms.map(room => {
+      const spot = Math.floor(Math.random() * plan.rooms[room].spots.length), S = plan.rooms[room].spots[spot], y = plan.rooms[room].floor ? plan.start.y : 0;
+      return { room, spot, x: S.x, y: y + S.y, z: S.z, state: 0, holder: null, slot: -1 };       // state 0 in its room, 1 carried, 2 in the box
+    });
+    this.garSt = { power: false, crank: 0, fuses, inBox: 0, rings: new Map(), at: performance.now(), heardAt: 0, loudUntil: 0, loudAt: 0, toldAt: 0 };
     this.phase = 'br';
     this.broadcast(this.startMsg());
     this.broadcastRoster();
@@ -1166,13 +1171,7 @@ export class Server {
     this.levelAt = this.timer; this.levelEnd = null;
   }
 
-  // the shapeshifter parked as a car is solid (and gone again when it breaks out): everyone's world is told
-  setBlock(r) {
-    this.world.setBlock(r);
-    this.broadcast({ t: 'block', r: r || null });
-  }
-
-  // the shapeshifter forced a side room's door: it is open (and can't be shut again for a moment)
+  // the thing in the garage forced a side room's door: it is open (and can't be shut again for a moment)
   forceDoor(i, m) {
     const d = this.world.doors[i];
     if (!d || d.open) return;
@@ -1182,36 +1181,141 @@ export class Server {
     this.broadcast({ t: 'door', i, open: true, forced: true, swing: -s, by: m.id });
   }
 
-  // step 1: the fuse box (any one player)
-  garFuse(p) {
-    const f = this.world.def.gar.fuse, st = this.garSt;
-    if (st.power || Math.hypot(p.x - f.x, p.z - f.z) > 2.4 || Math.abs(p.y - f.y) > 1.5) return;
+  // Level 1's state for a late joiner (and for the start): the fuses (room, spot, where it is, who has it), the power,
+  // how far the shutter is wound
+  garState() {
+    const st = this.garSt;
+    return { power: st.power, crank: r2(st.crank), n: st.inBox, fuses: st.fuses.map(f => [f.room, f.spot, f.state, f.holder]) };
+  }
+
+  // Level 1's messages from a player: take a fuse / put it in the box / the crank's ring (open, shut, a press)
+  garMsg(p, msg) {
+    const st = this.garSt, plan = this.world.def.gar, now = performance.now();
+    if (msg.t === 'fuseTake') {
+      // one fuse at a time, within reach, still in its room
+      const f = st.fuses[msg.i];
+      if (!f || f.state !== 0 || st.fuses.some(o => o.holder === p.id)) return;
+      if (Math.hypot(p.x - f.x, p.z - f.z) > 2.0 || f.y - p.y < -0.3 || f.y - p.y > 2.3) return;
+      f.state = 1; f.holder = p.id;
+      this.broadcast({ t: 'fuseTake', i: msg.i, id: p.id });
+    } else if (msg.t === 'fuseIn') {
+      const F = plan.fuse, i = st.fuses.findIndex(o => o.holder === p.id);
+      if (i < 0 || st.inBox >= FUSES || Math.hypot(p.x - F.x, p.z - (F.z + 0.7)) > 2.4 || Math.abs(p.y - F.y) > 1.5) return;
+      const f = st.fuses[i];
+      f.state = 2; f.holder = null; f.slot = st.inBox++;
+      this.broadcast({ t: 'fuseIn', i, id: p.id, n: st.inBox });
+      const m = this.bots.get('monster'); if (m) m.hearNoise(F.x, F.z, 14, F.y);
+      if (st.inBox >= FUSES) this.garPower(p);
+    } else if (msg.t === 'crankOn') {
+      const sh = this.world.doors.find(d => d.lock === 'shutter');
+      if (!sh || sh.open || !this.nearCrank(p)) return;
+      if (!st.power) {
+        // (the brake: as before, a toast)
+        if (p.brakeAt == null || now - p.brakeAt > 2500) { p.brakeAt = now; this.send(p.id, { t: 'toast', text: "The crank won't turn: its brake needs the power" }); }
+        return;
+      }
+      if (st.rings.has(p.id)) return;
+      // the ring: the mark goes round once every `lap` seconds; the good arc starts at `zone` (a share of the ring).
+      // Alone, the arc is wider and a mistake slips less (crankRule).
+      const R = crankRule(garLevel(this.variant), this.brSolo());
+      const zone = 0.25 + Math.random() * (0.7 - R.zone);
+      st.rings.set(p.id, { t0: now, zone, w: R.zone, lap: R.lap, turns: R.turns, scored: new Set(), checked: 0, lastPress: 0 });
+      this.send(p.id, { t: 'crankRing', zone: r2(zone * 1000) / 1000, w: R.zone, lap: R.lap, turns: R.turns });
+    } else if (msg.t === 'crankOff') {
+      if (st.rings.delete(p.id)) this.send(p.id, { t: 'crankRing', off: 1 });
+    } else if (msg.t === 'crankTap') this.crankPress(p, now - Math.max(0, Math.min(120, Number(msg.ago) || 0)));      // (ago: how long the key / tap waited for a busy frame on their screen, at most 0.12 s)
+  }
+
+  nearCrank(p) { const c = this.world.def.gar.crank; return Math.hypot(p.x - c.x, p.z - (c.z + 0.6)) < 2.4 && Math.abs(p.y - c.y) < 1.5; }
+
+  // one press at the crank, checked against the host's own clock for that player's ring (allowing for their ping):
+  // in the good arc = one turn (once per trip round the ring); anywhere else, or a second press in the same trip,
+  // is a mistake. Presses closer together than 0.15 s don't count at all (no machine-gunning the button).
+  crankPress(p, now) {
+    const st = this.garSt, ring = st.rings.get(p.id);
+    if (!ring) return;
+    if (now - ring.lastPress < 150) return;
+    ring.lastPress = now;
+    if (now < ring.t0) return;
+    const rtt = p.id === this.localId ? 0 : Math.min(400, p.ping || 0);
+    const phase = (now - rtt - ring.t0) / 1000 / ring.lap, k = Math.floor(phase), f = phase - k;
+    const tol = (0.05 + rtt / 4000) / ring.lap;           // a little slack for the network
+    const inZone = f >= ring.zone - tol && f <= ring.zone + ring.w + tol;
+    if (inZone && !ring.scored.has(k)) {
+      ring.scored.add(k);
+      this.crankMove(p, 1 / ring.turns);
+      this.send(p.id, { t: 'crankTap', ok: 1 });
+    } else {
+      this.send(p.id, { t: 'crankTap', ok: 0 });
+      this.crankSlip(p, ring, false);
+    }
+  }
+
+  // a mistake: the shutter slips back (one good turn's worth for a bad press, half for a missed turn; gentler alone),
+  // with a loud clank that it hears from 35 m for 2 s
+  crankSlip(p, ring, miss) {
+    const st = this.garSt, R = crankRule(garLevel(this.variant), this.brSolo());
+    this.crankMove(p, -(miss ? 0.5 : 1) * R.slip / ring.turns, true);
+    this.broadcast({ t: 'crankSlip', id: p.id, p: r2(st.crank), miss: miss ? 1 : 0 });
+    st.loudUntil = performance.now() + 2000; st.loudAt = 0;
+  }
+
+  crankMove(p, by, slip = false) {
+    const st = this.garSt;
+    if (st.crank >= 1) return;
+    st.crank = Math.max(0, Math.min(1, st.crank + by));
+    if (st.crank > 0.9999) st.crank = 1;
+    if (!slip) this.broadcast({ t: 'crank', p: r2(st.crank), by: p.id });
+    if (st.crank >= 1) {
+      const si = this.world.doors.findIndex(d => d.lock === 'shutter');
+      this.world.setDoor(si, true);
+      this.broadcast({ t: 'door', i: si, open: true, swing: 1, by: p.id });
+      this.broadcast({ t: 'toast', text: 'The shutter is up: the lift is behind it' });
+      for (const id of st.rings.keys()) this.send(id, { t: 'crankRing', off: 1 });
+      st.rings.clear();
+    }
+  }
+
+  // all four fuses are in: the power comes on (the white tubes, the crank's brake, the lift)
+  garPower(p) {
+    const st = this.garSt, F = this.world.def.gar.fuse;
+    if (st.power) return;
     st.power = true;
     this.broadcast({ t: 'power', id: p.id, name: p.name });
-    const m = this.bots.get('monster'); if (m) m.hearNoise(f.x, f.z, 20, f.y);      // the breaker going over is loud
+    const m = this.bots.get('monster'); if (m) m.hearNoise(F.x, F.z, 20, F.y);      // the breaker going over is loud
+  }
+
+  // whoever had a fuse is gone (taken, out or left): it is back where it was found
+  garDrop(p) {
+    const st = this.garSt;
+    st.fuses.forEach((f, i) => { if (f.holder === p.id) { f.state = 0; f.holder = null; this.broadcast({ t: 'fuseBack', i }); } });
+    if (st.rings.delete(p.id)) this.send(p.id, { t: 'crankRing', off: 1 });
   }
 
   garTick() {
     const plan = this.world.def.gar, st = this.garSt, now = performance.now();
-    const dt = Math.min(0.25, (now - st.at) / 1000);
     st.at = now;
     const si = this.world.doors.findIndex(d => d.lock === 'shutter'), shutter = this.world.doors[si];
-    // step 2: winding the shutter up. It only moves while someone holds the crank (it stays where it is left);
-    // without power the brake is on. The ratchet is loud: it hears it.
+    // step 2: the crank's rings. Each one stays open while its player is at the crank; a trip of the mark past the
+    // good arc with no press is a (small) mistake. Anyone cranking is heard, once a second.
     if (shutter && !shutter.open) {
-      const c = plan.crank;
-      const hands = this.humans().filter(p => p.alive && !p.escaped && now - (p.crankAt || 0) < 700 && Math.hypot(p.x - c.x, p.z - (c.z + 0.6)) < 2.2 && Math.abs(p.y - c.y) < 1.5);
-      if (hands.length && !st.power) {
-        if (now - st.toldAt > 2500) { st.toldAt = now; for (const p of hands) this.send(p.id, { t: 'toast', text: "The crank won't turn: its brake needs the power. Find the fuse box" }); }
-      } else if (hands.length) {
-        st.crank = Math.min(1, st.crank + dt / GAR_LEVELS[garLevel(this.variant)].crank);
-        if (now - st.sentAt > 150 || st.crank >= 1) { st.sentAt = now; this.broadcast({ t: 'crank', p: r2(st.crank), by: hands[0].id }); }
-        if (now - st.heardAt > 1000) { st.heardAt = now; const m = this.bots.get('monster'); if (m) m.hearNoise(c.x, c.z + 1, 26, c.y); }
-        if (st.crank >= 1) {
-          this.world.setDoor(si, true);
-          this.broadcast({ t: 'door', i: si, open: true, swing: 1, by: hands[0].id });
-          this.broadcast({ t: 'toast', text: 'The shutter is up: the lift is behind it' });
+      const c = plan.crank, m = this.bots.get('monster');
+      for (const [id, ring] of st.rings) {
+        const p = this.players.get(id);
+        if (!p || !p.alive || p.escaped || !st.power || !this.nearCrank(p)) { st.rings.delete(id); if (p) this.send(id, { t: 'crankRing', off: 1 }); continue; }
+        const rtt = id === this.localId ? 0 : Math.min(400, p.ping || 0), tol = 0.05 + rtt / 4000;
+        // (the first trip is free: it is how you find the beat)
+        for (;;) {
+          const k = Math.max(1, ring.checked), end = ring.t0 + ((k + ring.zone + ring.w) * ring.lap + tol + 0.12) * 1000 + rtt;      // (+0.12 s: a press held back by a busy frame may still be on its way)
+          if (now < end) break;
+          ring.checked = k + 1;
+          if (!ring.scored.has(k)) this.crankSlip(p, ring, true);
+          if (!st.rings.has(id)) break;
         }
+      }
+      if (st.rings.size && m) {
+        if (now - st.heardAt > 1000) { st.heardAt = now; m.hearNoise(c.x, c.z + 1, 26, c.y); }
+        if (now < st.loudUntil && now - st.loudAt > 500) { st.loudAt = now; m.hearNoise(c.x, c.z + 1, 35, c.y, true); }
       }
     }
     // step 3: the goods lift. With the power on and the shutter up, getting in is getting out.
@@ -1221,6 +1325,7 @@ export class Server {
         if (!p.alive || p.escaped || Math.abs(p.y - L.y) > 0.6) continue;
         if (p.x > L.x0 && p.x < L.x1 && p.z > L.z0 && p.z < L.z1 - 0.4) {
           p.escaped = true; p.alive = false; p.escapeTime = Math.round(this.timer);
+          this.garDrop(p);
           this.broadcast({ t: 'escaped', id: p.id, name: p.name, time: p.escapeTime, lift: 1 });
           this.brCheck();
         }
@@ -1297,7 +1402,7 @@ export class Server {
     this.world.setDoor(i, open);
     // it shuts even with someone in the doorway (owner's rule): they're pushed out to the side they're more on.
     // Players move themselves (game.js does the same on their screen); the monster is moved here.
-    if (!open) for (const q of this.players.values()) if (q.bot && q.alive && !(this.gar && this.world.block)) this.world.pushOutOfDoor(i, q);
+    if (!open) for (const q of this.players.values()) if (q.bot && q.alive) this.world.pushOutOfDoor(i, q);
     // the door swings away from whoever moved it (a door to nowhere always opens outwards)
     const s = by ? Math.sign((by.x - d.cx) * d.nx + (by.z - d.cz) * d.nz) || 1 : 1;
     this.broadcast({ t: 'door', i, open, swing: d.kind === 'blank' ? 1 : -s, by: by ? by.id : null });
@@ -1489,11 +1594,12 @@ export class Server {
     q.brDeath = 'monster';
     q.hp = 0;
     if (this.gar) {
-      // Level 1: the shapeshifter closes round them (the players' screens play it); nothing is left to drag about
-      this.brCaught = true;
-      this.kill(q, m, 'shifter', false, [m.x, m.y + 1.2, m.z], 'chest', { eng: 1 });
-      this.brCaught = false;
+      // Level 1: the take-over. It pulls them inside (~3 s; every screen that can see it plays it) and stands up as
+      // them. They lose a life (back in the start room after 7 s); no body, no kill feed.
       const b = this.bots.get('monster'); if (b) b.startCatch(q);
+      this.brCaught = true;
+      this.kill(q, m, 'shifter', false, [m.x, m.y + 1.2, m.z], 'chest', { take: 1 });
+      this.brCaught = false;
       return;
     }
     // what it does with them (owner's numbers; MonsterBrain.planCatch): grabbed by an arm or a leg, slammed once or

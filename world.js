@@ -294,6 +294,7 @@ export class World {
     const d = this.doors[i];
     if (!d) return;
     d.open = !!open;
+    this.ver = (this.ver || 0) + 1;          // (something in the grid changed: flashlights' shadow rings are redone)
     for (const c of d.cells) {
       const list = this.spans[c].filter(s => s.m !== '_door');
       // (d.y: the floor the door stands on — the garage has doors upstairs; d.h: a taller gap, the roller shutter)
@@ -301,14 +302,6 @@ export class World {
       if (!open) { list.push({ y0: y, y1: y + (d.lock === 'shutter' ? 2.35 : 2.15), m: '_door', pen: false, prop: -1 }); list.sort((a, b) => a.y0 - b.y0); }
       this.spans[c] = list;
     }
-  }
-
-  // The garage's shapeshifter parked as a car: something solid that comes and goes. r: { x0, z0, x1, z1, y, h } or null.
-  setBlock(r) {
-    const cells = (b, fn) => { for (let iz = Math.round(b.z0 / CELL); iz < Math.round(b.z1 / CELL); iz++) for (let ix = Math.round(b.x0 / CELL); ix < Math.round(b.x1 / CELL); ix++) fn(iz * this.w + ix); };
-    if (this.block) cells(this.block, i => { this.spans[i] = this.spans[i].filter(s => s.m !== '_block'); });
-    this.block = r || null;
-    if (r) cells(r, i => { this.spans[i].push({ y0: r.y, y1: r.y + r.h, m: '_block', pen: false, prop: -1 }); this.spans[i].sort((a, b) => a.y0 - b.y0); });
   }
 
   // a door just shut on someone standing in its doorway: move them out to the side they're more on (owner's rule:

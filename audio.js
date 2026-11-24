@@ -695,33 +695,61 @@ const BRS = {
   }),
   // a drop of water landing
   drip: () => buf(0.35, (x, sr) => { const f = 900 + Math.random() * 900; for (let i = 0; i < 0.12 * sr; i++) { const t = i / sr; x[i] += Math.sin(6.283 * (f + 2600 * t) * t) * Math.exp(-t * 38) * 0.8; } click(x, sr, 0, 2600, 6, 0.3); normalize(x, 0.5); }),
-  // the shapeshifter changing: stretching up tall (a rising wet creak)
-  shiftStretch: () => buf(0.8, (x, sr) => { sweepNoise(x, sr, 0, 0.6, 260, 1500, 3, 0.9, 0.2); for (let k = 0; k < 7; k++) click(x, sr, 0.05 + k * 0.07 + Math.random() * 0.03, 500 + k * 160, 5, 0.5); normalize(x, 0.7); }),
-  // folding itself flat (a falling squelch)
-  shiftFold: () => buf(0.8, (x, sr) => { sweepNoise(x, sr, 0, 0.5, 1300, 220, 2.5, 1, 0.2); thump(x, sr, 0.3, 90, 50, 0.16, 0.7); bubbles(x, sr, 0.1, 0.4, 6, 0.3); normalize(x, 0.7); }),
-  // a limb growing out (a string of wet cracks)
-  shiftLimb: () => buf(0.6, (x, sr) => { for (let k = 0; k < 9; k++) { const at = k * 0.045 + Math.random() * 0.02; click(x, sr, at, 700 + Math.random() * 1500, 7, 0.6); noiseHit(x, sr, at, 'bandpass', 1400, 3, 0.02, 0.3); } normalize(x, 0.65); }),
-  // slumping into a heap
-  shiftSlump: () => buf(0.7, (x, sr) => { thump(x, sr, 0, 80, 42, 0.22, 0.9); noiseHit(x, sr, 0.02, 'lowpass', 500, 0.8, 0.25, 0.6); bubbles(x, sr, 0.15, 0.35, 5, 0.25); normalize(x, 0.6); }),
-  // breaking out of a disguise: metal and rubber tearing, a wet roar
-  shiftBurst: () => buf(1.3, (x, sr) => {
-    for (let k = 0; k < 10; k++) noiseHit(x, sr, Math.random() * 0.3, 'highpass', 1500 + Math.random() * 3000, 0.8, 0.03 + Math.random() * 0.05, 0.5 + Math.random() * 0.5);
-    partials(x, sr, 0.02, [[240, 0.5, 0.3], [610, 0.3, 0.2], [1370, 0.2, 0.12]], 1); thump(x, sr, 0.05, 110, 45, 0.3, 1);
-    const n = x.length; for (let i = Math.floor(0.2 * sr); i < n; i++) { const t = i / sr - 0.2, e = Math.sin(Math.PI * Math.min(1, t / 1.0)); x[i] += Math.sign(Math.sin(6.283 * (95 + 60 * Math.sin(t * 9)) * t)) * (Math.random() * 0.6 + 0.4) * e * 0.35; }
-    biquad(x, 'lowpass', 3800, 0.7, sr); normalize(x, 0.95);
-  }),
-  // settling into a shape: a quiet run of clicks that slows and stops
+  // re-forming as somebody else: a quiet run of clicks that slows and stops, a soft rubbery settling
   shiftSettle: () => buf(1.3, (x, sr) => { let at = 0; for (let k = 0; k < 14; k++) { click(x, sr, at, 900 + Math.random() * 900, 8, 0.5 * (1 - k / 16)); at += 0.04 + k * 0.009; } sweepNoise(x, sr, 0, 0.9, 900, 300, 2, 0.3, 0.3); normalize(x, 0.45); }),
-  // a copied car ticking, like an engine cooling down
-  shiftTick: () => buf(0.25, (x, sr) => { click(x, sr, 0, 2900 + Math.random() * 1200, 10, 0.8); click(x, sr, 0.004, 5200, 14, 0.3); if (Math.random() < 0.4) click(x, sr, 0.09 + Math.random() * 0.06, 3300, 10, 0.4); normalize(x, 0.4); }),
-  // closing round someone: a long wet crush
-  shiftKill: () => buf(2.6, (x, sr) => {
-    sweepNoise(x, sr, 0, 0.5, 300, 1800, 2, 0.9, 0.2); bubbles(x, sr, 0.4, 1.5, 22, 0.35);
-    for (let k = 0; k < 16; k++) { const at = 0.5 + Math.random() * 1.6; click(x, sr, at, 400 + Math.random() * 1400, 6, 0.6); if (k % 4 === 0) thump(x, sr, at, 100, 50, 0.12, 0.7); }
-    thump(x, sr, 2.2, 70, 36, 0.3, 1); normalize(x, 0.9);
+  // ---- the take-over ("pulled inside"), one sound per stage ----
+  // grab: a wet snap as the tendrils shoot out, the slap as they close round someone, a struggle in the rubber
+  takeGrab: () => buf(0.9, (x, sr) => {
+    sweepNoise(x, sr, 0, 0.18, 600, 2600, 1.6, 0.9, 0.12);
+    for (let k = 0; k < 4; k++) { const at = 0.12 + k * 0.035; noiseHit(x, sr, at, 'bandpass', 900 + k * 300, 1.4, 0.03, 0.7); thump(x, sr, at, 160, 90, 0.05, 0.5); }
+    for (let k = 0; k < 6; k++) noiseHit(x, sr, 0.3 + Math.random() * 0.5, 'bandpass', 380 + Math.random() * 300, 3, 0.05, 0.3);
+    normalize(x, 0.9);
   }),
-  // its feet, such as they are: a wet slap on concrete
-  shiftStep: () => buf(0.3, (x, sr) => { noiseHit(x, sr, 0, 'bandpass', 700 + Math.random() * 500, 1.5, 0.06, 0.9, 0.004); thump(x, sr, 0, 120, 60, 0.07, 0.7); click(x, sr, 0.02, 1800, 6, 0.2); normalize(x, 0.6); }),
+  // open: the suit splitting down the front (a long tearing creak of rubber), a deep wet breath out of the dark
+  takeOpen: () => buf(1.1, (x, sr) => {
+    for (let k = 0; k < 6; k++) noiseHit(x, sr, k * 0.04, 'bandpass', 260 + k * 90, 3, 0.05, 0.35);
+    sweepNoise(x, sr, 0.15, 0.45, 700, 3600, 1.8, 0.9, 0.1);
+    for (let k = 0; k < 10; k++) click(x, sr, 0.18 + Math.random() * 0.4, 600 + Math.random() * 1600, 6, 0.4);
+    const a = new Float32Array(x.length); for (let i = 0; i < a.length; i++) a[i] = rnd(); biquad(a, 'bandpass', 420, 1.1, sr);
+    for (let i = Math.floor(0.4 * sr); i < x.length; i++) { const t = i / sr - 0.4; x[i] += a[i] * Math.sin(Math.PI * Math.min(1, t / 0.65)) * 0.5; }
+    thump(x, sr, 0.42, 70, 40, 0.3, 0.6);
+    normalize(x, 0.85);
+  }),
+  // swallow: a deep pulling suction, gulps, the air going out of something
+  takeSwallow: () => buf(1.0, (x, sr) => {
+    sweepNoise(x, sr, 0, 0.8, 1400, 160, 2.2, 1, 0.35);
+    for (const at of [0.08, 0.36, 0.6]) { thump(x, sr, at, 120, 45, 0.16, 1, 1.6); noiseHit(x, sr, at, 'lowpass', 420, 0.8, 0.09, 0.6); }
+    bubbles(x, sr, 0.1, 0.8, 26, 0.4);
+    normalize(x, 0.9);
+  }),
+  // close: the two halves clapping shut, a heavy wet slap and a squelch
+  takeClose: () => buf(0.8, (x, sr) => {
+    thump(x, sr, 0, 95, 42, 0.22, 1, 2); noiseHit(x, sr, 0, 'lowpass', 900, 0.8, 0.08, 0.9);
+    click(x, sr, 0.004, 700, 3, 0.6); noiseHit(x, sr, 0.03, 'bandpass', 1500, 1.5, 0.05, 0.4);
+    bubbles(x, sr, 0.12, 0.4, 10, 0.3); sweepNoise(x, sr, 0.15, 0.35, 900, 300, 2, 0.35, 0.2);
+    normalize(x, 0.95);
+  }),
+  // re-form: settling into its new shape (rubber creaks, small joints clicking into place, a breath)
+  takeForm: () => buf(0.9, (x, sr) => {
+    let at = 0; for (let k = 0; k < 11; k++) { click(x, sr, at, 800 + Math.random() * 1100, 7, 0.55 * (1 - k / 13)); at += 0.03 + k * 0.008; }
+    for (let k = 0; k < 4; k++) noiseHit(x, sr, 0.1 + k * 0.12, 'bandpass', 300 + Math.random() * 250, 3, 0.06, 0.35);
+    sweepNoise(x, sr, 0.35, 0.5, 500, 300, 1.2, 0.3, 0.3);
+    normalize(x, 0.6);
+  }),
+  // ---- the fuses and the crank ----
+  // a fuse picked up: a light ceramic clink and a scrape of card
+  fusePick: () => buf(0.35, (x, sr) => { partials(x, sr, 0, [[2300, 0.4, 0.05], [3900, 0.25, 0.03]], 1); noiseHit(x, sr, 0.01, 'bandpass', 2600, 1.2, 0.03, 0.3); normalize(x, 0.5); }),
+  // a fuse pushed into its slot: a firm click as the clips take it, a lamp relay ticking over
+  fuseIn: () => buf(0.6, (x, sr) => { click(x, sr, 0, 1700, 4, 0.9); thump(x, sr, 0, 210, 140, 0.03, 0.5); click(x, sr, 0.03, 3100, 8, 0.4); click(x, sr, 0.22, 2400, 10, 0.35); for (let i = Math.floor(0.22 * sr); i < Math.floor(0.42 * sr); i++) { const t = i / sr - 0.22; x[i] += Math.sin(6.283 * 100 * t) * 0.08 * Math.exp(-t * 12); } normalize(x, 0.7); }),
+  // the box with no fuse in your hand: an empty slot's dull clack
+  fuseEmpty: () => buf(0.25, (x, sr) => { click(x, sr, 0, 900, 3, 0.7); thump(x, sr, 0, 180, 120, 0.03, 0.4); normalize(x, 0.45); }),
+  // a mistake at the crank: the pawl slipping, the shutter dropping back a notch with a loud metal clank
+  crankSlip: () => buf(1.0, (x, sr) => {
+    for (let k = 0; k < 5; k++) click(x, sr, k * 0.025, 1300 + Math.random() * 400, 5, 0.6);
+    thump(x, sr, 0.13, 140, 70, 0.12, 1, 2); partials(x, sr, 0.13, [[380, 0.5, 0.35], [940, 0.3, 0.25], [1720, 0.2, 0.15], [2650, 0.1, 0.1]], 1);
+    noiseHit(x, sr, 0.13, 'bandpass', 2200, 1, 0.08, 0.5);
+    normalize(x, 0.95);
+  }),
   // three knocks on the other side of a wall
   knock: () => buf(1.3, (x, sr) => { for (const at of [0, 0.32, 0.64]) { thump(x, sr, at, 170, 110, 0.07, 1); noiseHit(x, sr, at, 'lowpass', 700, 0.7, 0.03, 0.5); } normalize(x, 0.7); }),
 };
@@ -786,7 +814,7 @@ export function playPool(kind, pos = null, occ = 0, gain = 1, rate = 1) {
 export function playBR(kind, pos = null, occ = 0, gain = 1) {
   const key = `br:${kind}#${Math.floor(Math.random() * 2)}`;
   if (!cache.has(key)) cache.set(key, BRS[kind]());
-  play(cache.get(key), { pos, gain, ref: pos ? 2.5 : 1, roll: 1.0, air: 40, occ, wet: kind === 'whisper' ? 0.15 : 0.45, important: kind === 'ceiling' || kind === 'corner' || kind === 'slam' || kind === 'servo' || kind === 'shiftBurst' || kind === 'shiftKill' || kind === 'power' || kind === 'liftRide' });
+  play(cache.get(key), { pos, gain, ref: pos ? 2.5 : 1, roll: 1.0, air: 40, occ, wet: kind === 'whisper' ? 0.15 : 0.45, important: kind === 'ceiling' || kind === 'corner' || kind === 'slam' || kind === 'servo' || kind === 'power' || kind === 'liftRide' || kind === 'crankSlip' || kind.startsWith('take') });
 }
 
 // close to it: a low, distorted rumble that swells in your head (not in the world), with a sick wavering whine on

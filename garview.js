@@ -9,9 +9,9 @@
 import * as THREE from 'three';
 import { CELL } from './world.js';
 import { rng } from './brmap.js';
-import { GAR, floorY } from './garmap.js';
+import { GAR, floorY, FUSE_SLOTS } from './garmap.js';
 import { addFlash } from './brview.js';
-import { mergeParts, carGeometry, coneGeometry, riserGeometry, CAR_PAINTS } from './garprops.js';
+import { mergeParts, carGeometry, coneGeometry, riserGeometry, CAR_PAINTS, shelfGeometry, deskGeometry, boardGeometry, fuseGeometry, fuseBoxGeometry, SHELF_TOPS } from './garprops.js';
 
 const { FL, clear: CLEAR, top: TOP } = GAR;
 export const TUBE = { uTube: { value: new THREE.Vector3(1, 1, 1) } };
@@ -392,7 +392,7 @@ export function buildGarageScene(world, renderer, gfx = {}) {
   const paint = makeMesh('paint', garMaterial({ color: '#8f8c80', polygonOffset: true, polygonOffsetFactor: -2 }));
   if (paint) paint.renderOrder = 1;
 
-  // ---------- the light a thing standing at (x, y, z) gets (for props, people and the shapeshifter's disguises) ----------
+  // ---------- the light a thing standing at (x, y, z) gets (for props, fuses, people) ----------
   const propLight = (x, y, z) => {
     const f = y > FL - 1.5 ? 1 : 0, k = bAt(f, x, z), a = floorL[f], b = bounce[f], o = [];
     for (let c = 0; c < 6; c++) o.push(Math.min(1.4, (a[k + c] * 0.55 + b[k + c] * 0.6 + (c < 3 ? AMB[c] * 2 : 0)) * EXPO));
@@ -428,12 +428,47 @@ export function buildGarageScene(world, renderer, gfx = {}) {
   for (const f of [0, 1]) for (const [z, r, col] of [[7.3, 0.07, '#5a4a3a'], [23.4, 0.09, '#3d4f5c'], [23.75, 0.05, '#6a2f28'], [44.7, 0.07, '#5a4a3a']]) {
     for (let x = 6; x < 58; x += 8) { const g = new THREE.CylinderGeometry(r, r, 8, 8); g.rotateZ(Math.PI / 2); place(mergeParts([{ geo: g, color: col }, { geo: new THREE.BoxGeometry(0.04, 0.3, 0.04), color: '#2a2a2a', m: new THREE.Matrix4().makeTranslation(0, 0.15, 0) }]), x + 4, floorY(f) + CLEAR - 0.3, z); }
   }
-  // the fuse box (in its recess) and the crank beside the shutter: shapes only for now (stage 7 makes them work)
+  // the side rooms' furniture: steel racks, desks, hook boards (their collision is in garmap.js), with what is left on them
+  const furnYaw = f => Math.atan2(f.n[0], f.n[1]);
+  // a fuse spot in a piece's own frame: x along it, which shelf (or -1)
+  const local = (f, S) => { const cx = (f.x0 + f.x1) / 2, cz = (f.z0 + f.z1) / 2, a = furnYaw(f); return [(S.x - cx) * Math.cos(a) - (S.z - cz) * Math.sin(a), SHELF_TOPS.findIndex(t => Math.abs(t + 0.02 - S.y) < 0.05)]; };
+  for (const r of plan.rooms) for (const f of r.furn || []) {
+    const y = floorY(r.floor), cx = (f.x0 + f.x1) / 2, cz = (f.z0 + f.z1) / 2, along = f.n[0] ? f.z1 - f.z0 : f.x1 - f.x0, depth = f.n[0] ? f.x1 - f.x0 : f.z1 - f.z0;
+    const mine = (r.spots || []).filter(S => Math.abs(S.x - cx) <= (f.x1 - f.x0) / 2 + 0.05 && Math.abs(S.z - cz) <= (f.z1 - f.z0) / 2 + 0.06);
+    const geo = f.kind === 'shelf' ? shelfGeometry(along, depth, R, mine.map(S => local(f, S)))
+      : f.kind === 'desk' ? deskGeometry(along, depth) : boardGeometry(along, R, mine.filter(S => S.on === 'hook').map(S => local(f, S)[0]));
+    place(geo, cx, y, cz, furnYaw(f));
+  }
+  // the fuse box (in its recess): four slots in a row, each with a lamp over it (red: empty, green: a fuse in it)
   {
     const F = plan.fuse;
-    place(mergeParts([{ geo: new THREE.BoxGeometry(0.7, 0.95, 0.18), color: '#59605a' }, { geo: new THREE.BoxGeometry(0.6, 0.85, 0.02), color: '#6f7770', m: new THREE.Matrix4().makeTranslation(0, 0, 0.1) },
-      { geo: new THREE.BoxGeometry(0.05, 0.14, 0.05), color: '#a52a1e', m: new THREE.Matrix4().makeTranslation(0.2, -0.1, 0.13) }, { geo: new THREE.BoxGeometry(0.3, 0.1, 0.012), color: '#c9b54a', m: new THREE.Matrix4().makeTranslation(-0.08, 0.28, 0.115), flat: 1 }]), F.x, F.y + 1.35, F.z + 0.09);
+    place(fuseBoxGeometry(FUSE_SLOTS), F.x, F.y + 1.35, F.z + 0.09);
   }
+  const slotLamps = [], slotFuses = [];
+  {
+    const F = plan.fuse;
+    for (const x of FUSE_SLOTS) {
+      const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.045, 0.03, 0.01), new THREE.MeshBasicMaterial({ color: '#3a0d0a' }));
+      lamp.position.set(F.x + x, F.y + 1.35 + 0.19, F.z + 0.09 + 0.123); group.add(lamp); slotLamps.push(lamp);
+      // (a fuse standing upright in the slot, once it is in)
+      const fz = new THREE.Mesh(litGeo(fuseGeometry('none'), F.x + x, F.y + 1.35, F.z + 0.4), propMat);
+      fz.rotation.z = Math.PI / 2; fz.position.set(F.x + x, F.y + 1.35 - 0.02, F.z + 0.09 + 0.13); fz.visible = false; group.add(fz); slotFuses.push(fz);
+    }
+  }
+  // n fuses in the box: their lamps go green (and they show in their slots)
+  group.userData.setFuses = (n) => { slotLamps.forEach((l, i) => l.material.color.set(i < n ? '#39ff6e' : '#3a0d0a')); slotFuses.forEach((f, i) => { f.visible = i < n; }); };
+  // the fuses in the side rooms (which rooms changes every game: the host's start message). list: [{ x, y, z, on, yaw }]
+  const fuseMeshes = [];
+  group.userData.placeFuses = (list) => {
+    for (const m of fuseMeshes) group.remove(m);
+    fuseMeshes.length = 0;
+    for (const f of list) {
+      const m = new THREE.Mesh(litGeo(fuseGeometry(f.on), f.x, f.y, f.z), propMat);
+      m.position.set(f.x, f.y + (f.on === 'hook' ? 0 : 0.04), f.z); m.rotation.y = f.yaw || 0; m.scale.setScalar(1.3);      // (a little bigger than life: easier to spot)
+      group.add(m); fuseMeshes.push(m);
+    }
+  };
+  group.userData.showFuse = (i, on) => { if (fuseMeshes[i]) fuseMeshes[i].visible = !!on; };
   const crank = new THREE.Group();
   {
     const C = plan.crank;
@@ -443,6 +478,9 @@ export function buildGarageScene(world, renderer, gfx = {}) {
     const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.025, 0.12, 8).rotateX(Math.PI / 2), addFlash(new THREE.MeshBasicMaterial({ color: new THREE.Color('#1b1b1c').multiply(tint) }))); knob.position.set(0, 0.29, 0.07);
     crank.add(arm, knob); crank.position.set(C.x, C.y + 1.1, C.z + 0.24); group.add(crank);
   }
+  // the crank's handle: one whole turn for each good press (+1), a jerk back for a mistake (-1)
+  let crankSpin = 0, crankTo = 0;
+  group.userData.crankTurn = (dir) => { crankTo += dir > 0 ? -Math.PI * 2 : Math.PI * 0.6; };
   if (props.length) { const m = new THREE.Mesh(mergeLit(props), propMat); group.add(m); }
   function mergeLit(list) {
     const pos = [], col = [], tube = [], v = new THREE.Vector3();
@@ -464,13 +502,10 @@ export function buildGarageScene(world, renderer, gfx = {}) {
     gr.addColorStop(0, 'rgba(0,0,0,0.75)'); gr.addColorStop(0.6, 'rgba(0,0,0,0.5)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
     g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
     const geo = new THREE.PlaneGeometry(2.6, 5.1).rotateX(-Math.PI / 2);
-    const inst = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ map: tex(c, renderer, false), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 }), plan.cars.length + 1);
+    const inst = new THREE.InstancedMesh(geo, new THREE.MeshBasicMaterial({ map: tex(c, renderer, false), transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -3 }), plan.cars.length);
     const m4 = new THREE.Matrix4();
     plan.cars.forEach((cr, i) => { m4.makeTranslation(cr.x, floorY(cr.f) + 0.012, cr.z); inst.setMatrixAt(i, m4); });
-    m4.makeTranslation(0, -50, 0); inst.setMatrixAt(plan.cars.length, m4);
     inst.renderOrder = 2; group.add(inst);
-    // (the last one follows the shapeshifter when it is parked as a car)
-    group.userData.carShadow = (x, y, z) => { m4.makeTranslation(x, y == null ? -50 : y + 0.012, z); inst.setMatrixAt(plan.cars.length, m4); inst.instanceMatrix.needsUpdate = true; };
   }
 
   // ---------- painted labels: pillar numbers, level names, signs over the rooms ----------
@@ -597,8 +632,7 @@ export function buildGarageScene(world, renderer, gfx = {}) {
   }
 
   // ---------- puddles (lower floor): the floor is cut away there, and an upside-down copy of what stands round
-  // it lies underneath, seen through dark water: a cheap true reflection of the ceiling, lamps, pillars and cars.
-  // (The shapeshifter's fake car has no upside-down twin: no reflection.) ----------
+  // it lies underneath, seen through dark water: a cheap true reflection of the ceiling, lamps, pillars and cars. ----------
   {
     const mirror = [], dark = '#0b0d0e';
     const water = new THREE.MeshBasicMaterial({ color: '#0c1113', transparent: true, opacity: 0.42, depthWrite: false });
@@ -664,7 +698,7 @@ export function buildGarageScene(world, renderer, gfx = {}) {
   const drip = plan.drips.map((d, i) => ({ ...d, y0: floorY(d.f) + CLEAR, base: floorY(d.f), t: -(i * 0.7) % d.every, v: 0, y: null }));
   group.userData.onDrip = null;            // game code: the plink, and a ripple if it lands in a puddle
 
-  // ---------- how bright it is where you stand (for dimming people and the monster) ----------
+  // ---------- how bright it is where you stand (for dimming people) ----------
   let power = 1;
   const flick = [1, 1, 1];
   group.userData.lightAt = (x, z, y = 0) => {
@@ -698,6 +732,7 @@ export function buildGarageScene(world, renderer, gfx = {}) {
   let t = 0;
   group.userData.update = (dt, dread = 0, cam = null) => {
     t += dt;
+    if (crankSpin !== crankTo) { const d = crankTo - crankSpin, st = dt * (d > 0 ? 14 : 20); crankSpin = Math.abs(d) <= st ? crankTo : crankSpin + Math.sign(d) * st; crank.rotation.z = crankSpin; }
     for (const list of leaves) for (const L of list || []) {
       if (L.jolt > 0) { L.jolt = Math.max(0, L.jolt - dt * 5); L.pivot.rotation.x = L.joltSign * 0.07 * Math.sin(L.jolt * Math.PI); }
       if (L.now === L.to) continue;

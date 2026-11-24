@@ -24,14 +24,27 @@ export const floorY = f => (f ? FL : 0);
 // which floor a height is on (0 lower, 1 upper)
 export const floorOf = y => (y > FL - 1.2 ? 1 : 0);
 
-// What changes with the difficulty for the shapeshifter (its speeds, sight and hearing are Level 0's: BR_LEVELS):
-// spring: how close you get before a disguise breaks out (m); burst: how long breaking out takes (s: your head start);
-// ambush: how often it chooses to wait as a prop rather than prowl; tell: how clear its giveaways are (1 = obvious).
+// What changes with the difficulty for the thing in the garage (its running speed, sight and hearing are Level 0's:
+// BR_LEVELS). It is a perfect copy of a player on every level: difficulty never adds giveaways, it only changes
+//   first: how long it walks with you before it first strikes (s, a random time between the two numbers)
+//   again: how long it pretends again after a take-over (or after a chase it gave up) before the next strike (s)
+//   chase: how far it will chase someone (m) before it gives up, slips out of sight and pretends again
+// and the crank (a rhythm game, owner's design): crank = the whole winding time for a steady good player (s),
+//   lap = one trip of the mark round the ring (s; one good press each trip = one turn), so turns = crank / lap;
+//   zone = the good arc, as a share of the ring (wide on easy, narrow on hard).
 export const GAR_LEVELS = {
-  easy: { spring: 2.6, burst: 1.2, ambush: 0.4, tell: 1, crank: 10 },
-  normal: { spring: 3.3, burst: 0.95, ambush: 0.6, tell: 0.6, crank: 14 },
-  hard: { spring: 4.0, burst: 0.75, ambush: 0.8, tell: 0.3, crank: 18 },
+  easy: { first: [80, 115], again: [45, 70], chase: 32, crank: 10, lap: 1.25, zone: 0.17 },
+  normal: { first: [55, 80], again: [30, 50], chase: 52, crank: 14, lap: 1.1, zone: 0.12 },
+  hard: { first: [35, 55], again: [18, 32], chase: 85, crank: 18, lap: 1.0, zone: 0.08 },
 };
+// the crank, worked out from those: turns to wind it up, the good arc, how far a mistake slips it back.
+// One player alone gets a wider arc and a gentler slip.
+export function crankRule(level, solo = false) {
+  const L = GAR_LEVELS[level] || GAR_LEVELS.normal;
+  return { turns: Math.max(4, Math.round(L.crank / L.lap)), lap: L.lap, zone: Math.min(0.3, L.zone * (solo ? 1.5 : 1)), slip: solo ? 0.6 : 1 };
+}
+// the fuses: 4 of them, each in a different side room (picked at random each game by the host)
+export const FUSES = 4;
 export const garLevel = v => brLevel(String(v == null ? '' : v).split(':').pop());
 
 // pillars: half a metre across (x) by one metre (z); a bay line runs through the middle of each
@@ -41,15 +54,34 @@ const bayX = k => 9.75 + k * 2.5;                        // the painted line on 
 
 // side rooms: the inside of each (walls go round it), its door and its windows. floor: 0 lower, 1 upper.
 // door / windows: the cells of the gap in the wall; v: the wall runs north–south (you walk through along x).
+// furn: furniture (solid where it stands: '_shelf' / '_desk' spans, drawn by garview.js): kind shelf (steel racking,
+// h 1.85), desk (h 0.76) or board (a hook board on the wall, nothing solid); n: which way its front faces (into the room).
+// spots: where a fuse can lie in that room (x, z; y above the floor): on a shelf, the desk, or a hook on the board.
 const ROOMS = [
-  { name: 'STORE', floor: 0, x0: 1, z0: 1, x1: 5, z1: 5.5, door: { v: false, x0: 3, z0: 5.5, x1: 4.5, z1: 6 }, win: [{ x0: 5, z0: 2, x1: 5.5, z1: 4 }] },
-  { name: 'ATTENDANT', floor: 0, x0: 59, z0: 40, x1: 63, z1: 44, door: { v: true, x0: 58.5, z0: 41.5, x1: 59, z1: 43 }, win: [{ x0: 60, z0: 39.5, x1: 62, z1: 40 }, { x0: 60, z0: 44, x1: 62, z1: 44.5 }] },
-  { name: 'ATTENDANT', floor: 0, x0: 1, z0: 24, x1: 5, z1: 28.5, door: { v: true, x0: 5, z0: 25.5, x1: 5.5, z1: 27 }, win: [{ x0: 2, z0: 23.5, x1: 4, z1: 24 }, { x0: 2, z0: 28.5, x1: 4, z1: 29 }] },
-  { name: 'STORE', floor: 0, x0: 28, z0: 47, x1: 33, z1: 51, door: { v: false, x0: 29.5, z0: 46.5, x1: 31, z1: 47 }, win: [{ x0: 27.5, z0: 48, x1: 28, z1: 50 }, { x0: 33, z0: 48, x1: 33.5, z1: 50 }] },
-  { name: 'ATTENDANT', floor: 1, x0: 59, z0: 20, x1: 63, z1: 24, door: { v: true, x0: 58.5, z0: 21.5, x1: 59, z1: 23 }, win: [{ x0: 60, z0: 19.5, x1: 62, z1: 20 }, { x0: 60, z0: 24, x1: 62, z1: 24.5 }] },
-  { name: 'STORE', floor: 1, x0: 1, z0: 30, x1: 5, z1: 34.5, door: { v: true, x0: 5, z0: 31.5, x1: 5.5, z1: 33 }, win: [{ x0: 2, z0: 29.5, x1: 4, z1: 30 }, { x0: 2, z0: 34.5, x1: 4, z1: 35 }] },
-  { name: 'STORE', floor: 1, x0: 30, z0: 1, x1: 35, z1: 5, door: { v: false, x0: 33, z0: 5, x1: 34.5, z1: 5.5 }, win: [{ x0: 29.5, z0: 2, x1: 30, z1: 4 }, { x0: 35, z0: 2, x1: 35.5, z1: 4 }] },
+  { name: 'STORE', floor: 0, x0: 1, z0: 1, x1: 5, z1: 5.5, door: { v: false, x0: 3, z0: 5.5, x1: 4.5, z1: 6 }, win: [{ x0: 5, z0: 2, x1: 5.5, z1: 4 }],
+    furn: [{ kind: 'shelf', x0: 1, z0: 1, x1: 3.5, z1: 1.5, n: [0, 1] }, { kind: 'shelf', x0: 1, z0: 2.5, x1: 1.5, z1: 5, n: [1, 0] }],
+    spots: [{ x: 2.6, y: 0.97, z: 1.22, on: 'shelf' }, { x: 1.22, y: 1.47, z: 3.9, on: 'shelf' }, { x: 2.0, y: 0.47, z: 1.22, on: 'shelf' }] },
+  { name: 'ATTENDANT', floor: 0, x0: 59, z0: 40, x1: 63, z1: 44, door: { v: true, x0: 58.5, z0: 41.5, x1: 59, z1: 43 }, win: [{ x0: 60, z0: 39.5, x1: 62, z1: 40 }, { x0: 60, z0: 44, x1: 62, z1: 44.5 }],
+    furn: [{ kind: 'desk', x0: 62.5, z0: 40.5, x1: 63, z1: 43.5, n: [-1, 0] }, { kind: 'board', x0: 62.96, z0: 41.2, x1: 63, z1: 42.4, n: [-1, 0] }],
+    spots: [{ x: 62.68, y: 0.78, z: 40.95, on: 'desk' }, { x: 62.93, y: 1.5, z: 42.1, on: 'hook' }] },
+  { name: 'ATTENDANT', floor: 0, x0: 1, z0: 24, x1: 5, z1: 28.5, door: { v: true, x0: 5, z0: 25.5, x1: 5.5, z1: 27 }, win: [{ x0: 2, z0: 23.5, x1: 4, z1: 24 }, { x0: 2, z0: 28.5, x1: 4, z1: 29 }],
+    furn: [{ kind: 'desk', x0: 1, z0: 24.5, x1: 1.5, z1: 27.5, n: [1, 0] }, { kind: 'board', x0: 1, z0: 25.6, x1: 1.04, z1: 26.8, n: [1, 0] }],
+    spots: [{ x: 1.32, y: 0.78, z: 27.05, on: 'desk' }, { x: 1.07, y: 1.5, z: 25.9, on: 'hook' }] },
+  { name: 'STORE', floor: 0, x0: 28, z0: 47, x1: 33, z1: 51, door: { v: false, x0: 29.5, z0: 46.5, x1: 31, z1: 47 }, win: [{ x0: 27.5, z0: 48, x1: 28, z1: 50 }, { x0: 33, z0: 48, x1: 33.5, z1: 50 }],
+    furn: [{ kind: 'shelf', x0: 28, z0: 50.5, x1: 32.5, z1: 51, n: [0, -1] }, { kind: 'board', x0: 31.6, z0: 47, x1: 32.8, z1: 47.04, n: [0, 1] }],
+    spots: [{ x: 28.9, y: 0.97, z: 50.78, on: 'shelf' }, { x: 31.6, y: 1.47, z: 50.78, on: 'shelf' }, { x: 32.4, y: 1.5, z: 47.07, on: 'hook' }] },
+  { name: 'ATTENDANT', floor: 1, x0: 59, z0: 20, x1: 63, z1: 24, door: { v: true, x0: 58.5, z0: 21.5, x1: 59, z1: 23 }, win: [{ x0: 60, z0: 19.5, x1: 62, z1: 20 }, { x0: 60, z0: 24, x1: 62, z1: 24.5 }],
+    furn: [{ kind: 'desk', x0: 62.5, z0: 20.5, x1: 63, z1: 23.5, n: [-1, 0] }, { kind: 'board', x0: 62.96, z0: 21, x1: 63, z1: 22.2, n: [-1, 0] }],
+    spots: [{ x: 62.68, y: 0.78, z: 23.05, on: 'desk' }, { x: 62.93, y: 1.5, z: 21.3, on: 'hook' }] },
+  { name: 'STORE', floor: 1, x0: 1, z0: 30, x1: 5, z1: 34.5, door: { v: true, x0: 5, z0: 31.5, x1: 5.5, z1: 33 }, win: [{ x0: 2, z0: 29.5, x1: 4, z1: 30 }, { x0: 2, z0: 34.5, x1: 4, z1: 35 }],
+    furn: [{ kind: 'shelf', x0: 1, z0: 30.5, x1: 1.5, z1: 34, n: [1, 0] }],
+    spots: [{ x: 1.22, y: 0.97, z: 31.2, on: 'shelf' }, { x: 1.22, y: 1.47, z: 33.4, on: 'shelf' }, { x: 1.25, y: 0.47, z: 32.4, on: 'shelf' }] },
+  { name: 'STORE', floor: 1, x0: 30, z0: 1, x1: 35, z1: 5, door: { v: false, x0: 33, z0: 5, x1: 34.5, z1: 5.5 }, win: [{ x0: 29.5, z0: 2, x1: 30, z1: 4 }, { x0: 35, z0: 2, x1: 35.5, z1: 4 }],
+    furn: [{ kind: 'shelf', x0: 30.5, z0: 1, x1: 34.5, z1: 1.5, n: [0, 1] }],
+    spots: [{ x: 31.3, y: 0.97, z: 1.22, on: 'shelf' }, { x: 33.8, y: 1.47, z: 1.22, on: 'shelf' }] },
 ];
+// the fuse box's 4 slots, in a row across its front (x offsets from its middle)
+export const FUSE_SLOTS = [-0.21, -0.07, 0.07, 0.21];
 
 const RAMPS = [
   { x0: 10, x1: 25, z0: 15, z1: 20, dir: '+x' },          // A: up towards the east
@@ -103,18 +135,18 @@ function makePlan(level) {
     const r = R(), kind = R(), col = Math.floor(R() * COLOURS), skew = (R() - 0.5) * 0.08, flat = Math.floor(R() * 5);
     if (r < 0.34 && !nearStart) { b.car = plan.cars.length; plan.cars.push({ bay: plan.bays.indexOf(b), f: b.f, x: b.x, z: (b.z0 + b.z1) / 2, nose: b.nose, kind: kind < 0.5 ? 'saloon' : kind < 0.8 ? 'hatch' : 'van', col, skew, flat }); }
   }
-  // traffic cones: real stacks and single ones; and spots where there could be a stack (but isn't)
-  plan.cones = []; plan.coneSpots = [];
-  plan.risers = []; plan.riserSpots = [];           // drain pipes down the side of a pillar (and pillars without one)
+  // traffic cones: real stacks and single ones; drain pipes down the side of some pillars
+  // (the random numbers are drawn exactly as before, so nothing moves)
+  plan.cones = [];
+  plan.risers = [];
   for (const p of plan.pillars) {
     const y = floorY(p.f), side = R() < 0.5 ? -1 : 1;
     const cone = { x: p.x + 0.25 + side * 0.75, y, z: p.z + 0.5 + (R() - 0.5) * 0.4 };
     const r = R();
     if (r < 0.14) plan.cones.push({ ...cone, n: 3 + Math.floor(R() * 2) });
     else if (r < 0.2) plan.cones.push({ ...cone, n: 1 });
-    else if (r < 0.6) plan.coneSpots.push(cone);
     const ps = R() < 0.5 ? -1 : 1, pipe = { x: p.x + 0.25, y, z: p.z + (ps < 0 ? -0.09 : 1.09), side: ps };
-    if (R() < 0.3) plan.risers.push(pipe); else plan.riserSpots.push(pipe);
+    if (R() < 0.3) plan.risers.push(pipe);
   }
   // lights: orange sodium lamps (the emergency circuit: always on) and white tubes (they need the power back;
   // group 0 steady, 1 and 2 flicker). The lower floor is mostly sodium, the upper mostly tubes.
@@ -136,7 +168,7 @@ function makePlan(level) {
   plan.drips = [];
   for (const p of plan.puddles) for (let i = 0; i < 2; i++) plan.drips.push({ x: p.x0 + 0.5 + R() * (p.x1 - p.x0 - 1), z: p.z0 + 0.5 + R() * (p.z1 - p.z0 - 1), f: 0, every: 1.6 + R() * 3 });
   for (const [x, z] of [[22, 10], [47, 27], [8, 40], [36, 43]]) plan.drips.push({ x, z, f: 1, every: 2.5 + R() * 4 });
-  // ducts that hang low across the aisles (it folds itself low to get under them): [x0, z0, x1, z1, floor]
+  // ducts that hang low across the aisles: [x0, z0, x1, z1, floor]
   plan.ducts = [[16, 6.5, 16.8, 12.5, 0], [46, 22.5, 46.8, 29.5, 0], [22, 39.5, 22.8, 45.5, 0], [40, 6.5, 40.8, 12.5, 1], [14, 22.5, 14.8, 29.5, 1], [50, 39.5, 50.8, 45.5, 1]]
     .map(([x0, z0, x1, z1, f]) => ({ x0, z0, x1, z1, f }));
   return plan;
@@ -155,7 +187,7 @@ export function garageMap(variant) {
   const [W, D] = GAR.size;
   return {
     name: 'Level 1: The Garage',
-    description: 'Co-op escape, level 1: an underground car park. Not everything parked here is a car.',
+    description: 'Co-op escape, level 1: an underground car park. Count your friends.',
     mode: 'br',
     theme: 'garage',
     size: [W, D],
@@ -197,6 +229,8 @@ export function garageMap(variant) {
         const d = r.door;
         b.cut(d.x0, d.z0, d.x1, d.z1, y, y + GAR.door);
         b.door({ kind: 'way', v: d.v, open: i % 3 !== 1, y, room: i }, d.x0, d.z0, d.x1, d.z1);
+        // its furniture (shelves and desks are solid; a hook board is only drawn)
+        for (const f of r.furn || []) if (f.kind !== 'board') b.add(f.x0, f.z0, f.x1, f.z1, y, y + (f.kind === 'shelf' ? 1.85 : 0.76), f.kind === 'shelf' ? '_shelf' : '_desk');
       });
       // the goods lift (upstairs, over the north-west store room): its walls, and the roller shutter across its front
       {

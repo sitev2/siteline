@@ -867,7 +867,7 @@ function renderLobby() {
   const D = RULES.dm;
   $('match-rules').innerHTML = br
     ? (app.lobby.stage === 2 && app.lobby.l2 ? '<b>The Backrooms, Level 2: The Poolrooms</b> · 2–6 players together · bright tiled halls and still water · nothing lives here'
-      : app.lobby.stage === 1 && app.lobby.l1 ? '<b>The Backrooms, Level 1</b> · 2–6 players together · the garage · fix the power, crank the shutter, take the lift'
+      : app.lobby.stage === 1 && app.lobby.l1 ? '<b>The Backrooms, Level 1</b> · 2–6 players together · the garage · find the fuses, wind the shutter up, take the lift'
       : '<b>The Backrooms</b> · 2–6 players together · a new random maze every game · no guns · find the exit before it finds you')
     : dm ? `<b>Deathmatch</b> · everyone for themselves · first to <b>${D.killLimit}</b> kills or <b>${D.timeLimit / 60}</b> minutes · ${n === 3 ? 'played on a 2v2 map with 3 players' : 'small map for 2, large for 4 to ${D.maxPlayers}'}`
     : '<b>2v2</b> · first to <b>9</b> · sides swap after round <b>8</b> · 8–8 is a draw';
@@ -993,7 +993,6 @@ function startGame(msg) {
     notes: msg.notes,
     key: msg.key,
     crossed: msg.crossed,
-    block: msg.block,
     gar: msg.gar,
     pool: msg.pool,
     onEscape: (stage) => unlockBrLevel(stage + 1),      // (escaped Level n: Level n + 1 is unlocked; the Poolrooms: their tick)

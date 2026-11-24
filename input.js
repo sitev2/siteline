@@ -47,7 +47,9 @@ export class Input {
     if (document.pointerLockElement) document.exitPointerLock();
   }
 
-  press(action) { this.pressed.add(action); }
+  // (onPress: told straight away, before the next frame — the garage's crank ring times presses to the moment)
+  // (at: when the key or tap really happened — event.timeStamp, same clock as performance.now())
+  press(action, at) { this.pressed.add(action); if (this.onPress) this.onPress(action, at); }
 
 
   consume(action) {
@@ -130,7 +132,7 @@ export class Input {
       if (act === 'score') { this.scoreHeld = true; return; }
       if (act === 'use') this.useHeld = true;
       if (act === 'walk') { this.walk = true; return; }
-      if (!e.repeat) this.press(act);
+      if (!e.repeat) this.press(act, e.timeStamp);
     });
     this.on(window, 'keyup', (e) => {
       const act = actionOf(e.code);
@@ -155,7 +157,7 @@ export class Input {
         if (!this.lockUnavailable) return;
         if (e.button === 2) { this.dragLook = true; this.lastMouse = { x: e.clientX, y: e.clientY }; e.preventDefault(); return; }
       }
-      if (e.button === 0) { this.fire = true; this.press('click'); }
+      if (e.button === 0) { this.fire = true; this.press('click', e.timeStamp); }
       if (e.button === 2) this.press('alt');
     });
     this.on(this.canvas, 'wheel', (e) => {
@@ -211,8 +213,8 @@ export class Input {
       if (btn) {
         const act = btn.dataset.act;
         info.btn = btn; btn.classList.add('down');
-        if (act === 'fire') { this.fire = true; this.press('click'); info.kind = 'look'; }
-        else if (act === 'use') { this.useHeld = true; this.press('use'); info.kind = 'hold'; }
+        if (act === 'fire') { this.fire = true; this.press('click', e.timeStamp); info.kind = 'look'; }
+        else if (act === 'use') { this.useHeld = true; this.press('use', e.timeStamp); info.kind = 'hold'; }
         else if (act === 'score') { this.scoreHeld = true; info.kind = 'hold'; }
         else if (act === 'jump') { this.jumpHeld = true; this.press('jump'); info.kind = 'hold'; }   // (held: sprint in the Backrooms)
         else if (act === 'inspect') { this.runHeld = true; this.press('inspect'); info.kind = 'hold'; }   // (held: sprint in the Poolrooms)

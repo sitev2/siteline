@@ -90,6 +90,16 @@ The only folder is `server/` (the optional home game server).
   their scope, their crosshair style (sent as a share code in a `xh` message → `p.xh` in the roster) and their health/armour/gun
   name in the HUD (no ammo numbers). Clients send `zm`/`rl` with `st`; the snapshot flags carry them (bits 4–5 zoom, 64 reloading).
 - Night mode: `settings.night` (host lobby toggle / practice option); flashlights synced via `light` messages
+- `flashshadow.js` — flashlights stop at walls (owner's request, v2.0; before, other people's light shone through walls and their
+  visible beam poked out the other side). For every OTHER player's lamp that is on (up to 8, nearest first), `FlashShadow` traces
+  512 rays round it on the grid at the lamp's height and keeps how far each gets before something solid (open racks '_shelf', desks
+  and the sky don't count): a "shadow ring", one row of a small texture (16-bit depths over 64 m). Redone only when the lamp moved
+  > 12 cm or a door opened / shut (`World.ver`), at most two a frame. Used by: the Backrooms' / garage's baked surfaces (brview.js
+  `addFlash`: `FLASH.uFlashRow / uFlashRing / uFlashYR`, filled in brfx.js; `flashSeen()` in `FLASH_GLSL`), the visible beam of
+  others' flashlights (game.js `flashlightFor`), and in the garage a lamp only lights its own floor (`Game.flashHeights`: the deck
+  between the floors). Your OWN lamp needs no ring (it only lights what you can see). Every lamp's three.js SpotLight (people, props)
+  reaches no further than its middle's first wall (× 1.25 + 1.5 m). 2v2 night maps with shadows switched on: the lamps cast real
+  shadows too (`lampShadows`). Not in the Poolrooms (no flashlight there).
 - `ragdoll.js` — death ragdolls (cannon-es physics), client only; the host never runs it. A ragdoll can be held by one end (`hold`): the Backrooms entity swings it about; `keepTogether` closes every joint again after each physics step while it is held (+2.5 s), because swung hard the joints stretched and limbs came away from the body (owner saw it)
 - `three.module.js`, `three.core.js`, `peerjs.min.js`, `cannon-es.js` — bundled libraries, don't edit
 - Canal is a sunny hill village (theme `village`; own layout, generic Mediterranean style — not a copy of any CS map).
@@ -295,7 +305,7 @@ The only folder is `server/` (the optional home game server).
   Every Backrooms level has 6 start spots (`brmap.js`, `garmap.js`, `poolmap.js`).
   Practice can still be played alone; Level 0's solo rules (`brSolo`) stay for solo Practice and for the last one alive. The HUD has no
   timer and no alive counter in the Backrooms (the top bar is hidden; only the task list shows).
-- **Backrooms Level 1: the garage (test account only).** `LEVEL1_OPEN = true` in `main.js` (owner made Levels 1 and 2 public; set false to limit them to `LEVEL1_TESTERS` (`test123`) again)
+- **Backrooms Level 1: the garage.** `LEVEL1_OPEN = true` in `main.js` (owner made Levels 1 and 2 public; set false to limit them to `LEVEL1_TESTERS` (`test123`) again)
   get a "Level" choice (Practice and lobby) and the run-on from Level 0's exit. Nobody else can reach it (`Server.startGarage()`).
   DONE: everything in the owner's brief except stage 8 (the final real-device test and hand-over).
   - `garmap.js` — ONE fixed layout (`resolveMap('garage', difficulty)`, theme `garage`, `world.def.gar` = the plan): 64 × 52 m, two floors
@@ -303,41 +313,97 @@ The only folder is `server/` (the optional home game server).
     ramps (`plan.ramps`, collision = 11 cm steps, drawn smooth), two stairwells, 7 side rooms (`plan.rooms`: attendant booths / storerooms,
     each with windows and a door; NEVER call them "safe rooms"), puddles on the lower floor (`b.water`), and the places for the order:
     `plan.fuse` (lower, north wall), `plan.crank` + `plan.shutter` (a door with `lock: 'shutter'`) + `plan.lift` (upper, north-west),
-    `plan.start` (upper, south-east), `plan.log`, plus cars / cones / drain pipes and the empty spots a fake one could be.
+    `plan.start` (upper, south-east), `plan.log`, plus cars / cones / drain pipes. Each side room has furniture (`r.furn`: steel
+    racks '_shelf' h 1.85, desks '_desk' h 0.76 — invisible collision, drawn by garview — and hook boards, drawn only) and fuse spots
+    (`r.spots`: { x, z, y above the floor, on: shelf | desk | hook }).
     Doors have a floor now: `door.y` (`World.setDoor`, `pushOutOfDoor`, the host's reach check and `Game.doorTarget` all use it).
-    `node check_gar.mjs` (add `map` to print both floors): start, fuse box, crank, lift, every side room and empty bay can be
-    walked to; ramps alone and stairs alone both join the floors; the lift is shut off while the shutter is down.
-  - `garview.js` (+ `garprops.js`: car / cone / pipe shapes) — baked lighting like `brview.js`, per floor. Orange sodium lamps are baked
-    into the vertex colours (always on); the white tubes' light is a separate attribute (`aTube`, one number per flicker group) switched
-    by the `uTube` uniform, so tubes can be off / on / flickering with their light on the walls (`userData.setPower(on)`: OFF until
-    the fuse box is used). No fog, no dark zones. Puddles: the floor is cut away and an upside-down copy of the ceiling,
-    lamps, pillars and nearby cars lies under dark water (a cheap true reflection). Also `setShutter(0…1)`,
-    `setDoor`, `kickDoor`, `lightAt(x, z, y)`, `propLight` / `litGeo` / `propMat` (so a disguise is lit exactly like a real prop), drips.
-  - `shifter.js` — the shapeshifter's brain on the host (`ShifterBrain`; Level 0 keeps `monster.js`). It hides as a prop (a car in an
-    empty bay — solid while it is one: `World.setBlock` / `{t:'block'}` —, a stack of cones, a drain pipe on a pillar) and breaks out
-    when someone on its floor comes within `GAR_LEVELS.spring` or stays near with their back turned for a second; with 2+ players it
-    can walk about as a copy of one of them (never in view of someone who can also see the real one, nor of the real one). Then it
-    chases at Level 0's speeds (`BR_LEVELS`), across floors by the ramps and stairs. Side rooms: out of bounds (route cost ∞) unless it
-    is chasing; then a shut door is forced in 1.5 s (`Server.forceDoor`). It hears running, wading and doors (and `hearNoise` for the
-    crank later). Its shape travels in its weapon field: `s:car:<bay>:<colour>`, `s:cones:n`, `s:pipe:0`, `s:copy:<id>:<walk|still>`,
-    `s:true:<tall|lope|low|wide|lump>:<keepsake>`, `s:burst:…`, `s:settle:…`, `s:force:0`, `s:kill:<id>`. Catch: kill weapon `shifter`
-    (`{ eng: 1 }`): it closes round the victim; their screen goes black, then the usual death view. No snatches or hallucinations there.
-    `node check_shifter.mjs [easy|normal|hard] [minutes]` plays it fast with two pretend players and checks all of that.
-  - `shiftmodel.js` — how it looks (OUR OWN design): no shape of its own, a heap of dark wet lumps that never stops rearranging, limbs
-    growing and pulling in, pale eyes wandering over it, a keepsake of its last disguise stuck in it; each change has a synthesised
-    sound (`shift*` in `audio.js` `BRS`). Giveaways scale with `GAR_LEVELS.tell` (easy 1 … hard 0.3): disguises breathe slightly and tick
-    quietly, a fake car has no reflection in the puddles, a copied player walks a little wrong, twitches and has no flashlight. A
-    disguised one is not "felt" (no heartbeat / shake): only once it shows itself (`r.revealed` in `Game.updateShifter`).
-  - The order (any one player can do each step; `Server.garSt` = `{ power, crank }`, sent to late joiners in the start message's `gar`):
-    1 the fuse box: E / hand button within reach (`{t:'fuse'}` → `garFuse` → `{t:'power'}`: the white tubes come on, the lift's lamp goes
-    green); 2 the crank: HOLD E / the hand button (`Game.useTarget` kind `crank`; the client sends `{t:'crank'}` every 150 ms of REAL time
-    while held — the game clock runs slow at low frame rates — and the host counts a press for 0.7 s). Without power its brake is on
-    (toast). It winds only while held and stays where it is left; `GAR_LEVELS.crank` 10 / 14 / 18 s in all; `{t:'crank', p}` moves the
-    shutter (`setShutter`) and clicks the ratchet; the monster is told once a second (`hearNoise`, 26 m). At 1 the shutter door opens.
+    `node check_gar.mjs` (add `map` to print both floors): start, fuse box, crank, lift, every side room can be walked to; with every
+    ordinary door shut the fuse box, the crank and every side room's door still can; with a room's door open each of its fuse spots is in
+    reach from inside it (any 4 of the 7 rooms can hold the fuses); ramps alone and stairs alone both join the floors; the lift is shut
+    off while the shutter is down.
+  - `garview.js` (+ `garprops.js`: car / cone / pipe / rack / desk / hook board / fuse / fuse box shapes) — baked lighting like
+    `brview.js`, per floor. Orange sodium lamps are baked into the vertex colours (always on); the white tubes' light is a separate
+    attribute (`aTube`, one number per flicker group) switched by the `uTube` uniform, so tubes can be off / on / flickering with their
+    light on the walls (`userData.setPower(on)`: OFF until all four fuses are in). No fog, no dark zones. Puddles: the floor is cut away
+    and an upside-down copy of the ceiling, lamps, pillars and nearby cars lies under dark water (a cheap true reflection; people are
+    not reflected, the copy neither). Also `setShutter(0…1)`, `setDoor`, `kickDoor`, `lightAt(x, z, y)`, `propLight` / `litGeo` /
+    `propMat`, drips, `placeFuses(list)` / `showFuse(i, on)` (the fuses in their rooms, drawn 1.3× life size so they can be spotted),
+    `setFuses(n)` (the box's 4 slot lamps: dark red → green, a fuse standing in each filled slot), `crankTurn(±1)` (the handle spins a
+    whole turn for a good press, jerks back for a mistake).
+  - The thing in the garage (owner's design, Nov 2026; it REPLACED the prop-disguise shapeshifter: no cars / cones / pipes, no "heap of
+    lumps" true form, no tells). `shifter.js` — its brain on the host and the home server (`ShifterBrain`; Level 0 keeps `monster.js`).
+    It only ever looks like a player in the game — a perfect copy: their suit, name patch, walk, footsteps, flashlight (on and off
+    with theirs), even a fuse in their hand. Difficulty (`GAR_LEVELS`) changes only `first` (how long before it first strikes),
+    `again` (how long it pretends after a take-over or a chase it gave up) and `chase` (how far, in metres, it chases), never tells.
+    States: `pretend` (walks with a "mark" at a teammate's distance 3.5–9 m, sometimes stands at the edge of sight 14–24 m like a
+    teammate who got lost; waits outside a side room its mark went into; jogs when they get away) → `stalk` (picks a victim:
+    preferably alone / back turned / close / in a side room, never required; walks up like a teammate) → `chase` (lunges at 4.5 m, Level
+    0's chase speeds `BR_LEVELS`, ramps and stairs, side rooms and forcing shut doors in 1.5 s; it may strike in full view of others)
+    → `pursue` / `search` → `slip` (out of everyone's sight) → `form` (1.2 s, re-forms as someone else nobody is watching) → `pretend`.
+    Rules: never in view of the player it copies (it lunges at them if they are within 6 m, else slips away); it moves off if someone can
+    see it and the real one together; it only takes a NEW look from someone it may copy (alive, inside); after a take-over it keeps the
+    victim's look (they are dead). Side rooms are out of bounds (route cost ∞) unless it is stalking / chasing. The goods lift is always
+    out of bounds. It hears doors, the fuse box, the crank (`hearNoise(x, z, range, y, loud)`): a noise while it pretends makes it walk
+    with whoever made it and strike sooner. Its look travels in its weapon field: `s:copy:<id>:<still|walk|hunt|force>` (`~Name` = a
+    made-up teammate), `s:take:<victim>:<was>`, `s:form:<new>:<was>`; `p.use` / `p.light` too.
+    The take-over ("pulled inside", `SHIFTER.take` 3 s): `Server.monsterKill` → `brain.startCatch(q)` + kill weapon `shifter`
+    (`{ take: 1 }`): no ragdoll, no kill feed, the victim loses a life (3, back in the start room after 7 s), their fuse goes back to
+    its room. It stands still, then steps into where they stood and walks off as them. Nothing can stop it.
+    Solo (one player in the game): a made-up teammate (`FAKE_NAMES` in shifter.js: Mara, Jonah, Tess…, never the player's name, the same
+    one all game) walks with you and strikes the same way; after taking you it re-forms straight back into that teammate. If a friend
+    joins, it slips out of sight and becomes a copy of a real player.
+    `node check_shifter.mjs [easy|normal|hard] [minutes]` plays it fast (3 players, 2 players, solo) and checks: only real players
+    copied (made-up one only solo, never a real name), never long in view of the one it copies, strikes in view and out of view, take-overs
+    last 3 s and it stands up as the victim, the victim back in the start room after 7 s, the HUD count unchanged, no side rooms while
+    pretending, both floors used, solo walks near you; and a player hiding in a side room with the door shut: it forces the door and takes them.
+  - `shiftmodel.js` — how it looks (OUR OWN design): always `makePlayerModel('atk', name, false, 'hazmat')` animated by `animateModel`
+    from the same movement as a real remote player (game.js `updateShifter` also plays its footsteps through the players' own
+    `remoteSteps`, and its flashlight is drawn and lights the walls like anyone's). The take-over (`TAKE` timings, real clock, so a slow
+    frame rate doesn't slow it): grab 0 s (four dark tendrils out of its chest, round the victim) · open 0.55 s (the upper body becomes a
+    shell that splits down the front, two halves hinged at the back, wet black inside with ridges, strands across) · swallow 1.2 s (the
+    victim pulled in and shrinking: game.js moves their model on the creature's own clock, `takePull`) · close 2.0 s · re-form 2.45 s
+    (a ripple; at 2.7 s it has the victim's name on its back) · 3.0 s walks off. A sound for each stage (`takeGrab`, `takeOpen`,
+    `takeSwallow`, `takeClose`, `takeForm` in `audio.js` `BRS`). If the host finishes first, the screen still plays it to the end. The
+    victim's own screen: grabbed, looking at it, pulled towards the dark, black, then the usual death view. Re-forming unseen: a short
+    ripple (`shiftSettle`). Only once it shows itself (hunting, forcing a door, a take-over) is it "felt": heartbeat, shake
+    (`r.revealed`); never while it is a copy. The scoreboard shows whoever it looks like as alive and no catches.
+  - HUD (game.js `updateHud`, hud.js `setMates` / `setCarry`): by the task list, a teammate count (`team` icon + number) = everyone alive
+    and inside plus whoever it looks like (a made-up teammate only while you are alone): after a take-over the number does NOT drop (on
+    purpose, it misleads); solo it shows 2. Under it the `fuse` icon while you carry one. Both sized by the screen like the task list.
+  - The order (owner's design, Nov 2026): find 4 fuses → fuse box → crank → lift. Any one player can do each step. `Server.garSt` =
+    `{ power, crank, fuses, inBox, rings }`; late joiners get `gar: { power, crank, n, fuses: [[room, spot, state, holder]] }` in the
+    start message (state 0 in its room, 1 carried, 2 in the box).
+    1 the fuses (`FUSES` 4): each game the host puts them in 4 of the 7 side rooms at random, each on one of that room's spots. E / the
+    hand button within reach takes one (`{t:'fuseTake', i}` → host checks reach (2 m), one at a time → `{t:'fuseTake', i, id}`); you
+    carry ONE (first person: your gloved hand holding it, bottom right, `setupCarry` in game.js; others see it in your right hand,
+    `setHandFuse`). Taken, left or escaped: it goes back to its room (`Server.garDrop` → `{t:'fuseBack', i}`). At the box, E puts it in
+    (`{t:'fuseIn'}` → `{t:'fuseIn', i, id, n}`), one at a time; E with no fuse only shows "Press E to put in a fuse". The fourth one in
+    → `garPower` → `{t:'power'}`: the white tubes come on, the lift's lamp goes green.
+    2 the crank: a rhythm game (owner's design). Without power: the brake (toast). With power, E / the hand button opens a ring
+    (`{t:'crankOn'}` → the host makes this player's ring and answers `{t:'crankRing', zone, w, lap, turns}`; the ring starts when it
+    arrives): a mark goes round once a `lap`, a bright arc (`zone` … `zone + w`) is the good part. Each press (E, a click or a tap; sent
+    the moment it happens — `Input.onPress` — not on the next frame) is `{t:'crankTap'}`; the HOST judges it against its own clock for
+    that ring (minus the player's ping and `ago` — how long the key / tap waited for a busy frame, from the event's timeStamp, at most
+    0.12 s —, + 50 ms slack; presses less than 0.15 s apart are ignored; one turn per trip round; a missed trip is only counted
+    0.12 s after the arc, so a held-back press can still make it): good = one
+    turn (`1 / turns`, `{t:'crankTap', ok: 1}` + `{t:'crank', p}`), anything else = a mistake: the shutter slips back one turn (alone
+    0.6 of one) with a loud clank (`{t:'crankSlip', id, p}`, sound `crankSlip`), it hears it from 35 m for 2 s. A trip with no press
+    (from the second trip on) is a small mistake (half a turn). Never below 0 or above 1. Turns = `GAR_LEVELS.crank / lap` (8 / 13 /
+    18 turns at 1.25 / 1.1 / 1.0 s a trip: 10 / 14 / 18 s for a steady good player); the arc is 17 / 12 / 8 % of the ring, 1.5× wider
+    alone (`crankRule(level, solo)`). ANY number of players can crank at once, each with their own ring; every good press adds to the
+    same shutter (two wind about twice as fast). The ring shuts when you walk away (> 2.3 m) and the shutter stays where it is. Anyone
+    cranking is heard once a second (26 m). The ring (game.js `drawRing`, canvas `#crank-ring`): track, the bright arc, the mark, an
+    inner line for how far up the shutter is; green flash for a good turn, red + shake for a mistake. Phones: the ring sits round ONE
+    big tap button (`#btn-crank`, data-act use) in the hand button's place (the hand button hides meanwhile).
     3 the lift: with power on and the shutter up, standing in `plan.lift` = escaped (`{t:'escaped', lift: 1}`). Ending: you step in and
     turn round, the lift's own doors shut (`setLiftDoors`), it rides up, then the white "You got out." screen (`escapeScene.lift`,
-    `delay`); the host waits 9.5 s before the results. The task list ticks the three steps. ONE explorer log (`LOGS[12]` in `brfx.js`)
-    on the wall by the start. `node check_gar_order.mjs` plays the order with no graphics.
+    `delay`); the host waits 9.5 s before the results. The task list: Find the fuses (x of 4) (x = carried or in the box) / Switch the
+    power on / Wind the shutter up / Get out. ONE explorer log (`LOGS[12]` in `brfx.js`: the fuses, the crank in time, "count us") on
+    the wall by the start.
+    `node check_gar_order.mjs` plays all of it on the real host code (1 and 2 players, every difficulty): fuses (reach, one at a time,
+    back to the room when the carrier is taken, power only with four in), the crank (brake, good presses, a badly timed or too
+    frequent press, slips, misses, never below 0 / above 1, walking away, two players twice as fast, alone with 4 good presses in 5
+    still finishing), the lift, and Level 0 → Level 1.
   - Unlock and level flow. Escaping Level 0 yourself unlocks Level 1: `Game` calls `onEscape(0)` → `unlockBrLevel(1)` in `main.js` saves
     it on the device (localStorage `siteline-br-level`) and, logged in, on the account (`profiles.br_level`, only through the RPC
     `unlock_br_level` in `supabase.sql`; `syncUnlock()` on login copies it both ways; guests only have the device). Choosing Level 1:
