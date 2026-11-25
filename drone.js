@@ -4,7 +4,9 @@
 // RC radio over USB, and two touch sticks whose layout you choose (Settings → Drones).
 import * as THREE from 'three';
 import { loadDroneMap, spawnFor, gateRespawn } from './dronemaps.js';
-import { makeDrone, stepDrone, FLIGHT_NAMES, DRONE, qrot, qmul, qaxis, qslerp, gateCross, droneHeading, qypr } from './dronephys.js';
+import { makeDrone, stepDrone, FLIGHT_NAMES, DRONE, qrot, qmul, qaxis, qslerp, gateCross, droneHeading, qypr, THROTTLE } from './dronephys.js';
+// the throttle stick's middle is about a hover (with the throttle curve's mid at 0.5, as the drone hovers at ~half throttle)
+const HOVER_STICK = 0.5;
 import { buildDroneScene, paintGates, makeDroneModel, DRONE_COLORS } from './droneview.js';
 import { buildMapScene } from './mapview.js';
 import { PostFX } from './post.js';
@@ -21,8 +23,9 @@ export const STICK_MODES = {
   mode3: { lx: 'roll', ly: 'pitch', rx: 'yaw', ry: 'thr' },
   mode4: { lx: 'roll', ly: 'thr', rx: 'yaw', ry: 'pitch' },
 };
+// (tilt 25° like a real FPV drone; Casual uses 60 % of it, ~15°. thrMid / thrExpo: the throttle curve; rate (°/s) / expo: Acro)
 export const DRONE_DEFAULTS = {
-  fly: 'easy', cam: 'fpv', tilt: 20, fov: 90, sticks: 'mode2',
+  fly: 'easy', cam: 'fpv', tilt: 25, fov: 90, sticks: 'mode2', thrMid: 0.5, thrExpo: 0.35, rate: 600, expo: 0.55,
   axes: { lx: 'yaw', ly: 'thr', rx: 'roll', ry: 'pitch' }, inv: { lx: false, ly: false, rx: false, ry: false },
   spring: false, pad: 'pad', size: 1,
 };
@@ -164,8 +167,8 @@ class DroneInput {
   read(dt, mode) {
     const ds = this.g.ds, sens = this.g.settings.sens || 1, inv = this.g.settings.invert ? -1 : 1, K = keyMap(this.g.settings.keys);
     const out = { thr: 0, yaw: 0, pitch: 0, roll: 0, dYaw: 0, dPitch: 0, dRoll: 0 };
-    const easy = mode === 'easy', hover = DRONE.hover;
-    if (this.g.chatOpen || this.g.paused) { this.mx = this.my = 0; return easy ? out : { ...out, thr: this.g.me.f > 0.02 ? hover : 0 }; }
+    const easy = mode === 'easy', mid = HOVER_STICK;
+    if (this.g.chatOpen || this.g.paused) { this.mx = this.my = 0; return easy ? out : { ...out, thr: this.g.me.f > 0.02 ? mid : 0 }; }
     // keyboard (eased, so a tap is gentle)
     const has = (c) => this.keys.has(c);
     const ease = (cur, tgt, rate) => cur + clamp(tgt - cur, -rate * dt, rate * dt);
@@ -176,8 +179,9 @@ class DroneInput {
     if (easy) { kp = (fwd || aU ? 1 : 0) - (back || aD ? 1 : 0); kr = (right ? 1 : 0) - (left ? 1 : 0); ky = (aR ? 1 : 0) - (aL ? 1 : 0); kt = (up ? 1 : 0) - (down ? 1 : 0); }
     else {
       kp = (aU ? 1 : 0) - (aD ? 1 : 0); kr = (aR ? 1 : 0) - (aL ? 1 : 0); ky = (right ? 1 : 0) - (left ? 1 : 0);
-      // throttle: W / Space = full, S / Shift = off, neither = about a hover (eased so a tap gives a little)
-      kt = (fwd || up) ? 1 : (back || down) ? 0 : (this.g.me.ground ? (this.k.thr > hover * 0.9 ? hover * 1.05 : 0) : hover * 1.05);
+      // throttle: W / Space = full, S / Shift = off, neither = the middle of the stick, about a hover (like a gamepad's
+      // stick springing back; eased so a tap gives a little). Sitting on the ground with neither: motors off
+      kt = (fwd || up) ? 1 : (back || down) ? 0 : (this.g.me.ground ? (this.k.thr > mid * 0.9 ? mid : 0) : mid);
     }
     this.k.pitch = ease(this.k.pitch, kp, easy ? 4 : 6); this.k.roll = ease(this.k.roll, kr, easy ? 4 : 6); this.k.yaw = ease(this.k.yaw, ky, 5);
     this.k.thr = ease(this.k.thr, kt, easy ? 6 : 2.6);
@@ -206,7 +210,7 @@ class DroneInput {
       if (Math.abs(yaw) + Math.abs(roll) + Math.abs(pitch) + Math.abs(thr) < 0.01 && !abs) continue;
       out.yaw = yaw || out.yaw; out.roll = roll || out.roll; out.pitch = pitch || out.pitch;
       if (easy) out.thr = abs ? thr : (thr || out.thr);
-      else out.thr = abs ? (thr + 1) / 2 : thr > 0 ? hover + thr * (1 - hover) : thr < 0 ? hover * (1 + thr) : (this.g.me.air ? hover : out.thr);
+      else out.thr = abs ? (thr + 1) / 2 : thr !== 0 ? (thr + 1) / 2 : (this.g.me.air ? mid : out.thr);
       break;
     }
     // the touch sticks
@@ -224,12 +228,12 @@ class DroneInput {
           if (!s && this.g.keepThrottle()) v = this.thrHeld;
           else if (s && this.g.keepThrottle()) this.thrHeld = v;
           if (!s && !this.g.keepThrottle()) continue;
-          out.thr = easy ? v : this.g.keepThrottle() ? (v + 1) / 2 : v >= 0 ? hover + v * (1 - hover) : hover * (1 + v);
+          out.thr = easy ? v : (v + 1) / 2;
           touched = true;
         } else if (s) out[role] = clamp(v, -1, 1);
       }
     }
-    if (this.g.settings.touch && !touched && !easy && !this.g.keepThrottle()) out.thr = this.g.me.air ? hover : 0;
+    if (this.g.settings.touch && !touched && !easy && !this.g.keepThrottle()) out.thr = this.g.me.air ? mid : 0;
     return out;
   }
 }
@@ -423,8 +427,8 @@ export class DroneGame {
     const d = this.me;
     d.p = [s.x, s.y, s.z]; d.v = [0, 0, 0]; d.w = [0, 0, 0];
     d.q = qaxis(0, 1, 0, s.yaw); d.hd = s.yaw; d.crashed = 0; d.f = s.air ? DRONE.hover : 0; d.air = !!s.air; d.ground = !s.air;
-    this.input.thrHeld = s.air ? DRONE.hover * 2 - 1 : -1;
-    this.input.k.thr = s.air ? DRONE.hover : 0;
+    this.input.thrHeld = s.air ? HOVER_STICK * 2 - 1 : -1;
+    this.input.k.thr = s.air ? HOVER_STICK : 0;
     this.crashAt = 0;
     this.prevP = [...d.p];
     this.input.drawStick('l'); this.input.drawStick('r');
@@ -604,8 +608,8 @@ export class DroneGame {
   setFly(mode) {
     const d = this.me;
     d.hd = droneHeading(d.q);
-    this.input.k.thr = mode === 'easy' ? 0 : d.air ? DRONE.hover : 0;
-    if (mode !== 'easy' && this.keepThrottle()) this.input.thrHeld = d.air ? DRONE.hover * 2 - 1 : -1;
+    this.input.k.thr = mode === 'easy' ? 0 : d.air ? HOVER_STICK : 0;
+    if (mode !== 'easy' && this.keepThrottle()) this.input.thrHeld = d.air ? HOVER_STICK * 2 - 1 : -1;
     this.feedLine(`Flight mode: ${FLIGHT_NAMES[mode]}`, '#cfd8e0');
     this.tipUntil = this.clock + 8;
     this.input.drawStick('l'); this.input.drawStick('r');
@@ -615,7 +619,11 @@ export class DroneGame {
     const d = this.me, mode = this.mode;
     const inp = this.input.read(dt, mode);
     inp.lock = this.locked();
-    if (inp.lock) { inp.thr = mode === 'easy' ? 0 : 0; }
+    if (inp.lock) inp.thr = 0;
+    // the player's throttle curve (Throttle Mid / Expo) and Acro rate / expo (Settings → Drones)
+    const ds = this.ds;
+    inp.mid = clamp(+ds.thrMid || THROTTLE.mid, 0.2, 0.8); inp.texpo = clamp(+ds.thrExpo, 0, 1);
+    inp.rate = clamp(+ds.rate || 600, 200, 1400) * Math.PI / 180; inp.expo = clamp(+ds.expo, 0, 1);
     const before = [...d.p];
     const ev = stepDrone(d, inp, dt, mode, this.md.col, this.clock);
     // gates (race): the straight line from where it was to where it is now
@@ -711,7 +719,7 @@ export class DroneGame {
       cam.lookAt(d.p[0] - back.x * 3, d.p[1] + 0.2, d.p[2] - back.z * 3);
       this.myModel.root.visible = true;
     } else {
-      const tilt = (this.mode === 'easy' ? 0.45 : 1) * clamp(this.ds.tilt ?? 20, 0, 50) * Math.PI / 180;
+      const tilt = (this.mode === 'easy' ? 0.6 : 1) * clamp(this.ds.tilt ?? 25, 0, 50) * Math.PI / 180;
       const q = qmul(d.q, qaxis(1, 0, 0, tilt));
       const off = qrot(d.q, [0, 0.03, -0.06]);
       cam.position.set(d.p[0] + off[0], d.p[1] + off[1], d.p[2] + off[2]);
@@ -747,7 +755,7 @@ export class DroneGame {
     txt(`THR ${String(Math.round(d.f * 100)).padStart(3)}%`, 18, top + big * 1.4);
     txt(`${String(Math.round(speed)).padStart(3)} KM/H`, W - 18, top, 'right');
     txt(`ALT ${alt.toFixed(1)} M`, W - 18, top + big * 1.4, 'right');
-    // the throttle bar with the hover mark (not in Easy, where the height holds itself)
+    // the throttle bar with the hover mark (not in Casual, where the height holds itself)
     if (this.mode !== 'easy') {
       const bx = 18, by = top + big * 2.6, bh = Math.min(140, H * 0.22);
       c.strokeStyle = 'rgba(255,255,255,0.8)'; c.lineWidth = 2; c.strokeRect(bx, by, 10, bh);
@@ -829,8 +837,8 @@ export class DroneGame {
       const ax = this.axes(), say = { thr: m === 'easy' ? 'up/down' : 'throttle', yaw: 'turn', pitch: 'forward/back', roll: 'sideways', none: '—' };
       return [`Left stick: ${say[ax.ly]} ↕  ${say[ax.lx]} ↔   ·   Right stick: ${say[ax.ry]} ↕  ${say[ax.rx]} ↔`, 'Change what each stick does in Settings → Drones'];
     }
-    if (m === 'easy') return [`EASY: ${L('moveF')}/${L('moveB')} forward/back · ${L('moveL')}/${L('moveR')} sideways · mouse or ←→ turn · ${L('jump')}/${L('walk')} up/down`, `${L('reload')} reset · C camera · ${L('inspect')} flight mode (Easy / Angle / Acro)`];
-    if (m === 'angle') return [`ANGLE: ${L('moveF')}/${L('jump')} throttle up, ${L('moveB')}/${L('walk')} down (lets go = hover) · ${L('moveL')}/${L('moveR')} turn · arrows or mouse tilt`, `${L('reload')} reset · C camera · ${L('inspect')} flight mode · a game controller or RC radio works too`];
+    if (m === 'easy') return [`CASUAL: ${L('moveF')}/${L('moveB')} forward/back · ${L('moveL')}/${L('moveR')} sideways · mouse or ←→ turn · ${L('jump')}/${L('walk')} up/down`, `${L('reload')} reset · C camera · ${L('inspect')} flight mode (Casual / Angle / Acro)`];
+    if (m === 'angle') return [`ANGLE: ${L('moveF')}/${L('jump')} throttle up, ${L('moveB')}/${L('walk')} down (let go = mid-stick, about a hover) · ${L('moveL')}/${L('moveR')} turn · arrows or mouse tilt`, `${L('reload')} reset · C camera · ${L('inspect')} flight mode · a game controller or RC radio works too`];
     return [`ACRO: ${L('moveF')}/${L('jump')} throttle up, ${L('moveB')}/${L('walk')} down · ${L('moveL')}/${L('moveR')} yaw · mouse rolls and pitches (it stays where you leave it)`, `${L('reload')} reset · C camera · ${L('inspect')} flight mode · a game controller or RC radio works too`];
   }
   drawGateMark(c, W, H, g, txt, big) {

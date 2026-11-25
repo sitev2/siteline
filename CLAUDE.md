@@ -624,10 +624,15 @@ The only folder is `server/` (the optional home game server).
   1–6 pilots (`RULES.fpv`, `roomMax()` 6), no bots, no account stats. Its own client, NOT `Game`: `main.js startGame` makes a `DroneGame`
   (drone.js) for `msg.mode === 'fpv'` (same interface: onMessage, destroy, paused, input.requestLock, onLoaded, applyGraphics; `fpvMode`).
   - `dronephys.js` (no three.js; host, screens, checks): the drone is a sphere (`DRONE.r` 0.17 m) with a quaternion ([x,y,z,w], forward −Z),
-    thrust along its up axis (`DRONE.thrust` 40 m/s² ≈ 4 g, hovers at ~25 %), linear + quadratic drag (+ extra along its up axis), motor lag.
-    `FLIGHT`: **easy** (self-levelling; the sticks ask for a SPEED — forward 20 / sideways 12 m/s — and it tilts to get there and brakes when
-    let go; the throttle is a climb rate and the height holds itself), **angle** (self-levelling, you hold the throttle), **acro** (rates
-    with expo, keeps its attitude; the real thing). `stepDrone(d, inp, dt, mode, col, t)` in small sub-steps (≤ 12 cm), returns
+    thrust along its up axis, linear + quadratic drag (+ extra along its up axis), motor lag. **Tuned to feel like the heavy FPV drone in
+    the game Bodycam** (owner's request, v3.1; only the feel — nothing of theirs copied): `DRONE.thrust` 19.9 m/s² ≈ 2 g, so it hovers at
+    ~half throttle (`DRONE.hover` ≈ 0.49 = the middle of the stick), drag2 0.012 / dragUp 0.02 (≈ 97 km/h flat out, coasts, slides in
+    turns), spool 0.05 s, and in Acro its turning follows the sticks over `rateLag` 0.035 s (weight) instead of snapping. (v3.0 was a light
+    4 g racing quad.) `throttleCurve(stick, mid, expo)` = a real drone's Throttle Mid / Expo (through (mid, mid), gentler round it; Angle
+    and Acro). `FLIGHT`: **easy, shown as "Casual"** (Bodycam's name; the settings key stays 'easy'; self-levelling; the sticks ask for a
+    SPEED — forward 20 / sideways 12 m/s — and it tilts to get there and brakes when let go, holding its place; the throttle is a climb
+    rate and the height holds itself), **angle** (self-levelling, you hold the throttle), **acro** (rates with expo, keeps its attitude;
+    the real thing; rate / expo from Settings → Drones, default 600 °/s / 0.55). `stepDrone(d, inp, dt, mode, col, t)` in small sub-steps (≤ 12 cm), returns
     `{ crash, bump }`: straight into anything at > `DRONE.crash` 7 m/s (the normal part of the speed) or touching water = crash; glancing
     hits bounce. Turtle mode: upside down on the ground, any stick flips it back. `MapCollider` (drone maps: boxes turned about Y, upright
     cylinders and cones, capsules, spheres, the height field, water rects, map edges + ceiling = soft walls, wind-turbine blades that spin
@@ -655,14 +660,18 @@ The only folder is `server/` (the optional home game server).
     the next gate boxed or an arrow towards it, standings, countdown, "SIGNAL LOST" + `#fpv-static` after a crash, then back after 1.6 s:
     in a race just past your last gate, otherwise on your pad; R any time), crash sparks, chat (#chat-box, `#fpv-feed`), sounds
     (`droneVoice` motor whine following the throttle, wind, `playDrone` crash / bump / gate / lap / finish / static; the 4 nearest
-    others heard). Controls (`DroneInput`): **Easy** W/S forward/back, A/D sideways, mouse or ←/→ turn, Space/Shift up/down;
-    **Angle/Acro** W or Space throttle up, S or Shift down (letting go = a hover), A/D yaw, arrows (or the mouse: Acro turns directly,
-    Angle moves a stick that springs back) pitch/roll; R reset, C camera, F (inspect key) cycles the flight mode, Y chat, Tab pilots.
-    Game controller (Gamepad API: 'pad' Mode 2, centre = hover) or an RC radio over USB ('radio', AETR axes). **Touch: two floating sticks
+    others heard). Controls (`DroneInput`): **Casual** W/S forward/back, A/D sideways, mouse or ←/→ turn, Space/Shift up/down;
+    **Angle/Acro** W or Space throttle up, S or Shift down (letting go = the middle of the stick, `HOVER_STICK` 0.5 ≈ a hover; sitting on
+    the ground = motors off), A/D yaw, arrows (or the mouse: Acro turns directly, Angle moves a stick that springs back) pitch/roll; R reset,
+    C camera, F (inspect key) cycles the flight mode, Y chat, Tab pilots. Every throttle (keys, gamepad, touch) is a stick position 0…1
+    that goes through the player's throttle curve (`fly()` passes `mid` / `texpo` / `rate` / `expo` from `settings.drone`).
+    Game controller (Gamepad API: 'pad' Mode 2, centre = mid-stick) or an RC radio over USB ('radio', AETR axes). **Touch: two floating sticks
     (left / right half of the screen) whose jobs the player chooses (owner's request): Settings → Drones → Layout Mode 1/2/3/4 or Custom
     (each of the four directions: throttle / turn / tilt / roll / nothing, + Invert; picking a job moves the axis that had it), a picture
     of the sticks (`drawStickPreview` in main.js), "throttle springs back" (Angle/Acro; else it stays where you leave it, like a radio),
-    stick size.** Buttons top right: reset, camera, pilots, chat, menu. `settings.drone` (`DRONE_DEFAULTS`, synced to the account);
+    stick size.** Settings → Drones also has Throttle mid / expo and Acro rate / expo (`thrMid`, `thrExpo`, `rate` °/s, `expo`); camera
+    tilt default 25° (Bodycam's guides: 15 for beginners, 25–35 for a real FPV feel), Casual uses 60 % of it (~15°).
+    Buttons top right: reset, camera, pilots, chat, menu. `settings.drone` (`DRONE_DEFAULTS`, synced to the account);
     changes apply at once; the pause menu has a Flight mode picker (`#pause-fly`), and Settings opens on the Drones tab while flying.
   - `dronehost.js` — `DroneHost` (made in `Server.startDrones`): pads (`slots`), passes everyone's drone on (`dsnap` every tick), crashes
     (`fpvfx`). Races: 'wait' (until every pilot's game has loaded, `fpvReady`, at most 12 s) → 'count' (5 s) → 'race' → over. A pilot's
@@ -673,10 +682,12 @@ The only folder is `server/` (the optional home game server).
     Someone joining during a race flies but isn't placed (`late`). Free flight never ends by itself: the leader's pause menu has
     "End free flight" (`{t:'fpvEnd'}`). Lobby: `#fpv-maps` cards + `#lobby-fpvother` (the other maps) + `#lobby-fpvlaps`; Practice:
     `#p-fpvmap` (optgroups), `#p-fpvlaps`, `#p-fpvfly`.
-  - `node check_drones.mjs` (~3 s): pads clear on every map and a drone stays on them; room to take off; every gate's opening clear with
+  - `node check_drones.mjs` (~2 s): pads clear on every map and a drone stays on them; room to take off; every gate's opening clear with
     room before/after, counted only front to back through it; a 3D route through the air from the pads to gate 0 and from every gate to
-    the next; an Easy-mode autopilot flies a lap of each circuit with the real flight model (no crash); the flight model (height hold,
-    braking, soft/hard landings, a post at 16 m/s, a glancing wall, the lake, Acro rates, turtle); full races on the real host code with
+    the next (roomy where there is room); a Casual-mode autopilot flies a lap of each circuit with the real flight model, no crash (it
+    follows the route by distance along it, slows for bends and gates, lines up and settles in front of a gate before going through, goes
+    back round if it misses one); the flight model (height hold, braking, soft/hard landings, a post at 16 m/s, a glancing wall, the lake,
+    Acro rates and stopping, turtle; the Bodycam-like feel: hover at ~half throttle, mid-stick ≈ hover, the throttle curve, ~100 km/h); full races on the real host code with
     pretend pilots (countdown, out-of-order / far-away gates turned down, laps, places, the 45 s, late joiners, leaving, Play again, free
     flight online, fpvOk, the room size, ending free flight). Changes to `server.js`, `config.js` or the drone files need the home server updated.
 - `check_map.mjs` — `node check_map.mjs outpost` / `node check_map.mjs quarry large` checks every area and spawn is reachable
