@@ -22,12 +22,12 @@
     // New .js files: add them to this list (libraries stay unversioned).
     (function () {
       var v = Date.parse(document.lastModified) || Date.now();
-      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'brdm', 'brfx', 'brmap', 'brview', 'buy', 'config', 'crosshair', 'filter', 'flashshadow', 'friends', 'game', 'garmap', 'garprops', 'garview', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'mghost', 'mgmap', 'mgplay', 'models', 'monster', 'net', 'netlog', 'nettest', 'poolfx', 'poolhost', 'poolmap', 'poolplay', 'poolprops', 'poolview', 'post', 'ragdoll', 'server', 'shifter', 'shiftmodel', 'textures', 'touchlayout', 'weapons', 'world'];
+      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'brdm', 'brfx', 'brmap', 'brview', 'buy', 'config', 'crosshair', 'filter', 'flashshadow', 'friends', 'game', 'garmap', 'garprops', 'garview', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'mghost', 'mgmap', 'mgplay', 'models', 'monster', 'net', 'netlog', 'nettest', 'poolfx', 'poolhost', 'poolmap', 'poolplay', 'poolprops', 'poolview', 'post', 'ragdoll', 'server', 'shifter', 'shiftmodel', 'textures', 'touchlayout', 'vbmaps', 'volley', 'weapons', 'world'];
       var imports = { three: './three.module.js' };
       for (var i = 0; i < files.length; i++) imports['./' + files[i] + '.js'] = './' + files[i] + '.js?v=' + v;
       window.SITELINE_V = v;
       // the small "Version" line at the bottom of the home page: the time this page was published (UTC), so it changes by itself with every update
-      var NUMBER = '2.7';      // the version number: raise it by hand with each update (1.0 → 1.1 → …); the date after it is automatic
+      var NUMBER = '2.8';      // the version number: raise it by hand with each update (1.0 → 1.1 → …); the date after it is automatic
       document.addEventListener('DOMContentLoaded', function () {
         var el = document.getElementById('version'), d = new Date(v);
         if (el && !isNaN(d)) el.textContent = 'Version ' + NUMBER + ' · ' + d.toISOString().slice(0, 10).replace(/-/g, '.');
@@ -222,11 +222,12 @@
             <button id="btn-leave-lobby" class="ghost">Leave</button>
           </div>
         </div>
-        <div class="mode-pick four">
+        <div class="mode-pick five">
           <button class="mode-btn" data-mode="wingman"><b>2v2 Bomb</b><small>Plant or defuse, first to 9 rounds</small></button>
           <button class="mode-btn" data-mode="dm"><b>Deathmatch</b><small>2–6 players, everyone for themselves</small></button>
           <button class="mode-btn" data-mode="br"><b>The Backrooms</b><small>2–6 players together: find the exit, no guns</small></button>
           <button class="mode-btn" data-mode="mg"><b>Minigames</b><small>2–6 players: party games with the floaties, no guns</small></button>
+          <button class="mode-btn" data-mode="vb"><b>Volleyball</b><small>2–6 players in two teams, three maps</small></button>
         </div>
         <div class="ffa-list team"><h3>Players <small>free-for-all</small></h3><ul id="list-ffa"></ul></div>
         <div class="teams">
@@ -245,6 +246,7 @@
             <label class="field mg-opt mg-single"><span>Game</span><select id="lobby-mggame" class="mg-games"></select></label>
             <label class="field mg-opt mg-single"><span>Rounds</span><select id="lobby-mgrounds"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></label>
             <label class="check mg-opt"><input type="checkbox" id="lobby-mgteams"> Dodgeball in two teams (with 4 or 6 players)</label>
+            <label class="field vb-opt"><span>Match</span><select id="lobby-vbsets"><option value="1">One set</option><option value="3">Best of 3 sets</option><option value="5">Best of 5 sets</option></select></label>
             <button id="btn-shuffle" class="ghost host-only">Shuffle teams</button>
             <button id="btn-start" class="primary host-only">Start match</button>
           </div>
@@ -256,12 +258,13 @@
     <section id="practice" class="screen hidden">
       <div class="panel">
         <h2>Practice</h2>
-        <div class="mode-pick five">
+        <div class="mode-pick six">
           <button class="pmode-btn mode-btn" data-pmode="range"><b>Practice range</b><small>Try guns on bot targets</small></button>
           <button class="pmode-btn mode-btn" data-pmode="match"><b>Bot match</b><small>2v2 bomb: you + a bot vs 2 bots</small></button>
           <button class="pmode-btn mode-btn" data-pmode="dm"><b>Bot deathmatch</b><small>Everyone for themselves</small></button>
           <button class="pmode-btn mode-btn" data-pmode="br"><b>The Backrooms</b><small>Find the exit before it finds you</small></button>
           <button class="pmode-btn mode-btn" data-pmode="mg"><b>Minigames</b><small>Party games with the floaties, against bots</small></button>
+          <button class="pmode-btn mode-btn" data-pmode="vb"><b>Volleyball</b><small>Two teams, with bots</small></button>
         </div>
         <label class="field p-map"><span>Map</span><select id="p-map"></select></label>
         <p class="note p-br">A new random maze every time. No guns: find the exit door and get out. Something else is in there with you: walking is quiet, sprinting (Shift) is not. Watch out for the holes in the floor. Friends can join you from the pause menu.</p>
@@ -270,6 +273,8 @@
         <label class="field p-mg p-mgsingle"><span>Game</span><select id="p-mggame" class="mg-games"></select></label>
         <label class="field p-mg p-mgsingle"><span>Rounds</span><select id="p-mgrounds"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></label>
         <label class="check p-mg"><input type="checkbox" id="p-mgteams"> Dodgeball in two teams (with 4 or 6 players)</label>
+        <p class="note p-vb">Two teams, one net. Hit the ball over (it goes where you look) before it lands on your side: 3 touches a side, sets to 11. The bots fill both teams (one more joins if the teams would be uneven).</p>
+        <label class="field p-vb"><span>Match</span><select id="p-vbsets"><option value="1">One set</option><option value="3">Best of 3 sets</option><option value="5">Best of 5 sets</option></select></label>
         <label class="check p-range"><input type="checkbox" id="p-bots"> Bots on the range</label>
         <label class="field p-count"><span>Number of bots <output id="p-count-out"></output></span><input type="range" id="p-count" min="1" max="8" step="1"></label>
         <label class="field p-behavior"><span>What the bots do</span>

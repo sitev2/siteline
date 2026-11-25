@@ -22,6 +22,22 @@ export const THEMES = {
     truck: { body: '#c7c1ae', cab: '#9a3b2c', glass: '#2a3540', tyre: '#1d1d1d' },
     site: '#d8603f',
   },
+  // a sand bar out in the sea (Volleyball: Sandbar): pale sand, sun-bleached planks, pastel beach huts, a bright sky
+  beach: {
+    skyTop: '#3d8fe0', skyHorizon: '#e4f1f6', fog: '#dcebf0', fogNear: 60, fogFar: 220,
+    sun: '#fff6e2', sunIntensity: 2.8, hemiSky: '#d6ecff', hemiGround: '#e2cf9e', hemiIntensity: 1.35,
+    floor: ['sand', '#e8d6a8'],
+    mats: {
+      mass: ['sand', '#dcc896'], wall: ['crate', '#b89068'], building: ['plaster', '#8ccbd6'],
+      pillar: ['crate', '#a07a52'], low: ['sand', '#e3d0a0'], slab: ['crate', '#b9936a'],
+      roof: ['crate', '#e0e4e6'], stairs: ['crate', '#b9936a'], platform: ['crate', '#c25a46'],
+    },
+    crate: ['crate', '#a8825a'], bigCrate: ['crate', '#7d6040'],
+    barrels: ['#2f7fc0', '#e05a3a', '#f0c040', '#3aa070'],
+    truck: { body: '#e6e2d6', cab: '#2f7fc0', glass: '#2a3540', tyre: '#1d1d1d' },
+    site: '#e06a3a',
+    water: '#2f9fb6',
+  },
   // steel works: cool grey concrete, rusty metal, hazy overcast light
   industrial: {
     skyTop: '#7f93a8', skyHorizon: '#d5d9db', fog: '#c9ced1', fogNear: 40, fogFar: 150,

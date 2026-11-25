@@ -20,6 +20,7 @@
 import { PoolHost, RING_G } from './poolhost.js';
 import { POOL } from './poolmap.js';
 import { ARENA, MG_GAMES, MG_ORDER, MG_ROUNDS, MG_POINTS, mgSpawns, inArea, setGoalPosts, goalMouth } from './mgmap.js';
+import { VB, courtOf, sideOf, clampSide, vbSpawns, hitVelocity, netAssist, inReach, stepBall, whereAt } from './volley.js';
 
 const { G, WY } = POOL;
 const r2 = v => Math.round(v * 100) / 100;
@@ -39,11 +40,15 @@ export const MG = {
   fuse: MG_GAMES.potato.fuse,
   speed: { run: 5, swim: 2.8, keep: 0.85, potato: 1.12 },      // m/s; the Keep Away holder is slower, the Hot Potato holder faster
 };
+// where the serve's ball hangs and is tossed from: a little in front of the server (towards the net) and to one side,
+// so it doesn't block their view, still well in reach
+// (never over the net: someone serving from right at the net gets it on their own side)
+const tossSpot = (p, c) => ({ x: p.team === 'atk' ? Math.min(p.x + 0.8, c.cx - 0.4) : Math.max(p.x - 0.8, c.cx + 0.4), y: p.y + 2.15, z: p.z + 0.35 });
 const READY_WAIT = 15;       // seconds the first round waits at most for everyone's game to load
 const BOT_LEVEL = {
-  easy: { aim: 1.7, err: 0.16, react: 0.8, catch: 0.1, speed: 0.8 },
-  normal: { aim: 1.15, err: 0.1, react: 0.5, catch: 0.25, speed: 0.9 },
-  hard: { aim: 0.7, err: 0.06, react: 0.32, catch: 0.42, speed: 1 },
+  easy: { aim: 1.7, err: 0.16, react: 0.8, catch: 0.1, speed: 0.8, miss: 0.32, vErr: 0.13 },
+  normal: { aim: 1.15, err: 0.1, react: 0.5, catch: 0.25, speed: 0.9, miss: 0.2, vErr: 0.085 },
+  hard: { aim: 0.7, err: 0.06, react: 0.32, catch: 0.42, speed: 1, miss: 0.1, vErr: 0.055 },
 };
 
 // competition ranking: groups of ids, best first; everyone in a group shares that place
@@ -56,16 +61,20 @@ export function placesOf(groups) {
 export const pointsFor = (place) => MG_POINTS[place - 1] || 0;
 
 export class MiniHost {
-  // cfg: { run: 'party' | 'single', game, rounds, teams }
+  // cfg: { run: 'party' | 'single', game, rounds, teams, vb }. vb: the Volleyball mode (one of its maps, vbmaps.js):
+  // a match of `rounds` sets (1, 3 or 5: it ends once a team has won most of them), the same teams all match
   constructor(S, cfg) {
-    this.S = S; this.world = S.world; this.plan = S.world.def.pool;
-    this.cfg = { run: cfg.run === 'single' ? 'single' : 'party', game: MG_GAMES[cfg.game] ? cfg.game : 'dodge', rounds: Math.max(1, Math.min(5, cfg.rounds | 0 || 3)), teams: !!cfg.teams };
+    this.S = S; this.world = S.world; this.plan = S.world.def.pool || S.world.def.vb || {};
+    this.court = courtOf(S.world.def);         // the volleyball court (the Pool Hall's, or a Volleyball map's)
+    this.cfg = { run: cfg.run === 'single' ? 'single' : 'party', game: MG_GAMES[cfg.game] ? cfg.game : 'dodge', rounds: Math.max(1, Math.min(5, cfg.rounds | 0 || 3)), teams: !!cfg.teams, vb: !!cfg.vb };
+    if (this.cfg.vb) { this.cfg.run = 'single'; this.cfg.game = 'volley'; }
     this.rounds = this.cfg.run === 'single' ? this.cfg.rounds : MG_ROUNDS;
+    this.sets = [];                  // the Volleyball mode: each set's score [orange, blue]
     this.at = performance.now(); this.t = 0; this.sentAt = 0; this.fastAt = 0;
     this.round = 0; this.game = null; this.last = null;
     this.stage = 'wait'; this.until = 0; this.endAt = 0;
     this.table = new Map();          // standings: id → { id, name, pts, bot }
-    this.rings = this.plan.floaties.map((f, i) => ({ i, x: f.x, y: G, z: f.z, vx: 0, vy: 0, vz: 0, mode: 'lost', holder: null, hitAt: 0, live: false, by: null, outAt: 0 }));
+    this.rings = (this.plan.floaties || []).map((f, i) => ({ i, x: f.x, y: G, z: f.z, vx: 0, vy: 0, vz: 0, mode: 'lost', holder: null, hitAt: 0, live: false, by: null, outAt: 0 }));
     this.pending = [];               // Dodgeball hits waiting a moment for a late catch press
     this.big = [false, false];       // Pool Ball: a goal made wider (uneven teams)
     this.results = null; this.text = '';
@@ -92,7 +101,7 @@ export class MiniHost {
   // ---------- rounds ----------
   pickGame() {
     if (this.cfg.run === 'single') return this.cfg.game;
-    const n = this.players().length, list = MG_ORDER.filter(g => g !== this.last && MG_GAMES[g].min <= n);
+    const n = this.players().length, list = MG_ORDER.filter(g => g !== this.last && MG_GAMES[g].min <= n && (g !== 'volley' || this.court));
     return list[Math.floor(Math.random() * list.length)] || MG_ORDER[0];
   }
 
@@ -107,22 +116,38 @@ export class MiniHost {
     const game = this.game = this.pickGame();
     this.last = game;
     const def = MG_GAMES[game], list = this.players();
-    // teams: Pool Ball always; Dodgeball when the host chose teams and there are 4 or 6 players
-    this.teams = game === 'poolball' || (game === 'dodge' && this.cfg.teams && (list.length === 4 || list.length === 6));
+    // teams: Pool Ball and Volleyball always; Dodgeball when the host chose teams and there are 4 or 6 players
+    const volley = game === 'volley';
+    this.teams = game === 'poolball' || volley || (game === 'dodge' && this.cfg.teams && (list.length === 4 || list.length === 6));
     this.big = [false, false];
+    this.vbExtra = null;
     if (this.teams) {
-      // humans spread over both teams first, then the bots
-      const order = [...list].sort((a, b) => (a.bot ? 1 : 0) - (b.bot ? 1 : 0) || Math.random() - 0.5);
-      const first = Math.random() < 0.5 ? 'atk' : 'def', other = first === 'atk' ? 'def' : 'atk';
-      order.forEach((p, i) => { p.team = i % 2 ? other : first; });
-      // Pool Ball with an odd number: Practice gets a bot to even it out; online the smaller team's target is wider
-      if (game === 'poolball' && order.length % 2) {
-        const small = order.filter(p => p.team === 'atk').length < order.filter(p => p.team === 'def').length ? 'atk' : 'def';
-        if (S.botCfg && S.addMiniBot) { const b = S.addMiniBot(true); b.team = small; this.entry(b).sub = true; }
-        else this.big[ARENA.goals.findIndex(g => g.side !== small)] = true;
+      if (this.cfg.vb && this.fixed) {
+        // the Volleyball mode: the same teams all match (someone new joins the smaller team)
+        for (const p of list) {
+          let t = this.fixed.get(p.id);
+          if (!t) { const n = (x) => list.filter(q => this.fixed.get(q.id) === x).length; t = n('atk') <= n('def') ? 'atk' : 'def'; this.fixed.set(p.id, t); }
+          p.team = t;
+        }
+      } else {
+        // humans spread over both teams first, then the bots
+        const order = [...list].sort((a, b) => (a.bot ? 1 : 0) - (b.bot ? 1 : 0) || Math.random() - 0.5);
+        const first = Math.random() < 0.5 ? 'atk' : 'def', other = first === 'atk' ? 'def' : 'atk';
+        order.forEach((p, i) => { p.team = i % 2 ? other : first; });
+        if (this.cfg.vb) this.fixed = new Map(order.map(p => [p.id, p.team]));
+      }
+      // uneven teams (Pool Ball, Volleyball): in Practice a bot evens them out (not in the Volleyball mode: there the
+      // bots are even from the start); online Pool Ball's smaller team shoots at a wider goal, Volleyball's smaller
+      // team may touch the ball 4 times a side (and serves first)
+      const nA = list.filter(p => p.team === 'atk').length, nD = list.filter(p => p.team === 'def').length;
+      if ((game === 'poolball' || volley) && nA !== nD) {
+        const small = nA < nD ? 'atk' : 'def';
+        if (S.botCfg && S.addMiniBot && !this.cfg.vb && Math.abs(nA - nD) === 1) { const b = S.addMiniBot(true); b.team = small; this.entry(b).sub = true; }
+        else if (game === 'poolball') this.big[ARENA.goals.findIndex(g => g.side !== small)] = true;
+        else this.vbExtra = small;
       }
     } else for (const p of list) p.team = 'ffa';
-    this.big.forEach((b, i) => setGoalPosts(this.world, i, b));
+    if (this.world.def.pool && this.world.def.pool.arena) this.big.forEach((b, i) => setGoalPosts(this.world, i, b));
     // the floaties
     this.pending = []; this.outOrder = []; this.score = { atk: 0, def: 0 }; this.held = new Map(); this.hot = null; this.guard = null;
     this.results = null; this.text = ''; this.pause = 0;
@@ -133,8 +158,9 @@ export class MiniHost {
       for (let k = 0; k < n; k++) this.placeRing(this.rings[k], C.mid, C.z0 + 2 + (C.z1 - C.z0 - 4) * (n === 1 ? 0.5 : k / (n - 1)));
     } else if (game === 'keepaway') this.placeRing(this.rings[0], C.cx, C.cz);
     else if (game === 'poolball') this.ballToMiddle(false);
-    // everyone to their spot
-    const all = this.players(), spots = mgSpawns(def.area, this.teams), used = new Set();
+    // everyone to their spot (Volleyball: spread over their own side of the net)
+    const all = this.players(), used = new Set();
+    const spots = volley ? ['atk', 'def'].flatMap(t => vbSpawns(this.court, t, 6).map(q => ({ ...q, side: t }))) : mgSpawns(def.area, this.teams);
     for (const p of all) {
       const side = this.teams ? p.team : 'ffa';
       let s = spots.find((q, k) => q.side === side && !used.has(k));
@@ -146,6 +172,8 @@ export class MiniHost {
       const brain = S.bots.get(p.id); if (brain && brain.reset) brain.reset();
     }
     if (game === 'potato') this.newFuse(null, 0);
+    this.vb = null;
+    if (volley) this.vbStart(now);
     this.endAt = 0;
     // the first round waits until everyone's game has loaded (the hall's light is worked out on each computer, which
     // takes a few seconds, and in Practice until you click Play), at most READY_WAIT seconds; then the 3-2-1
@@ -178,6 +206,7 @@ export class MiniHost {
       this.results.push({ id: p.id, place, pts });
     }
     this.results.sort((a, b) => a.place - b.place);
+    if (this.vb && this.cfg.vb) this.sets.push([this.vb.score.atk, this.vb.score.def]);
     this.text = text;
     this.stage = 'end'; this.until = performance.now() + MG.end * 1000;
     for (const r of this.rings) if (r.holder) this.dropRing(r);
@@ -188,14 +217,31 @@ export class MiniHost {
 
   finish() {
     this.stage = 'over';
+    if (this.cfg.vb) {
+      // the Volleyball mode: the team that won the most sets
+      const w = this.setsWon(), win = w.atk === w.def ? null : w.atk > w.def ? 'atk' : 'def';
+      const names = t => this.players().filter(p => p.team === t && !p.mgSub).map(p => p.name);
+      this.summary = { sets: this.sets, won: [w.atk, w.def], teams: [names('atk'), names('def')] };
+      this.S.matchOver(win, win ? 'sets' : 'draw');
+      return;
+    }
     const st = this.standings(), top = st[0], tie = st.length > 1 && st[1].pts === top.pts;
     this.S.matchOver(tie || !top ? null : top.id, tie ? 'draw' : 'points');
+  }
+  setsWon() { const w = { atk: 0, def: 0 }; for (const [a, d] of this.sets) { if (a > d) w.atk++; else if (d > a) w.def++; } return w; }
+  // the Volleyball mode is over once a team has won most of the sets (2 of 3, 3 of 5)
+  matchDone() {
+    if (!this.cfg.vb) return this.round >= this.rounds;
+    const w = this.setsWon(), need = Math.floor(this.rounds / 2) + 1;
+    return w.atk >= need || w.def >= need || this.round >= this.rounds;
   }
 
   // ---------- a player's input ----------
   msg(p, m) {
     if (this.stage !== 'play' || !p.alive || p.mgLate) return;
     const now = performance.now(), g = this.game;
+    // Volleyball: E and fire both hit the ball (the way you look: the throw message carries it, E uses your last look)
+    if (g === 'volley') { if (m.t === 'ring' || m.t === 'throw') this.vbHit(p, Number.isFinite(m.yaw) ? m.yaw : p.yaw, Number.isFinite(m.pitch) ? m.pitch : p.pitch); return; }
     if (m.t === 'ring') {
       // Dodgeball: E is also a catch, just as a floatie thrown at you reaches you
       if (g === 'dodge') {
@@ -257,6 +303,7 @@ export class MiniHost {
   // a player left the room
   leave(p) {
     for (const r of this.rings) if (r.holder === p.id) this.dropRing(r, p);
+    if (this.vb && this.vb.server === p.id) this.vbNextServer(this.vb.serving, false, p.id);
     this.pending = this.pending.filter(h => h.q !== p.id && h.by !== p.id);
     if (this.hot && this.hot.holder === p.id) this.newFuse(p.id, 0.5);
     const e = this.table.get(p.id);
@@ -290,7 +337,7 @@ export class MiniHost {
       case 'intro':
         if (now >= this.until) {
           this.stage = 'play'; this.playAt = now;
-          const tm = MG_GAMES[this.game].time;
+          const tm = this.cfg.vb ? 0 : MG_GAMES[this.game].time;      // (the Volleyball mode's sets have no time limit)
           this.endAt = tm ? now + tm * 1000 : 0;
           if (this.hot) this.hot.since = now;
           this.fx({ k: 'go' });
@@ -300,7 +347,7 @@ export class MiniHost {
       case 'play': this.play(dt, now); break;
       case 'end':
         if (now >= this.until) {
-          if (this.round >= this.rounds) { this.finish(); return; }
+          if (this.matchDone()) { this.finish(); return; }
           this.stage = 'board'; this.until = now + MG.board * 1000; this.send(true);
         }
         break;
@@ -352,6 +399,7 @@ export class MiniHost {
         }
       } else if (H && !H.holder && now >= H.at) this.giveHot(H.not);
     } else if (g === 'poolball') this.goals(now);
+    else if (g === 'volley') this.vbStep(dt, now);
     this.checkEnd(now);
   }
 
@@ -403,6 +451,17 @@ export class MiniHost {
       this.endRound(groups, name ? `${name} wins with ${Math.floor(this.held.get(top[0]) || 0)} points` : 'A shared win');
       return;
     }
+    if (g === 'volley') {
+      const s = this.vb.score, hi = Math.max(s.atk, s.def), lo = Math.min(s.atk, s.def);
+      const a = this.players().filter(p => p.team === 'atk'), d = this.players().filter(p => p.team === 'def');
+      const gone = !a.length || !d.length, won = (hi >= VB.points && hi - lo >= VB.lead) || hi >= VB.cap;
+      if (!won && !timeUp && !gone) return;
+      let win = s.atk === s.def ? null : s.atk > s.def ? 'atk' : 'def';
+      if (gone) win = a.length ? 'atk' : 'def';
+      if (!win) { this.endRound([this.players().map(p => p.id)], `A draw, ${s.atk}–${s.def}`); return; }
+      this.endRound([(win === 'atk' ? a : d).map(p => p.id), (win === 'atk' ? d : a).map(p => p.id)], `${T(win)} win the set ${hi}–${lo}`);
+      return;
+    }
     if (g === 'poolball') {
       const s = this.score, goal = MG_GAMES.poolball.goals;
       const a = this.players().filter(p => p.team === 'atk'), d = this.players().filter(p => p.team === 'def');
@@ -413,6 +472,101 @@ export class MiniHost {
       if (!win) { this.endRound([this.players().map(p => p.id)], `A draw, ${s.atk}–${s.def}`); return; }
       this.endRound([(win === 'atk' ? a : d).map(p => p.id), (win === 'atk' ? d : a).map(p => p.id)], `${T(win)} win ${Math.max(s.atk, s.def)}–${Math.min(s.atk, s.def)}`);
     }
+  }
+
+  // ---------- Volleyball (volley.js: the court, the net, the ball, the hit) ----------
+  // The rally: 'ready' (the ball waits over the server), 'toss' (it is tossed up: only the server may hit it),
+  // 'play' (in play), 'dead' (it came down: a point; the next serve after a moment).
+  vbStart(now) {
+    const c = this.court, serving = this.vbExtra || (Math.random() < 0.5 ? 'atk' : 'def');
+    this.vb = {
+      score: { atk: 0, def: 0 }, serving, rot: { atk: -1, def: -1 }, server: null, rally: 'ready', at: now + (MG.intro + 0.6) * 1000,
+      side: null, touches: 0, last: null, lastTeam: null, retoss: 0, hitAt: new Map(), crossN: 0, why: '',
+      ball: { x: c.cx, y: c.y + 1.2, z: c.cz, vx: 0, vy: 0, vz: 0, mode: 0 },
+    };
+    this.vbNextServer(serving, true);
+  }
+  maxTouches(team) { return VB.touches + (this.vbExtra === team ? 1 : 0); }
+  // the server: a new one each time the serve comes back to a team (in turn); the same one while their team keeps winning
+  vbNextServer(team, changed, not = null) {
+    const V = this.vb, list = this.players().filter(p => p.team === team && p.id !== not).sort((a, b) => (a.id > b.id ? 1 : -1));
+    if (changed || !list.some(p => p.id === V.server)) V.rot[team]++;
+    const p = list.length ? list[((V.rot[team] % list.length) + list.length) % list.length] : null;
+    V.server = p ? p.id : null;
+    // the ball waits over their head
+    if (p && V.rally === 'ready') { const b = V.ball; Object.assign(b, { ...tossSpot(p, this.court), vx: 0, vy: 0, vz: 0, mode: 2 }); }
+  }
+  // the serve: up it goes, over the server's head (if they wandered off, from where they are now)
+  vbToss(now) {
+    const V = this.vb, b = V.ball, p = this.S.players.get(V.server);
+    if (!p || !p.alive) { this.vbNextServer(V.serving, false); return; }
+    Object.assign(b, { ...tossSpot(p, this.court), vx: 0, vy: VB.toss, vz: 0, mode: 1 });
+    V.rally = 'toss'; V.side = p.team; V.touches = 0; V.last = null; V.lastTeam = null; V.crossN++;
+    this.fx({ k: 'vtoss', id: p.id });
+    this.sentAt = 0;
+  }
+  vbHit(p, yaw, pitch) {
+    const V = this.vb, b = V && V.ball, c = this.court, now = performance.now();
+    if (!V || b.mode !== 1 || (V.rally !== 'toss' && V.rally !== 'play')) return;
+    if (V.rally === 'toss' && p.id !== V.server) return;            // (only the server hits the toss)
+    if (!inReach(p, b) || sideOf(c, b.x) !== p.team) return;
+    if (now - (V.hitAt.get(p.id) || -1e9) < VB.hit.cool * 1000) return;
+    V.hitAt.set(p.id, now);
+    const team = p.team;
+    if (V.rally === 'toss') {
+      // the serve has to go straight over: it is all of the serving side's touches
+      V.rally = 'play'; V.side = team; V.touches = this.maxTouches(team); V.retoss = 0;
+    } else if (V.side === team) {
+      if (V.last === p.id) { this.vbPoint(team === 'atk' ? 'def' : 'atk', 'twice', p.id); return; }
+      if (++V.touches > this.maxTouches(team)) { this.vbPoint(team === 'atk' ? 'def' : 'atk', 'touches', p.id); return; }
+    } else { V.side = team; V.touches = 1; }
+    V.last = p.id; V.lastTeam = team;
+    // a spike: jumping, near the net, looking down
+    const ground = this.world.groundAt(p.x, p.z, 0.3, p.y + 0.05, 0.1);
+    const spike = p.y > ground + 0.25 && Math.abs(p.x - c.cx) < VB.hit.spikeNet && pitch < -0.08;
+    const v = hitVelocity(yaw, Math.max(-1.45, Math.min(1.45, pitch)), spike);
+    [b.vx, b.vy, b.vz] = spike ? v : netAssist(c, b, v);
+    this.fx({ k: 'vhit', id: p.id, spike: spike ? 1 : 0, n: V.touches, x: r2(b.x), y: r2(b.y), z: r2(b.z) });
+    this.sentAt = 0;
+  }
+  vbStep(dt, now) {
+    const V = this.vb, b = V.ball, c = this.court;
+    if (V.rally === 'ready' || V.rally === 'dead') {
+      // (a ball still in the air after the rally ended just drops to the floor)
+      if (b.mode === 1) { b.vy -= VB.g * dt; b.x += b.vx * dt; b.y += b.vy * dt; b.z += b.vz * dt; if (b.y <= c.y + VB.r) { b.y = c.y + VB.r; b.mode = 2; } }
+      // (between rallies the ball waits over the next server's head)
+      const p = this.S.players.get(V.server);
+      if (V.rally === 'ready' && p) Object.assign(b, { ...tossSpot(p, this.court), mode: 2 });
+      if (now >= V.at) this.vbToss(now);
+      return;
+    }
+    const ev = stepBall(this.world, c, b, dt);
+    if (!ev) return;
+    if (ev.k === 'cross') { V.side = null; V.touches = 0; V.last = null; V.crossN++; return; }
+    if (ev.k === 'net') { this.fx({ k: 'vnet', x: r2(b.x), y: r2(b.y), z: r2(b.z) }); return; }
+    // the ball is down (or out: then it drops from where it is)
+    b.mode = ev.k === 'land' ? 2 : 1;
+    if (ev.k === 'out') b.vx = b.vz = 0;
+    if (V.rally === 'toss') {
+      // the server never hit the toss: once more, then it is the other team's point
+      if (V.retoss < 1) { V.retoss++; V.rally = 'dead'; V.at = now + 900; this.fx({ k: 'vretoss' }); this.send(true); return; }
+      this.vbPoint(V.serving === 'atk' ? 'def' : 'atk', 'serve');
+      return;
+    }
+    if (ev.k === 'land' && ev.in) this.vbPoint(sideOf(c, ev.x) === 'atk' ? 'def' : 'atk', 'in');
+    else this.vbPoint((V.lastTeam || V.serving) === 'atk' ? 'def' : 'atk', ev.k === 'land' ? 'out' : ev.k);      // (out, under the net, round a post: the last team to touch it loses the rally)
+  }
+  // a rally is over: a point for this team, and their serve
+  vbPoint(team, why, by = null) {
+    const V = this.vb, b = V.ball, now = performance.now();
+    V.score[team]++;
+    V.why = why;
+    this.fx({ k: 'vpoint', team, why, by, sc: [V.score.atk, V.score.def], x: r2(b.x), z: r2(b.z) });
+    const changed = team !== V.serving;
+    V.serving = team; V.rally = 'dead'; V.at = now + VB.pause * 1000;
+    V.side = null; V.touches = 0; V.last = null; V.lastTeam = null; V.retoss = 0;
+    this.vbNextServer(team, changed);
+    this.send(true);
   }
 
   // ---------- Pool Ball: goals ----------
@@ -532,6 +686,13 @@ export class MiniHost {
     this.sentAt = performance.now();
     this.S.broadcast({ t: 'mg', s: this.state(), now: now ? 1 : 0 });
   }
+  vbState() {
+    const V = this.vb, b = V.ball;
+    return {
+      b: [r2(b.x), r2(b.y), r2(b.z), r2(b.vx), r2(b.vy), r2(b.vz), b.mode], s: [V.score.atk, V.score.def], srv: V.server || 0, sv: V.serving, r: V.rally,
+      sd: V.side, t: V.touches, mx: [this.maxTouches('atk'), this.maxTouches('def')], why: V.why,
+    };
+  }
   state() {
     const H = this.hot;
     return {
@@ -540,6 +701,8 @@ export class MiniHost {
       r: this.rings.map(r => [r2(r.x), r2(r.y), r2(r.z), r2(r.vx), r2(r.vy), r2(r.vz), r.holder || 0, MODES.indexOf(r.mode), r.live ? 1 : 0]),
       hot: H ? [H.holder || 0, r2(Math.max(0, H.fuse))] : null,
       kp: this.game === 'keepaway' ? [...this.held.entries()].map(([id, s]) => [id, Math.floor(s)]) : null,
+      vb: this.vb ? this.vbState() : null,
+      vbm: this.cfg.vb ? { sets: this.sets, need: Math.floor(this.rounds / 2) + 1, of: this.rounds } : null,
       gd: this.guard && this.guard.until > performance.now() ? this.guard.id : 0,
       res: this.results ? this.results.map(o => [o.id, o.place, o.pts]) : null, txt: this.text,
       pts: this.standings().map(e => [e.id, e.name, e.pts]),
@@ -570,6 +733,7 @@ export class MiniBot {
     else if (g === 'keepaway') this.keepAway(dt, now, mine);
     else if (g === 'potato') this.potato(dt, now);
     else if (g === 'poolball') this.poolBall(dt, now, mine);
+    else if (g === 'volley') this.volley(dt, now);
   }
 
   others() { return this.host.alive().filter(q => q !== this.p); }
@@ -587,7 +751,10 @@ export class MiniBot {
 
   // walk (or swim) towards (tx, tz); slides along walls; team Dodgeball keeps to its own half
   moveTo(tx, tz, dt, k = 1) {
-    const p = this.p, W = this.S.world, dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz);
+    const p = this.p, W = this.S.world;
+    // Volleyball: only on your own side of the net, in the room round the court
+    if (this.host.game === 'volley') { const q = { x: tx, z: tz }; clampSide(this.host.court, p.team, q); tx = q.x; tz = q.z; }
+    const dx = tx - p.x, dz = tz - p.z, d = Math.hypot(dx, dz);
     if (d < 0.08) return;
     const step = Math.min(d, this.speed() * k * dt), ux = dx / d, uz = dz / d;
     const sw = this.swimming();
@@ -596,6 +763,7 @@ export class MiniBot {
       if (W.blocked(x, z, 0.36, p.y, sw ? 0.05 : 0.42)) return false;
       const H = this.host;
       if (H.game === 'dodge' && H.teams) { const m = ARENA.court.mid; if (p.team === 'atk' ? x > m - 0.4 : x < m + 0.4) return false; }
+      if (H.game === 'volley') { const q = { x, z }; clampSide(H.court, p.team, q); return Math.abs(q.x - x) < 1e-6 && Math.abs(q.z - z) < 1e-6; }
       return inArea(MG_GAMES[H.game].area, x, z);
     };
     const nx = p.x + ux * step, nz = p.z + uz * step;
@@ -715,6 +883,58 @@ export class MiniBot {
     const wx = (C.cx - p.x) / ((C.x1 - C.x0) / 2), wz = (C.cz - p.z) / ((C.z1 - C.z0) / 2);
     fx += wx * 0.9; fz += wz * 0.9;
     this.moveTo(p.x + fx * 3, p.z + fz * 3, dt);
+  }
+
+  // Volleyball: the one of a team nearest to where the ball comes down goes to it and sends it over (to a spot inside
+  // the other side's lines, a little off by difficulty); the others keep their place. The server hits the toss as it
+  // comes down. Sometimes (more on easy) a bot is too slow for a ball.
+  volley(dt, now) {
+    const H = this.host, p = this.p, V = H.vb, c = H.court;
+    if (!V) return;
+    const b = V.ball, sgn = p.team === 'atk' ? -1 : 1;
+    const mates = H.alive().filter(q => q.team === p.team).sort((a, q) => (a.id > q.id ? 1 : -1)), k = mates.indexOf(p), n = mates.length;
+    const home = { x: c.cx + sgn * (n === 1 ? 3 : k % 2 ? 4.4 : 2), z: c.cz + (n === 1 ? 0 : n === 2 ? (k ? 1.6 : -1.6) : [-2, 0, 2][k % 3]) };
+    if (V.server === p.id && (V.rally === 'ready' || V.rally === 'dead' || V.rally === 'toss')) {
+      // my serve: stand at the back, face the net, hit the toss as it drops
+      this.moveTo(c.cx + sgn * 5.2, c.cz + (k - (n - 1) / 2) * 1.2, dt, 0.6);
+      this.face(c.cx, c.cz);
+      if (V.rally === 'toss' && b.vy < 0 && inReach(this.p, b)) this.hitOver(now);
+      return;
+    }
+    if (b.mode !== 1 || V.rally !== 'play') { this.moveTo(home.x, home.z, dt, 0.7); return; }
+    // a new ball coming over: will I miss this one?
+    if (this.crossSeen !== V.crossN) { this.crossSeen = V.crossN; this.missing = Math.random() < this.L.miss; }
+    const land = whereAt(b, p.y + 1.3);
+    const ours = land && sideOf(c, land.x) === p.team && sideOf(c, b.x) === p.team || (land && sideOf(c, land.x) === p.team && Math.abs(b.x - c.cx) < 4);
+    if (!ours || this.missing) { this.moveTo(home.x, home.z, dt, 0.7); return; }
+    // the one of us nearest to it (not whoever touched it last) takes it
+    const free = mates.filter(q => q.id !== V.last || mates.length === 1);
+    const near = free.reduce((a, q) => (Math.hypot(q.x - land.x, q.z - land.z) < Math.hypot(a.x - land.x, a.z - land.z) ? q : a), free[0] || p);
+    if (near !== p) { this.moveTo(home.x, home.z, dt, 0.7); return; }
+    // get under it (a little behind it, so it comes down in front)
+    this.moveTo(land.x + sgn * 0.3, land.z, dt);
+    this.face(c.cx - sgn * 3, c.cz);
+    if (sideOf(c, b.x) === p.team && inReach(p, b) && V.last !== p.id) this.hitOver(now);
+  }
+  // hit the ball onto a spot in the other side's court, the pitch found by trying (the same flight the host works out)
+  hitOver(now) {
+    const H = this.host, p = this.p, c = H.court, b = H.vb.ball, sgn = p.team === 'atk' ? 1 : -1;
+    if (now - (this.hitTry || 0) < 150) return;
+    this.hitTry = now;
+    // (somewhere in their court, now and then close to a line: a good hit, or out)
+    const tx = c.cx + sgn * (1.2 + Math.random() * 4.6), tz = c.cz + (Math.random() - 0.5) * (VB.wid - 0.6);
+    const yaw = Math.atan2(-(tx - b.x), -(tz - b.z)), d = Math.hypot(tx - b.x, tz - b.z);
+    let best = 0.2, be = Infinity;
+    for (let a = -0.35; a <= 1.25; a += 0.02) {
+      const [vx, vy, vz] = hitVelocity(yaw, a, false), vh = Math.hypot(vx, vz), t = d / vh, y = b.y + vy * t - 0.5 * VB.g * t * t;
+      // (it has to clear the net on the way)
+      const tn = Math.abs(c.cx - b.x) / Math.max(0.01, Math.abs(vx)), yn = b.y + vy * tn - 0.5 * VB.g * tn * tn;
+      const e = Math.abs(y - (c.y + VB.r)) + (yn < c.y + VB.netTop + 0.35 ? 5 : 0);
+      if (e < be) { be = e; best = a; }
+    }
+    const err = this.L.vErr;
+    H.msg(p, { t: 'throw', yaw: yaw + (Math.random() - 0.5) * err * 2, pitch: best + (Math.random() - 0.5) * err });
+    p.yaw = yaw;
   }
 
   poolBall(dt, now, mine) {

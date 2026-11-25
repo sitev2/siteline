@@ -26,8 +26,11 @@ export const MG_GAMES = {
     how: 'Hold the floatie to score a point every second. Touch whoever has it to steal it.' },
   potato: { name: 'Hot Potato', area: 'court', time: 0, fuse: 20, min: 2,
     how: 'Touch someone to pass the ticking floatie. Whoever holds it when it pops is out.' },
+  // the same game as the Volleyball mode (volley.js): the same court, net, ball and rules; here one set, at most 4 minutes
+  volley: { name: 'Volleyball', area: 'court', time: 240, min: 2,
+    how: 'Two teams, one net: hit the ball over before it lands on your side. 3 touches a side. First to 11.' },
 };
-export const MG_ORDER = ['dodge', 'poolball', 'keepaway', 'potato'];
+export const MG_ORDER = ['dodge', 'poolball', 'keepaway', 'potato', 'volley'];
 export const MG_ROUNDS = 5;            // a party run: five rounds, each a random game (never the same twice in a row)
 export const MG_POINTS = [3, 2, 1];    // points for 1st, 2nd and 3rd in a round (a shared place shares its points)
 export const MG_TEAMS = { atk: 'Orange', def: 'Blue' };
@@ -155,6 +158,9 @@ function makePlan() {
   line(C.mid - 0.075, C.z0 + 0.6, C.mid + 0.075, C.z1 - 0.6);
   for (const z of [6.25, 9, 11.75]) line(23, z - 0.15, 37, z + 0.15, G - 1.8, 1);
   plan.stripes = st;
+  // the volleyball court (volley.js: 12 × 6 m, the same as on the Volleyball maps), on the court's centre line, and the room
+  // round it players may use (the court's walls and the low wall)
+  plan.volley = { cx: ARENA.court.mid, cz: ARENA.court.cz, y: G, area: [2, 2, 17, 16] };
   plan.drains = [[19, 3], [19, 15], [41, 3], [41, 15], [3, 3], [3, 15], [16, 3], [16, 15]].map(([x, z]) => ({ x, y: G, z }));
   // beyond the glazed walls: open sky (poolview.js draws nothing there)
   plan.outdoors = (ix, iz) => ix < 3 || iz < 3 || ix >= W * 2 - 3 || iz >= D * 2 - 3;

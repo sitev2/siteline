@@ -6,7 +6,7 @@ import { logEntries, logText, entryText, clearLog } from './netlog.js';
 import { CONFIG } from './config.js';
 import { Game } from './game.js';
 import { fillIcons, setIconText } from './icons.js';
-import { MAPS, mapsFor, isDmMap, dmVariant, resolveMap } from './maps.js';
+import { MAPS, mapsFor, isDmMap, isVbMap, dmVariant, resolveMap } from './maps.js';
 import { initAudio, setVolume, setAmbienceVolume, playClick } from './audio.js';
 import { World } from './world.js';
 import { drawMinimap } from './hud.js';
@@ -83,7 +83,7 @@ const defaults = {
   name: '', sens: 1, fov: 75, volume: 0.7, ambience: 0.6, camShake: 0.5, headBob: 0.5, mapColor: 0, quality: 'auto', touchMode: 'auto', invert: false, showChat: true,
   keys: {}, crosshair: { ...DEFAULT_CROSSHAIR }, touchLayout: {}, graphics: { preset: 'auto', custom: {} },
   // last practice choices
-  practice: { kind: 'range', map: 'outpost', bots: true, count: 6, behavior: 'still', side: 'atk', level: 'normal', dmMap: 'quarry', dmCount: 3, mgCount: 3, mgRun: 'party', mgGame: 'dodge', mgRounds: 3, mgTeams: false },
+  practice: { kind: 'range', map: 'outpost', bots: true, count: 6, behavior: 'still', side: 'atk', level: 'normal', dmMap: 'quarry', dmCount: 3, mgCount: 3, mgRun: 'party', mgGame: 'dodge', mgRounds: 3, mgTeams: false, vbMap: 'sandbar', vbSets: 3, vbCount: 3 },
 };
 function loadSettings() {
   try {
@@ -603,32 +603,32 @@ function hideBackrooms() {
   const ok = backroomsAllowed();
   for (const el of document.querySelectorAll('[data-mode="br"], [data-pmode="br"]')) el.classList.toggle('hidden', !ok);
   const lm = $('lobby').querySelector('.mode-pick');
-  lm.classList.toggle('four', ok); lm.classList.toggle('three', !ok);
+  lm.classList.toggle('five', ok); lm.classList.toggle('four', !ok);
   const pm = $('practice').querySelector('.mode-pick');
-  pm.classList.toggle('five', ok); pm.classList.toggle('four', !ok);
+  pm.classList.toggle('six', ok); pm.classList.toggle('five', !ok);
   if (!ok && settings.practice.kind === 'br') { settings.practice.kind = 'range'; if (!$('practice').classList.contains('hidden')) renderPracticeMenu(); }
 }
 
 // ---------- practice menu ----------
 function practiceMaps(kind, count) {
-  return kind === 'dm' ? mapsFor('dm', 1 + count) : Object.keys(MAPS).filter(id => !isDmMap(id));
+  return kind === 'dm' ? mapsFor('dm', 1 + count) : kind === 'vb' ? mapsFor('vb') : Object.keys(MAPS).filter(id => !isDmMap(id) && !isVbMap(id));
 }
 
 function renderPracticeMenu() {
   const P = settings.practice;
   const el = $('practice');
-  el.classList.remove('m-range', 'm-match', 'm-dm', 'm-br', 'm-mg');
+  el.classList.remove('m-range', 'm-match', 'm-dm', 'm-br', 'm-mg', 'm-vb');
   el.classList.add(`m-${P.kind}`);
   el.classList.toggle('mg-single', P.mgRun === 'single');
   el.classList.toggle('bots-on', !!P.bots);
   for (const b of document.querySelectorAll('.pmode-btn')) b.classList.toggle('selected', b.dataset.pmode === P.kind);
-  const count = P.kind === 'dm' ? P.dmCount : P.kind === 'mg' ? Math.max(1, Math.min(RULES.mg.maxPlayers - 1, P.mgCount || 3)) : P.count;
+  const count = P.kind === 'dm' ? P.dmCount : P.kind === 'mg' ? Math.max(1, Math.min(RULES.mg.maxPlayers - 1, P.mgCount || 3)) : P.kind === 'vb' ? Math.max(1, Math.min(RULES.mg.maxPlayers - 1, P.vbCount || 3)) : P.count;
   const slider = $('p-count');
-  slider.max = P.kind === 'dm' ? RULES.dm.maxPlayers - 1 : P.kind === 'mg' ? RULES.mg.maxPlayers - 1 : 8;
+  slider.max = P.kind === 'dm' ? RULES.dm.maxPlayers - 1 : P.kind === 'mg' || P.kind === 'vb' ? RULES.mg.maxPlayers - 1 : 8;
   slider.value = count;
   $('p-count-out').textContent = count;
   const maps = practiceMaps(P.kind, count);
-  const cur = P.kind === 'dm' ? P.dmMap : P.map;
+  const cur = P.kind === 'dm' ? P.dmMap : P.kind === 'vb' ? P.vbMap : P.map;
   const sel = $('p-map');
   sel.innerHTML = '';
   for (const id of maps) {
@@ -649,6 +649,7 @@ function renderPracticeMenu() {
   $('p-mggame').value = MG_GAMES[P.mgGame] ? P.mgGame : 'dodge';
   $('p-mgrounds').value = String(P.mgRounds || 3);
   $('p-mgteams').checked = !!P.mgTeams;
+  $('p-vbsets').value = String(P.vbSets || 3);
   $('p-night').checked = !!P.night;
   // Levels 1 and 2 (testers only while Level 1 is being tested): each locked until you escaped the one before
   const l1 = P.kind === 'br' && level1Allowed(), open = level1Unlocked(), open2 = level2Unlocked();
@@ -667,9 +668,10 @@ function bindPracticeMenu() {
   const P = () => settings.practice;
   const save = () => { saveSettings(); renderPracticeMenu(); };
   for (const b of document.querySelectorAll('.pmode-btn')) b.addEventListener('click', () => { P().kind = b.dataset.pmode; save(); });
-  $('p-map').addEventListener('change', e => { if (P().kind === 'dm') P().dmMap = e.target.value; else P().map = e.target.value; save(); });
+  $('p-map').addEventListener('change', e => { if (P().kind === 'dm') P().dmMap = e.target.value; else if (P().kind === 'vb') P().vbMap = e.target.value; else P().map = e.target.value; save(); });
   $('p-bots').addEventListener('change', e => { P().bots = e.target.checked; save(); });
-  $('p-count').addEventListener('input', e => { if (P().kind === 'dm') P().dmCount = Number(e.target.value); else if (P().kind === 'mg') P().mgCount = Number(e.target.value); else P().count = Number(e.target.value); save(); });
+  $('p-count').addEventListener('input', e => { if (P().kind === 'dm') P().dmCount = Number(e.target.value); else if (P().kind === 'mg') P().mgCount = Number(e.target.value); else if (P().kind === 'vb') P().vbCount = Number(e.target.value); else P().count = Number(e.target.value); save(); });
+  $('p-vbsets').addEventListener('change', e => { P().vbSets = Number(e.target.value) || 3; save(); });
   $('p-mgrun').addEventListener('change', e => { P().mgRun = e.target.value; save(); });
   $('p-mggame').addEventListener('change', e => { P().mgGame = e.target.value; save(); });
   $('p-mgrounds').addEventListener('change', e => { P().mgRounds = Number(e.target.value) || 3; save(); });
@@ -681,6 +683,11 @@ function bindPracticeMenu() {
   $('p-stage').addEventListener('change', e => { P().stage = Number(e.target.value) || 0; save(); });
   $('p-start').addEventListener('click', () => {
     const p = P();
+    if (p.kind === 'vb') {
+      const maps = practiceMaps('vb');
+      practice({ kind: 'vb', map: maps.includes($('p-map').value) ? $('p-map').value : maps[0], sets: p.vbSets || 3, count: Math.max(1, Math.min(RULES.mg.maxPlayers - 1, p.vbCount || 3)), level: p.level });
+      return;
+    }
     if (p.kind === 'mg') {
       practice({ kind: 'mg', run: p.mgRun === 'single' ? 'single' : 'party', game: p.mgGame, rounds: p.mgRounds || 3, teams: !!p.mgTeams, count: Math.max(1, Math.min(RULES.mg.maxPlayers - 1, p.mgCount || 3)), level: p.level });
       return;
@@ -755,8 +762,8 @@ function showLobby() {
 
 // what friends see next to your name (friends.js)
 function activityText() {
-  if (app.mode === 'practice') return app.botGame === 'range' ? 'At the practice range' : app.botGame === 'br' ? 'In the Backrooms' : app.botGame === 'mg' ? 'Playing minigames' : 'Playing against bots';
-  if (app.game) return app.lobby.mode === 'dm' ? 'In a deathmatch' : app.lobby.mode === 'br' ? 'In the Backrooms' : app.lobby.mode === 'mg' ? 'Playing minigames' : 'In a 2v2 match';
+  if (app.mode === 'practice') return app.botGame === 'range' ? 'At the practice range' : app.botGame === 'br' ? 'In the Backrooms' : app.botGame === 'mg' ? 'Playing minigames' : app.botGame === 'vb' ? 'Playing volleyball' : 'Playing against bots';
+  if (app.game) return app.lobby.mode === 'dm' ? 'In a deathmatch' : app.lobby.mode === 'br' ? 'In the Backrooms' : app.lobby.mode === 'mg' ? 'Playing minigames' : app.lobby.mode === 'vb' ? 'Playing volleyball' : 'In a 2v2 match';
   if (app.mode === 'host' || app.mode === 'client') return 'In a lobby';
   return 'In the menu';
 }
@@ -813,10 +820,13 @@ function renderLobby() {
   if ($('lobby').classList.contains('hidden')) return;
   document.body.classList.toggle('is-host', isLeader());
   $('room-code').textContent = app.code || '-----';
-  const dm = app.lobby.mode === 'dm', br = app.lobby.mode === 'br', mg = app.lobby.mode === 'mg';
+  const dm = app.lobby.mode === 'dm', br = app.lobby.mode === 'br', mg = app.lobby.mode === 'mg', vb = app.lobby.mode === 'vb';
   $('lobby').classList.toggle('dm', dm);
   $('lobby').classList.toggle('br', br);
   $('lobby').classList.toggle('mg', mg);
+  $('lobby').classList.toggle('vb', vb);
+  $('lobby-vbsets').value = String(app.lobby.vbSets || 3);
+  $('lobby-vbsets').disabled = !isLeader();
   $('lobby').classList.toggle('mg-single', app.lobby.mgRun === 'single');
   // the Minigames' options (only the host can change them)
   $('lobby-mgrun').value = app.lobby.mgRun === 'single' ? 'single' : 'party';
@@ -890,7 +900,10 @@ function renderLobby() {
   const counts = { atk: app.roster.filter(p => p.team === 'atk').length, def: app.roster.filter(p => p.team === 'def').length };
   const D = RULES.dm;
   const M = RULES.mg, single = app.lobby.mgRun === 'single', gname = (MG_GAMES[app.lobby.mgGame] || MG_GAMES.dodge).name;
-  $('match-rules').innerHTML = mg
+  const sets = app.lobby.vbSets || 3;
+  $('match-rules').innerHTML = vb
+    ? `<b>Volleyball</b> · ${M.minPlayers}–${M.maxPlayers} players in two teams · ${sets > 1 ? `best of ${sets} sets` : 'one set'} to 11 · 3 touches a side · the same court and net on every map`
+    : mg
     ? `<b>Minigames</b> · ${M.minPlayers}–${M.maxPlayers} players · ${single ? `${app.lobby.mgRounds || 3} round${(app.lobby.mgRounds || 3) > 1 ? 's' : ''} of ${gname}` : 'a party run of 5 random games'} · 1st 3 points, 2nd 2, 3rd 1 · no guns`
     : br
     ? (app.lobby.stage === 2 && app.lobby.l2 ? '<b>The Backrooms, Level 2: The Poolrooms</b> · 2–6 players together · bright tiled halls and still water · nothing lives here'
@@ -899,7 +912,12 @@ function renderLobby() {
     : dm ? `<b>Deathmatch</b> · everyone for themselves · first to <b>${D.killLimit}</b> kills or <b>${D.timeLimit / 60}</b> minutes · ${n === 3 ? 'played on a 2v2 map with 3 players' : 'small map for 2, large for 4 to ${D.maxPlayers}'}`
     : '<b>2v2</b> · first to <b>9</b> · sides swap after round <b>8</b> · 8–8 is a draw';
   let note, ready;
-  if (mg) {
+  if (vb) {
+    ready = n >= M.minPlayers && n <= M.maxPlayers;
+    note = !isLeader() ? (n < M.minPlayers ? `Volleyball needs ${M.minPlayers} to ${M.maxPlayers} players. Waiting for one more…` : 'Waiting for the host to start…')
+      : n < M.minPlayers ? `Volleyball needs ${M.minPlayers} to ${M.maxPlayers} players online. Share the room code or invite link (to play with bots, use Practice).`
+        : n > M.maxPlayers ? `Volleyball takes ${M.maxPlayers} players at most.` : `${n} players ready: the teams are made when the match starts${n % 2 ? ' (the smaller team gets a 4th touch)' : ''}.`;
+  } else if (mg) {
     ready = n >= M.minPlayers && n <= M.maxPlayers;
     note = !isLeader() ? (n < M.minPlayers ? `The Minigames need ${M.minPlayers} to ${M.maxPlayers} players. Waiting for one more…` : 'Waiting for the host to start…')
       : n < M.minPlayers ? `The Minigames need ${M.minPlayers} to ${M.maxPlayers} players online. Share the room code or invite link (to play alone with bots, use Practice).`
@@ -955,7 +973,7 @@ async function shareInvite() {
 // ---------- game ----------
 // The loading screen: building a map (and baking the Backrooms' lighting) can take a moment, so the
 // screen says what is loading and the bar moves on as each step is done.
-const MODE_NAMES = { wingman: '2v2 Bomb', dm: 'Deathmatch', br: 'Co-op escape', mg: 'Minigames' };
+const MODE_NAMES = { wingman: '2v2 Bomb', dm: 'Deathmatch', br: 'Co-op escape', mg: 'Minigames', vb: 'Volleyball' };
 const nextPaint = () => new Promise(r => {
   let done = false;
   const go = () => { if (!done) { done = true; setTimeout(r, 0); } };
@@ -974,7 +992,7 @@ function gameLoading(step, frac, msg = null) {
     const def = msg.map === 'backrooms' ? { name: 'The Backrooms' } : msg.map === 'garage' ? { name: 'Level 1: The Garage' } : msg.map === 'pool' ? { name: 'The Poolrooms' } : msg.map === 'arena' ? { name: 'The Pool Hall' } : MAPS[msg.map];
     const lv = msg.mode === 'br' && typeof msg.variant === 'string' ? msg.variant.split(':').pop() : '';
     $('gl-title').textContent = def ? def.name : 'Loading';
-    $('gl-sub').textContent = [msg.practice ? 'Practice' : '', MODE_NAMES[msg.mode] || '', lv ? lv[0].toUpperCase() + lv.slice(1) : ''].filter(Boolean).join(' · ');
+    $('gl-sub').textContent = [msg.practice ? 'Practice' : '', MODE_NAMES[isVbMap(msg.map) ? 'vb' : msg.mode] || '', lv ? lv[0].toUpperCase() + lv.slice(1) : ''].filter(Boolean).join(' · ');
     el.dataset.mode = msg.mode || '';
     el.dataset.map = msg.map || '';
     $('gl-fill').style.transition = 'none'; $('gl-fill').style.width = '0';
@@ -1049,7 +1067,7 @@ function endGame() {
 function showPause(first = false) {
   if (!app.game) return;
   app.game.paused = true;
-  const titles = { range: 'Practice range', match: 'Bot match', dm: 'Bot deathmatch', mg: 'Minigames' };
+  const titles = { range: 'Practice range', match: 'Bot match', dm: 'Bot deathmatch', mg: 'Minigames', vb: 'Volleyball' };
   $('pause-title').textContent = first === true ? (titles[app.botGame] || 'Ready?') : 'Paused';
   $('pause-sub').textContent = first === true
     ? 'Click Play, then use your mouse to aim. Press Esc any time for this menu.'
@@ -1143,6 +1161,7 @@ function showBrOver(msg) {
 
 // the Minigames: the final standings (everyone's points, a shared place shares its number)
 function showMgOver(msg) {
+  if (msg.vb) return showVbOver(msg);
   const list = msg.standings || [], top = list[0];
   const win = msg.winner && list.find(e => e.id === msg.winner);
   $('over-title').textContent = win ? (win.id === app.myId ? 'You win the Minigames!' : `${win.name} wins the Minigames`) : list.length > 1 && top ? `A shared win on ${top.pts} points` : 'Minigames over';
@@ -1159,6 +1178,24 @@ function showMgOver(msg) {
     table.appendChild(tr);
   });
   $('over-stats').replaceChildren(table);
+  finishOver();
+}
+
+// the Volleyball mode: the team that won, each set's score, the two teams
+function showVbOver(msg) {
+  const V = msg.vb, me = app.roster.find(p => p.id === app.myId), team = msg.winner, mine = me && me.team === team;
+  const NAME = { atk: 'Orange', def: 'Blue' }, CSS = { atk: '#f0a040', def: '#5aa0ff' };
+  $('over-title').textContent = team ? (mine ? `You win! ${NAME[team]} take the match` : `${NAME[team]} win the match`) : 'A draw';
+  $('over-title').style.color = team ? CSS[team] : 'var(--text)';
+  $('over-score').innerHTML = `<span style="color:${CSS.atk}">${V.won[0]}</span><span style="opacity:.5">–</span><span style="color:${CSS.def}">${V.won[1]}</span>`;
+  const sets = document.createElement('table');
+  sets.innerHTML = `<tr><th>Set</th><th style="color:${CSS.atk}">Orange</th><th style="color:${CSS.def}">Blue</th></tr>`;
+  V.sets.forEach(([a, d], k) => { const tr = document.createElement('tr'); for (const v of [k + 1, a, d]) { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); } sets.appendChild(tr); });
+  const teams = document.createElement('table');
+  teams.className = 'run-levels';
+  teams.innerHTML = '<tr><th>Team</th><th>Players</th></tr>';
+  for (const [k, t] of [[0, 'atk'], [1, 'def']]) { const tr = document.createElement('tr'); const a = document.createElement('td'); a.textContent = NAME[t]; a.style.color = CSS[t]; const b = document.createElement('td'); b.textContent = (V.teams[k] || []).join(', '); tr.append(a, b); teams.appendChild(tr); }
+  $('over-stats').replaceChildren(sets, teams);
   finishOver();
 }
 
@@ -1438,7 +1475,7 @@ function onLogin() {
 
 // After a real online match, add it to the account (practice and bot games never count).
 async function reportToAccount(msg) {
-  if (!acct.loggedIn() || app.botGame || app.mode === 'practice' || !app.game || msg.mode === 'br' || msg.mode === 'mg') return;
+  if (!acct.loggedIn() || app.botGame || app.mode === 'practice' || !app.game || msg.mode === 'br' || msg.mode === 'mg' || msg.mode === 'vb') return;
   const me = msg.stats.find(s => s.id === app.myId);
   if (!me) return;
   const dm = msg.mode === 'dm';
@@ -1540,6 +1577,7 @@ function init() {
   $('lobby-mggame').addEventListener('change', e => sendToServer({ t: 'settings', mgGame: e.target.value }));
   $('lobby-mgrounds').addEventListener('change', e => sendToServer({ t: 'settings', mgRounds: Number(e.target.value) || 3 }));
   $('lobby-mgteams').addEventListener('change', e => sendToServer({ t: 'settings', mgTeams: e.target.checked }));
+  $('lobby-vbsets').addEventListener('change', e => sendToServer({ t: 'settings', vbSets: Number(e.target.value) || 3 }));
   // the minigames to pick from (one list for the lobby and Practice)
   for (const sel of document.querySelectorAll('select.mg-games')) for (const id of MG_ORDER) { const o = document.createElement('option'); o.value = id; o.textContent = MG_GAMES[id].name; sel.appendChild(o); }
   $('lobby-stage').addEventListener('change', e => { const v = Number(e.target.value) || 0; sendToServer({ t: 'settings', stage: (v === 1 && level1Unlocked()) || (v === 2 && level2Unlocked()) ? v : 0 }); });

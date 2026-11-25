@@ -56,6 +56,7 @@ const ROOMS = {
   industrial: { decay: 2.1, wet: 0.3, damp: 5200 },
   snow: { decay: 0.75, wet: 0.13, damp: 2400 },
   harbour: { decay: 1.3, wet: 0.2, damp: 4200 },
+  beach: { decay: 0.6, wet: 0.1, damp: 3600 },      // out in the open: hardly any echo
   quarry: { decay: 1.7, wet: 0.26, damp: 3800 },
   railyard: { decay: 1.2, wet: 0.19, damp: 3800 },
   village: { decay: 1.4, wet: 0.22, damp: 4000 },   // narrow stone streets
@@ -920,6 +921,7 @@ const AMB = {
   industrial: { wind: 0.25, windTone: 300, hum: 0.5, events: ['clank', 'hiss', 'clank'] },
   snow: { wind: 1, windTone: 650, events: ['gust', 'gust', 'creak'] },
   harbour: { wind: 0.35, windTone: 380, water: 0.7, events: ['gull', 'gull', 'horn', 'gull'] },
+  beach: { wind: 0.45, windTone: 360, water: 1, lap: 0.9, events: ['gull', 'gull', 'gust', 'gull'] },      // waves on the sand, gulls
   quarry: { wind: 0.55, windTone: 450, events: ['beeper', 'clank', 'gust'] },
   railyard: { wind: 0.4, windTone: 400, events: ['horn', 'clank', 'clank', 'bird'] },
   village: { wind: 0.3, windTone: 380, water: 0.35, lap: 0.6, events: ['bird', 'bell', 'bird', 'bird', 'bell', 'gust'] },

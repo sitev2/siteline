@@ -17,6 +17,7 @@ import { backroomsMap } from './brmap.js';
 import { garageMap } from './garmap.js';
 import { poolMap } from './poolmap.js';
 import { arenaMap } from './mgmap.js';
+import { VB_MAPS } from './vbmaps.js';
 import { brDmDef } from './brdm.js';
 
 const EAST = -Math.PI / 2, WEST = Math.PI / 2, NORTH = 0, SOUTH = Math.PI;
@@ -929,10 +930,14 @@ export const MAPS = {
     resolve(v) { return brDmDef(this, v); },
     build(b) { brDmDef(this, 'small').build(b); },
   },
+
+  // the Volleyball mode's three maps (vbmaps.js): the same court and net on each
+  ...VB_MAPS,
 };
 
 // ---------- helpers for choosing maps ----------
 export const isDmMap = id => !!(MAPS[id] && MAPS[id].mode === 'dm');
+export const isVbMap = id => !!(MAPS[id] && MAPS[id].mode === 'vb');
 // Deathmatch map size from the number of players: small for 2, large for 4
 export const dmVariant = players => (players >= 4 ? 'large' : 'small');
 
@@ -956,7 +961,8 @@ export function resolveMap(id, variant) {
 // Maps the host can pick: 2v2 shows the wingman maps; deathmatch shows the
 // deathmatch maps for 2 or 4 players and the wingman maps for exactly 3.
 export function mapsFor(mode, players) {
-  const ids = Object.keys(MAPS);
+  const ids = Object.keys(MAPS).filter(id => !isVbMap(id) || mode === 'vb');
+  if (mode === 'vb') return ids.filter(isVbMap);
   if (mode !== 'dm') return ids.filter(id => !isDmMap(id));
   return players === 3 ? ids.filter(id => !isDmMap(id)) : ids.filter(isDmMap);
 }

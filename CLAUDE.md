@@ -573,8 +573,48 @@ The only folder is `server/` (the optional home game server).
     button (pick up / catch) shows when there is something to do, the aim/fire button while you hold a throwable floatie (`pool-ring`),
     jump works. game.js: `this.water` (= theme 'pool') now gates the swimming code (the Poolrooms AND the arena); `this.pool` stays the
     Poolrooms level. Sounds `playMG` in audio.js (pop, puff, whistle, horn, count, go); icons `ring`, `trophy`.
+  - Volleyball is the fifth minigame (`MG_ORDER` 'volley', v2.8): on the Pool Hall's court (`plan.volley`: the standard court on the
+    court's centre line x 9.5, floor `G`), one set to 11 with a 4-minute limit (then most points, a tie = a draw). Rules: see Volleyball below.
   - `node check_minigames.mjs` checks every rule above on the real host code with pretend players (and the arena: reachable, the low wall,
-    the posts). Online test: `?server=ws://localhost:8787`.
+    the posts), and Volleyball (below). Online test: `?server=ws://localhost:8787`.
+- **Volleyball** (owner's request, v2.8: "make it part of the minigames but also make it playable outside of it"; 3 maps, "keep the rules,
+  functionality and size of net and courts the same"): its own lobby / Practice mode (`settings.mode = 'vb'`, `vbSets` 1 / 3 / 5 =
+  one set or best of 3 / 5) AND a minigame. It runs on the Minigames engine: `Server.startMinigames(true)` → `MiniHost` with `cfg.vb`
+  (server `this.mg` + `this.vbMatch`, phase 'mg', client mode 'mg' on a volleyball map): the same teams all match (`fixed`; a newcomer
+  joins the smaller team), each set is a round, the match ends once a team has won most of the sets (`matchDone`), the board between
+  sets shows each set's score, `over` carries `vb: { sets, won, teams }` (`showVbOver` in main.js); no time limit. 2–6 players
+  (`RULES.mg`). No account stats.
+  - `volley.js` — the ONE court, net, ball and hit (no three.js; host, bots, screens): court 12 × 6 m along x (`VB.len` / `wid`), net
+    top 2.24 m, mesh 1 m (`netTop` / `netBottom`), posts 0.5 m outside the side lines, ball radius 0.14, real gravity 9.8; `courtOf(def)`
+    (from `def.vb` on a Volleyball map or `def.pool.volley` in the Pool Hall: middle, floor height, the room round it players may use),
+    `clampSide` (players stay on their own side and in that room: players' games after every move, bots, never under / round the net),
+    `vbSpawns`, `hitVelocity(yaw, pitch, spike)` (the way you look: 7 m/s + 4 up; a spike = 11 m/s straight where you look down),
+    `netAssist` (a normal hit headed into the net gets just enough lift to clear it; a pass that lands on your own side first is left
+    alone), `inReach` (1.3 m round you, 0.3–2.7 m above your feet), `stepBall` (net plane: into the mesh it drops back, under it or
+    round a post is a fault; anything solid but the court floor = out), `whereAt` (bots). Orange ('atk') plays the west side.
+  - Rules (`MiniHost.vbStart` / `vbToss` / `vbHit` / `vbStep` / `vbPoint` in mghost.js): rally scoring; the ball waits over the
+    server's head (`tossSpot`: 0.8 m towards the net and to one side, never over the net), then is tossed up; only the server may hit
+    the toss, and the serve must go straight over (it uses up the side's touches); a toss nobody hits is tossed again once, then it is the
+    other team's point. E or fire hits (`{t:'ring'}` / `{t:'throw', yaw, pitch}`), only in reach, only on your side, 0.35 s apart.
+    Landing inside the lines (lines are in) scores for the other side; out / under the net / round a post / a 4th touch on a side / the
+    same player twice in a row = a point for the other team (`why`: in, out, under, wide, touches, twice, serve). The rally's winner
+    serves; a new server (in turn) each time the serve changes sides. A set: 11 with a lead of 2, or 15. Uneven teams: in the Minigames'
+    Practice a substitute bot evens them; the Volleyball mode's Practice adds a bot up front so they are even; online the smaller team
+    touches 4 times a side (`vbExtra`, `maxTouches`) and serves first. Bots (`MiniBot.volley` / `hitOver`): the nearest of a team
+    goes under where the ball comes down and sends it to a spot in the other court (`BOT_LEVEL` `miss` / `vErr`); servers hit the toss.
+  - `vbmaps.js` — the three maps (in `MAPS`, `mode: 'vb'`, `isVbMap`; `mapsFor('vb')`; never offered for 2v2 / deathmatch / the range),
+    each 44 × 34 m with the court in the SAME place (`VB_PLACE`: middle 22 / 17, floor 0, room 12–32 × 9–25):
+    **Sandbar** (new theme `beach`: THEMES in mapview.js, `DRESS.beach` + backdrop `'sea'` in mapdeco.js (open sea, islands, sailing
+    boats, a lighthouse), ambience / reverb `beach` in audio.js; beach huts on a boardwalk, dunes, a lifeguard tower), **Piazza** (village:
+    houses all round via `village`, church + tower, paving, a well, carts), **Summit** (snow, `massHeight` 3.2 so the mountains show over
+    the low stone walls: red huts, a fence, a generator, crates, the snowcat).
+  - mgplay.js `buildVolley` / `updateVolley`: the court's white lines, the posts, the net (white top band, dark mesh, cord), the ball
+    (white / yellow / blue panels) carried on along its arc between updates, its shadow on the floor; hints ("Your serve…", "Click to
+    hit it!", "2 of 3 touches: get it over"); the aim/fire button stays on screen all through a volleyball round on phones, and the
+    hand button shows when the ball is in reach (both hit). HUD: map / set / best of, score, sets, the server marked with the `ball` icon.
+  - `check_minigames.mjs` also checks: the same flat, clear court on the Pool Hall and all three maps; the serve, re-toss, reach, in / out
+    / under / net / touches / twice, side-outs and servers, set scoring and the cap, the spike and the lift, uneven teams, best of 3 ending
+    at 2 sets with the same teams, Practice evening the bots and a bot set finishing, the Minigames' 4-minute limit.
 - `check_map.mjs` — `node check_map.mjs outpost` / `node check_map.mjs quarry large` checks every area and spawn is reachable
 - `check_br.mjs` — `node check_br.mjs 300` (or `node check_br.mjs 300 0 hard` for one level; `node check_br.mjs 1 <seed>` prints a map) checks
   Level 0 layouts on the real floor: start, key, levers and exit reachable with every ordinary door shut; every room reachable; each gate the

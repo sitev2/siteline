@@ -806,3 +806,16 @@ body.touch #mg-side { font-size: max(10px, 1.5vh); top: 42%; }
 @media (max-width: 700px) { .mode-pick.five { grid-template-columns: 1fr 1fr; } }
 #mg-count.wait { font-size: clamp(1rem, 3vw, 1.3rem); color: rgba(255,255,255,.8); }
 body.mg-boardup #crosshair, body.mg-boardup #hint { display: none !important; }
+/* the Volleyball mode: lobby (map cards, the match length) and Practice */
+.lobby-row .vb-opt { display: none; margin: 0; }
+#lobby.vb .lobby-row .vb-opt { display: grid; }
+#lobby.vb .ffa-list { display: block; }
+#lobby.vb .teams, #lobby.vb #btn-shuffle, #lobby.vb .night-toggle { display: none; }
+.p-vb { display: none; }
+#practice.m-vb .p-vb { display: grid; }
+#practice.m-vb p.p-vb { display: block; }
+#practice.m-vb .p-count, #practice.m-vb .p-botopt { display: grid; }
+#practice.m-vb .p-nightopt, #practice.m-vb #p-note { display: none; }
+.mode-pick.six { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 700px) { .mode-pick.six { grid-template-columns: 1fr 1fr; } }
+#mg-score small { font-size: .8em; color: rgba(255,255,255,.75); }
