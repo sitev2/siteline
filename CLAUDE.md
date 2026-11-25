@@ -538,6 +538,43 @@ The only folder is `server/` (the optional home game server).
     It also checks every slide tube runs inside solid wall, and plays the whole order on the real host code with pretend players (1 and 2,
     every difficulty): plates and bridges (solo hold, never onto a swimmer), wrong valves don't unlock, undo, the drain, the hatch, falls
     (deadly onto floor, safe into water), floaties, slides, everyone dead = start again.
+- **Minigames** (owner's request, v2.7; `settings.mode = 'mg'`, server phase `'mg'`, `this.mg`, `this.mgHost`): 2–6 players (`RULES.mg`,
+  `roomMax()` 6) play short party games with the Poolrooms' floaties, no guns (`p.w = 'none'`, empty hands; team uniforms with name tags over
+  EVERYONE, `atk` = Orange, `def` = Blue, FFA rounds `ffa`). Lobby / Practice choice: party run (5 rounds, each a random game, never the
+  same twice in a row) or one game (`mgGame`) for 1–5 rounds (`mgRounds`); `mgTeams` = Dodgeball in two teams with 4 or 6 players.
+  Points per round 1st 3, 2nd 2, 3rd 1 (`MG_POINTS`; competition ranking: a shared place shares its points; in team games every
+  winner is 1st and the losers share the next place); most points after the last round wins (`over` carries `standings`). No account stats.
+  - `mgmap.js` — ONE small hall, map id `'arena'` ("The Pool Hall", `resolveMap('arena')`, theme `pool`, `world.def.pool` = a plan in the
+    Poolrooms' shape with `arena: true`): drawn by `poolview.js` (guards for what the arena lacks: no exit / tower / slant / well / lift /
+    drain / steam; `plan.outdoors`, `plan.sunBox`, `plan.stripes` = painted lines). 44 × 18 m: a dry court x 2–17 (centre line x 9.5 for team
+    Dodgeball), a 1.6 m low wall x 17–18 nobody can jump, the pool x 21.5–38.5 (deep: you swim) with a goal alcove at each end (z 7–11).
+    Goal posts are '_post' collision columns that narrow the mouth to 3 m; `setGoalPosts(world, i, big)` removes them for a 4 m goal.
+    Also `MG_GAMES` (names, how-to lines, area, time), `MG_ORDER`, `mgSpawns(area, teams)`, `inArea`, `goalMouth`.
+  - `mghost.js` — `MiniHost` (made in `Server.startMinigames`; host's browser and home server): rounds 'wait' (first round only: until
+    every human's `{t:'mgReady'}`, at most 15 s) → 'intro' (3 s countdown, nobody moves) → 'play' → 'end' (2.5 s) → 'board' (standings
+    5 s). Clients only send `{t:'ring'}` (E: pick up / catch) and `{t:'throw', yaw, pitch}`; the host decides hits, catches, passes, steals,
+    goals and points, with the floaties' physics (`PoolHost.prototype.ringStep`, its own `floatStep` in Pool Ball: swimmers push the ball).
+    State to everyone: `{t:'mg', s}` (20 Hz while a floatie flies), events `{t:'mgfx', k}`; someone out = `{t:'kill', w:'mg', how}` (no
+    ragdoll, a puff of smoke, `Server.kill` is never used in this mode). Numbers in `MG`: throw 12.5 m/s + 1.4 up; reach 1.9 m; touch 1.05 m.
+    Dodgeball: a live (thrown, not yet bounced) floatie within 0.58 m of someone puts them out; bounced or lying = safe; teammates aren't hit;
+    a catch = E up to 0.45 s before, or (the press was on its way) up to 0.25 s after the hit: the thrower is out, you hold it. Keep Away:
+    a point a second while holding; a touch steals; the loser can't take it back for 2 s; the holder runs ×0.85. Hot Potato: a touch passes it
+    (not on again within 1 s); 20 s fuse → the holder pops (out), 2 s later a new fuse with someone else; the holder runs ×1.12. Pool Ball:
+    first to 3 or most after 3 min; a goal only inside the posts and not while held; the ball goes back to the middle (2.5 s pause); a ball
+    on the deck goes back after 1.2 s; uneven teams: online the smaller team's TARGET goal is 4 m wide (no bots online, as everywhere), in
+    Practice a substitute bot (`mgSub`, no points) evens them up. A floatie out of its area goes back in. Late joiners (`p.mgLate`) watch until
+    the next round; standings keep a leaver's points and give them back if they rejoin under the same name.
+    `MiniBot` = the Practice bots (`Server.addMiniBot`; difficulty = `settings.level`): chase floaties, throw at the nearest (lead + error),
+    sidestep or try to catch, run from the Hot Potato holder, push / throw the ball at the goal, one keeper per team.
+  - `mgplay.js` — `MiniClient` (game.js `this.mgc`): floaties drawn (flying ones carried on along their arc between updates), goals' posts
+    / crossbar in the team colour / nets, puffs, the Hot Potato glow + faster beeps, sleeves in your team colour while swimming, HUD:
+    `#mg-top` (game, timer — Hot Potato: its fuse — score or who is still in), `#mg-side` (players, points), `#mg-intro` (round, name, how to
+    play, keys, your team, 3-2-1), `#mg-board` (standings: between rounds and while the scoreboard key / button is held). Touch: the hand
+    button (pick up / catch) shows when there is something to do, the aim/fire button while you hold a throwable floatie (`pool-ring`),
+    jump works. game.js: `this.water` (= theme 'pool') now gates the swimming code (the Poolrooms AND the arena); `this.pool` stays the
+    Poolrooms level. Sounds `playMG` in audio.js (pop, puff, whistle, horn, count, go); icons `ring`, `trophy`.
+  - `node check_minigames.mjs` checks every rule above on the real host code with pretend players (and the arena: reachable, the low wall,
+    the posts). Online test: `?server=ws://localhost:8787`.
 - `check_map.mjs` — `node check_map.mjs outpost` / `node check_map.mjs quarry large` checks every area and spawn is reachable
 - `check_br.mjs` — `node check_br.mjs 300` (or `node check_br.mjs 300 0 hard` for one level; `node check_br.mjs 1 <seed>` prints a map) checks
   Level 0 layouts on the real floor: start, key, levers and exit reachable with every ordinary door shut; every room reachable; each gate the

@@ -27,6 +27,7 @@ A free, browser-based 2v2 tactical shooter (wingman). Two teams of two, one bomb
   - **Canal**: a sunny hill village of stone and plaster houses split by a narrow canal. The site is the church piazza under the bell tower. Three ways in: the north bridge and gate arch, through the two-storey inn and a quick wade under the archway, or the long south street and its bridge. Wading is slow and every step splashes.
   - All maps have boxes and barrels you can jump on and **shoot through**.
 - **Deathmatch** for 2–4 players: everyone for themselves, first to 30 kills or 10 minutes. You respawn after about a second at the safest spot, with full armour and a helmet. Any gun is free at any time from the buy menu. It has two maps of its own, **Quarry** and **Railyard**, each with a small version (2 players) and a large one (4 players), picked automatically when the match starts. With exactly 3 players, deathmatch is played on the 2v2 maps instead.
+- **Minigames** for 2–6 players, no guns: party games with pool floaties in **The Pool Hall**, a tiled court and a pool with two goals. **Floatie Dodgeball** (hit before it bounces = out; catch it and the thrower is out), **Pool Ball** (two teams swim the floatie into the other goal, first to 3), **Keep Away** (a point every second you hold it; touch the holder to steal it) and **Hot Potato** (touch someone to pass the ticking floatie; whoever holds it when it pops is out). Play a **party run** of 5 random games or pick **one game** for 1–5 rounds. Each round gives 3, 2 and 1 points to 1st, 2nd and 3rd; most points wins. E (✋) picks up or catches, click (the aim button) throws.
 - 2v2, up to 4 players per room. **First to 9 rounds** wins, the teams **swap sides after round 8**, and 8–8 is a draw. Rounds last 1:55, the buy menu is open for the first 20 seconds.
 - **Bomb:** plant in 3.2 s, explodes 40 s later. Defuse takes 10 s (5 s with a kit) and you must keep looking at it. The blast is a shockwave that walls block — while the bomb ticks the floor glows where it would hurt you and your health bar shows how much damage you'd take.
 
@@ -96,6 +97,7 @@ The host measures each player's round-trip time every 2 seconds. Under 80 ms is 
   - Bots buy guns and armour with their money.
   - Attacking bots carry the bomb to the site and plant it. Defending bots hold the site and defuse.
 - **Bot deathmatch:** you against 1–3 bots on the deathmatch maps (or the 2v2 maps with 3 players).
+- **Minigames:** a party run or one game against 1–5 bots (Pool Ball gets an extra bot if the teams would be uneven).
 
 Bots come in **easy, normal and hard**. Harder bots react faster, aim better, control recoil and go for headshots more often.
 

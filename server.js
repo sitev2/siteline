@@ -10,6 +10,8 @@ import { ShifterBrain } from './shifter.js';
 import { garLevel, crankRule, FUSES } from './garmap.js';
 import { POOL } from './poolmap.js';
 import { PoolHost } from './poolhost.js';
+import { MiniHost, MiniBot } from './mghost.js';
+import { MG_GAMES } from './mgmap.js';
 import { BR_LEVELS, brLevel, brVariant, wallFace, brSection } from './brmap.js';
 import { cleanChat, CHAT_LIMIT } from './filter.js';
 
@@ -48,9 +50,10 @@ export class Server {
     this.ownerId = ownerId;
     this.localId = localId;
     this.players = new Map();
-    this.settings = { map: 'outpost', winRounds: RULES.winRounds, mode: 'wingman', level: 'normal' };   // level: Backrooms difficulty   // mode: 'wingman' (2v2 bomb), 'dm' (deathmatch) or 'br' (Backrooms)
+    this.settings = { map: 'outpost', winRounds: RULES.winRounds, mode: 'wingman', level: 'normal', mgRun: 'party', mgGame: 'dodge', mgRounds: 3, mgTeams: false };   // level: Backrooms difficulty   // mode: 'wingman' (2v2 bomb), 'dm' (deathmatch), 'br' (Backrooms) or 'mg' (Minigames: mgRun 'party' | 'single', mgGame, mgRounds 1–5, mgTeams: Dodgeball in two teams)
     this.dm = false;               // true while a deathmatch is being played
     this.br = false;               // true while a Backrooms escape is being played
+    this.mg = false;               // true while the Minigames are being played (mghost.js: this.mgHost)
     this.variant = null;           // deathmatch map size: 'small' or 'large'
     this.swapped = false;          // true after the halftime side swap
     this.squadScore = [0, 0];      // squad 0 starts as attackers, squad 1 as defenders
@@ -107,6 +110,7 @@ export class Server {
   // how many real people this room takes right now: 4 for 2v2, more for deathmatch and the Backrooms
   // (HostNet and the home server turn the next one away)
   roomMax() {
+    if (this.mg || this.settings.mode === 'mg') return RULES.mg.maxPlayers;
     if (this.br || this.settings.mode === 'br') return RULES.br.maxPlayers;
     if (this.dm || this.settings.mode === 'dm') return RULES.dm.maxPlayers;
     return CONFIG.maxPlayers;
@@ -135,13 +139,18 @@ export class Server {
     p.spoon = hasSpoon(p.name);    // the secret spoon: only for the player with that name
     this.players.set(id, p);
     const back = this.phase !== 'lobby' && this.phase !== 'over' ? this.restoreLeaver(p) : false;
-    if (this.botCfg && this.phase !== 'lobby' && !this.br) this.replaceBotWith(p);
+    if (this.botCfg && this.phase !== 'lobby' && !this.br && !this.mg) this.replaceBotWith(p);
     this.send(id, { t: 'welcome', id, settings: this.settings, phase: this.phase, roster: this.roster(), practice: this.practice });
     if (this.practice && this.phase === 'practice') {
       // practice range: start shooting straight away
       this.send(id, this.startMsg());
       this.send(id, this.dropsMsg());
       this.later(0.3, () => this.respawn(p));
+    } else if (this.mg && this.phase === 'mg') {
+      // the Minigames: a friend who joins watches until the next round starts (mghost.js startRound)
+      Object.assign(p, { team: 'ffa', w: 'none', inv: { primary: null, secondary: null }, money: 0, alive: false, mgLate: true });
+      this.send(id, this.startMsg());
+      this.later(0.5, () => this.send(id, { t: 'toast', text: 'A round is on: you join in from the next one' }));
     } else if (this.br) {
       // a friend joins a running Backrooms game: they start in the starting room with nothing
       this.brPrepare(p);
@@ -191,7 +200,7 @@ export class Server {
   // Someone who leaves a running match is remembered by name, so if they rejoin they get their
   // team, score and money back.
   rememberLeaver(p) {
-    if (p.bot || p.dummy || this.practice || this.br || this.phase === 'lobby' || this.phase === 'over') return;
+    if (p.bot || p.dummy || this.practice || this.br || this.mg || this.phase === 'lobby' || this.phase === 'over') return;
     if (!this.gone) this.gone = new Map();
     this.gone.set(p.name.toLowerCase(), {
       dm: this.dm, squad: p.squad, kills: p.kills, deaths: p.deaths, hs: p.hs, dmg: p.dmg, money: p.money, dmLoadout: p.dmLoadout,
@@ -217,6 +226,7 @@ export class Server {
     if (this.brKey) this.dropKey(p);
     if (this.pool && this.poolHost) this.poolHost.drop(p);
     if (this.gar && this.garSt) this.garDrop(p);
+    if (this.mg && this.mgHost) this.mgHost.leave(p);
     this.bots.delete(id);
     // a friend left a practice game: a bot takes their place again
     if (this.botCfg && !p.bot && id !== this.localId && this.phase !== 'lobby' && this.phase !== 'over') {
@@ -241,6 +251,8 @@ export class Server {
     this.broadcast({ t: 'toast', text: `${p.name} left the game` });
     if (this.phase === 'br') {
       this.brCheck();
+    } else if (this.phase === 'mg') {
+      if (this.mgHost) this.mgHost.check();
     } else if (this.phase === 'dm' && this.humanCount() < RULES.dm.minPlayers) {
       const last = [...this.players.values()].find(q => !q.dummy);
       this.matchOver(last ? last.id : null, 'forfeit');
@@ -259,6 +271,10 @@ export class Server {
   receive(id, msg) {
     const p = this.players.get(id);
     if (!p || !msg || typeof msg !== 'object') return;
+    // the Minigames: no guns, nothing to buy or drop; E and fire go to the minigames' host (mghost.js)
+    if (this.mg && ['shot', 'melee', 'buy', 'refund', 'drop', 'pick', 'note', 'door', 'switch', 'boost', 'fell', 'slide', 'valve', 'drain'].includes(msg.t)) return;
+    if (this.mg && (msg.t === 'ring' || msg.t === 'throw')) { if (this.phase === 'mg' && this.mgHost) this.mgHost.msg(p, msg); return; }
+    if (msg.t === 'mgReady') { if (this.mg && this.mgHost) this.mgHost.ready(p); return; }      // (their game has loaded: mghost.js)
     switch (msg.t) {
       case 'st': return this.onState(p, msg);
       case 'shot': return this.onShot(p, msg);
@@ -316,7 +332,12 @@ export class Server {
         return;
       case 'settings':
         if (id !== this.ownerId || this.phase !== 'lobby') return;
-        if (msg.mode === 'wingman' || msg.mode === 'dm' || msg.mode === 'br') this.settings.mode = msg.mode;
+        if (msg.mode === 'wingman' || msg.mode === 'dm' || msg.mode === 'br' || msg.mode === 'mg') this.settings.mode = msg.mode;
+        // the Minigames: a party run or one game, how many rounds of it, Dodgeball in teams (4 or 6 players)
+        if (msg.mgRun === 'party' || msg.mgRun === 'single') this.settings.mgRun = msg.mgRun;
+        if (MG_GAMES[msg.mgGame]) this.settings.mgGame = msg.mgGame;
+        if (Number.isInteger(msg.mgRounds) && msg.mgRounds >= 1 && msg.mgRounds <= 5) this.settings.mgRounds = msg.mgRounds;
+        if (typeof msg.mgTeams === 'boolean') this.settings.mgTeams = msg.mgTeams;
         if (typeof msg.night === 'boolean') this.settings.night = msg.night;
         if (BR_LEVELS[msg.level]) this.settings.level = msg.level;
         // the Backrooms level to start at (0 or 1), and whether this host may play Level 1 at all (their game
@@ -747,7 +768,7 @@ export class Server {
   }
 
   kill(tgt, attacker, weapon, head, from = null, part = 'chest', extra = null) {
-    if (!tgt.alive) return;
+    if (!tgt.alive || this.mg) return;      // (the Minigames put people out themselves: mghost.js out())
     tgt.alive = false;
     if (this.brKey) this.dropKey(tgt);
     if (this.pool && this.poolHost) this.poolHost.drop(tgt);
@@ -833,20 +854,22 @@ export class Server {
   startMsg() {
     return {
       t: 'start', map: this.settings.map, settings: this.settings, roster: this.roster(), practice: this.practice, phase: this.phase,
-      mode: this.br ? 'br' : this.dm ? 'dm' : 'wingman', variant: this.variant,
+      mode: this.mg ? 'mg' : this.br ? 'br' : this.dm ? 'dm' : 'wingman', variant: this.variant,
       doors: (this.br || this.dm) && this.world && this.world.doors.length ? this.world.doors.map(d => (d.broken ? 2 : d.open ? 1 : 0)) : undefined,     // 2 = kicked in
       notes: this.br ? this.notes : undefined,
       key: this.br && this.brKey ? (this.brKey.holder ? 1 : 0) : undefined,      // the red key isn't on its shelf
       crossed: this.br && !this.gar && !this.pool && this.brCrossed ? 1 : undefined,      // someone has crossed the pit hall
       gar: this.gar && this.garSt ? this.garState() : undefined,      // Level 1's order so far: fuses, power, the shutter
       pool: this.pool && this.poolHost ? this.poolHost.state() : undefined,      // Level 2: bridges, valves, heat, the drain, the floaties
+      mg: this.mg && this.mgHost ? this.mgHost.state() : undefined,            // the Minigames: the round, the floaties, scores, standings
     };
   }
 
   // keep the chosen map valid for the mode and the number of players in the room
   fixMap() {
     if (this.settings.mode === 'br') { this.settings.map = 'backrooms'; return; }
-    if (this.settings.map === 'backrooms') this.settings.map = 'outpost';
+    if (this.settings.mode === 'mg') { this.settings.map = 'arena'; return; }
+    if (this.settings.map === 'backrooms' || this.settings.map === 'arena') this.settings.map = 'outpost';
     const ok = mapsFor(this.settings.mode, this.humanCount());
     if (!ok.includes(this.settings.map)) this.settings.map = ok[0];
   }
@@ -908,7 +931,17 @@ export class Server {
     this.phase = 'lobby';
     this.dm = false;
     if (this.br) this.brEnd();
+    if (this.mg) this.mgEnd();
     const humans = [...this.players.values()];
+    if (cfg.kind === 'mg') {
+      // the Minigames against bots: cfg.count bots (1–5), the party run or one game, the bots' difficulty
+      this.settings.mode = 'mg';
+      Object.assign(this.settings, { mgRun: cfg.run === 'single' ? 'single' : 'party', mgGame: MG_GAMES[cfg.game] ? cfg.game : 'dodge', mgRounds: Math.max(1, Math.min(5, cfg.rounds | 0 || 3)), mgTeams: !!cfg.teams, level: brLevel(cfg.level) });
+      const n = Math.max(1, Math.min(RULES.mg.maxPlayers - humans.length, cfg.count || 3));
+      for (let i = 0; i < n; i++) this.addMiniBot(false);
+      this.startMinigames();
+      return;
+    }
     if (cfg.kind === 'range') {
       for (const p of humans) p.team = 'atk';
       this.startPractice(cfg.map, cfg.count || 0, cfg.behavior || 'still', cfg.level);
@@ -1173,6 +1206,63 @@ export class Server {
   }
 
   poolTick() { if (this.poolHost) this.poolHost.tick(); }
+
+  // ---------- the Minigames (mgmap.js: the arena; mghost.js: the rules, the floaties, the bots) ----------
+  // A party run (5 rounds of random games) or one game for 1–5 rounds. Online 2–6 players; in Practice bots fill in.
+  startMinigames() {
+    const n = this.humans().length, total = [...this.players.values()].filter(p => !p.dummy).length, M = RULES.mg;
+    if (!this.botCfg && (n < M.minPlayers || n > M.maxPlayers)) {
+      this.send(this.ownerId, { t: 'toast', text: n < M.minPlayers ? 'The Minigames need at least 2 players online. Alone, play them from Practice with bots.' : `The Minigames take ${M.maxPlayers} players at most.` });
+      return;
+    }
+    if (total < 2) return;
+    if (this.br) this.brEnd();
+    for (const [id, b] of [...this.bots]) if (!(b instanceof MiniBot)) { this.bots.delete(id); this.players.delete(id); }
+    this.dm = false; this.mg = true;
+    this.settings.map = 'arena';
+    this.variant = null;
+    this.world = new World(resolveMap('arena'));
+    this.round = 1;
+    this.timer = 0;
+    this.bomb = this.freshBomb();
+    this.drops.clear();
+    for (const p of this.players.values()) {
+      if (p.dummy) continue;
+      if (!p.bot) p.lobbyTeam = p.team;
+      Object.assign(p, { team: 'ffa', w: 'none', inv: { primary: null, secondary: null }, ammo: {}, armor: 0, helmet: false, kit: false, money: 0, alive: false, kills: 0, deaths: 0, hs: 0, dmg: 0, mgLate: false, mgOut: false, mgReady: false });
+    }
+    this.mgHost = new MiniHost(this, { run: this.settings.mgRun, game: this.settings.mgGame, rounds: this.settings.mgRounds, teams: this.settings.mgTeams });
+    this.phase = 'mg';
+    this.broadcast(this.startMsg());
+    this.broadcastRoster();
+    this.mgHost.startRound();
+  }
+
+  // a bot for the Minigames (Practice only). sub: only for this round (Pool Ball with an odd number of players)
+  addMiniBot(sub = false) {
+    const used = new Set([...this.players.values()].map(p => p.botName));
+    const name = BOT_NAMES.map(n => `BOT ${n}`).find(n => !used.has(n)) || `BOT ${this.players.size}`;
+    let k = 1;
+    while (this.players.has(`bot${k}`)) k++;
+    const id = `bot${k}`;
+    const p = {
+      id, name, botName: name, team: 'ffa', x: 0, y: 0, z: 0, yaw: 0, pitch: 0, w: 'none', hp: 100, alive: false,
+      kills: 0, deaths: 0, lastShot: 0, use: false, moved: 0, dummy: false, bot: true, ping: 0, squad: 0, money: 0,
+      inv: { primary: null, secondary: null }, armor: 0, helmet: false, kit: false, hs: 0, dmg: 0, ammo: {}, mgSub: sub,
+    };
+    this.players.set(id, p);
+    this.bots.set(id, new MiniBot(this, p, this.settings.level));
+    return p;
+  }
+  removeMiniSubs() {
+    for (const p of [...this.players.values()]) if (p.mgSub) { this.bots.delete(p.id); this.players.delete(p.id); if (this.mgHost) this.mgHost.table.delete(p.id); }
+  }
+
+  mgEnd() {
+    for (const [id, p] of [...this.players]) if (p.bot) { this.bots.delete(id); this.players.delete(id); }
+    for (const p of this.humans()) { p.team = p.lobbyTeam === 'def' ? 'def' : 'atk'; p.w = STARTER_PISTOL[p.team]; p.inv = { primary: null, secondary: STARTER_PISTOL[p.team] }; p.mgLate = false; p.mgOut = false; }
+    this.mg = false; this.mgHost = null;
+  }
 
   // a new level of the Backrooms begins: carried on from the one before (its time goes in the run), or a run starts
   levelStart(carry, prev) {
@@ -1742,6 +1832,7 @@ export class Server {
       return this.settings.stage === 1 && this.settings.l1 ? this.startGarage() : this.startBackrooms();
     }
     if (this.settings.mode === 'dm' && !this.practice) return this.startDeathmatch();
+    if (this.settings.mode === 'mg' && !this.practice) return this.startMinigames();
     this.dm = false;
     this.variant = null;
     if (!this.practice && this.humanCount() > CONFIG.maxPlayers) {
@@ -1945,17 +2036,20 @@ export class Server {
   // winner: a team ('atk' / 'def') in 2v2, a player id in deathmatch, null for a draw
   matchOver(winner, reason) {
     this.phase = 'over';
-    const stats = [...this.players.values()].filter(p => !p.dummy && !(this.br && p.bot))
+    const stats = [...this.players.values()].filter(p => !p.dummy && !(this.br && p.bot) && !p.mgSub)
       .map(p => ({ id: p.id, name: p.name, team: p.team, kills: p.kills, deaths: p.deaths, hs: p.hs, dmg: p.dmg }));
     if (this.br) for (const s of stats) { const p = this.players.get(s.id); s.escaped = !!(p && p.escaped); s.time = p && p.escapeTime; s.how = p && p.brDeath; }
+    // (the Minigames: everyone's points, best first, also those who left during the match)
+    const standings = this.mg && this.mgHost ? this.mgHost.standings().map(e => ({ id: e.id, name: e.name, pts: e.pts, bot: e.bot })) : undefined;
     // (the Backrooms: each level of this run and its time, for "Run complete")
     const run = this.br ? [...(this.run || []), { level: this.pool ? 2 : this.gar ? 1 : 0, time: Math.round((this.levelEnd ?? this.timer) - (this.levelAt || 0)) }] : undefined;
-    this.broadcast({ t: 'over', winner, reason, score: this.score, stats, map: this.settings.map, mode: this.br ? 'br' : this.dm ? 'dm' : 'wingman', time: this.br ? Math.round(this.timer) : undefined, run, runTotal: this.br ? Math.round(this.levelEnd ?? this.timer) : undefined });      // (runTotal: the run's clock when the last one got out, rides between levels included)
+    this.broadcast({ t: 'over', winner, reason, score: this.score, stats, standings, map: this.settings.map, mode: this.mg ? 'mg' : this.br ? 'br' : this.dm ? 'dm' : 'wingman', time: this.br ? Math.round(this.timer) : undefined, run, runTotal: this.br ? Math.round(this.levelEnd ?? this.timer) : undefined });      // (runTotal: the run's clock when the last one got out, rides between levels included)
   }
 
   toLobby() {
     this.phase = 'lobby';
     if (this.br) this.brEnd();
+    if (this.mg) this.mgEnd();
     if (this.dm) {
       // back to the 2v2 teams everyone had before the deathmatch
       for (const p of this.players.values()) if (!p.dummy) p.team = p.lobbyTeam === 'def' ? 'def' : 'atk';
@@ -2024,6 +2118,9 @@ export class Server {
       case 'br':
         this.timer += dt;      // the clock counts up: how long you have been in there
         this.brTick();
+        break;
+      case 'mg':
+        if (this.mgHost) this.mgHost.tick();
         break;
       case 'end':
         this.timer -= dt;

@@ -733,3 +733,76 @@ i[data-icon] .ico { vertical-align: 0; }
   #note-canvas { width: min(calc(100vh - 44px), 300px); }
   .note-buttons button { padding: 9px 6px; font-size: .8rem; }
 }
+
+/* ---------------- the Minigames (mgplay.js) ---------------- */
+/* no guns, money, armour or map: the game's own bar on top, who is still in on the left */
+body.mg-mode #topbar, body.mg-mode #ammo, body.mg-mode #econ, body.mg-mode #armor, body.mg-mode #radar-wrap, body.mg-mode #buy-chip,
+body.mg-mode #hp, body.mg-mode #vitals, body.mg-mode #killfeed { display: none !important; }
+body.mg-mode #touch #btn-fire, body.mg-mode #touch #btn-fire-left, body.mg-mode #touch #btn-reload, body.mg-mode #touch #btn-alt,
+body.mg-mode #touch #btn-swap, body.mg-mode #touch #btn-drop, body.mg-mode #touch #btn-inspect, body.mg-mode #touch #btn-buy,
+body.mg-mode #touch #btn-light, body.mg-mode #touch #btn-note, body.mg-mode #touch #btn-map { display: none !important; }
+body.mg-mode.pool-ring #touch #btn-fire { display: grid !important; }      /* holding a floatie: the fire button throws it */
+body.mg-mode #touch #btn-fire svg { width: 50%; height: 50%; }
+#mg-top { top: calc(10px + var(--sat)); left: 50%; transform: translateX(-50%); text-align: center; min-width: 190px; max-width: 70vw;
+  background: rgba(10,11,13,.74); padding: 6px 18px 8px; border-radius: 12px; filter: drop-shadow(0 2px 6px rgba(0,0,0,.45)); }
+#mg-game { font: 600 .7rem var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+#mg-timer { font-size: 1.7rem; font-weight: 700; line-height: 1.1; min-height: .4em; font-variant-numeric: tabular-nums; }
+#mg-timer:empty { display: none; }
+#mg-timer.hot { color: #ff8a5a; }
+#mg-score { font: 600 .9rem var(--body); color: #fff; white-space: nowrap; }
+#mg-score:empty { display: none; }
+#mg-side { top: 50%; transform: translateY(-50%); left: calc(max(14px, 1.3vw) + var(--sal)); max-width: 40vw; font-size: max(10px, 1.6vh); pointer-events: none;
+  text-shadow: 0 0 .1em rgba(0,0,0,.95), 0 .06em .12em rgba(0,0,0,.9), 0 0 .6em rgba(0,0,0,.6); }
+#mg-side ol { list-style: none; margin: 0; padding: 0; display: grid; gap: .3em; }
+#mg-side li { display: flex; align-items: center; gap: .5em; font: 600 1em var(--body); color: #fff; }
+#mg-side li i { flex: none; width: .7em; height: .7em; border-radius: 50%; box-shadow: 0 0 0 .12em rgba(0,0,0,.6); }
+#mg-side li span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 12em; }
+#mg-side li b { color: #ffd27a; }
+#mg-side li .ico { width: 1.1em; height: 1.1em; color: #ff8a5a; }
+#mg-side li.me span { color: var(--accent); }
+#mg-side li.out { opacity: .5; }
+#mg-side li.out span { text-decoration: line-through; }
+#mg-intro { top: 30%; left: 50%; transform: translateX(-50%); width: min(640px, 90vw); text-align: center; pointer-events: none;
+  background: rgba(10,11,13,.72); border-radius: 16px; padding: 16px 22px 18px; text-shadow: 0 1px 3px rgba(0,0,0,.6); }
+#mg-round { display: block; font: 600 .74rem var(--body); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+#mg-title { display: block; font-size: clamp(1.5rem, 4.6vw, 2.5rem); margin: 4px 0 6px; color: #fff; }
+#mg-how { margin: 0 0 6px; font: 600 clamp(.85rem, 2.2vw, 1.05rem) var(--body); color: #fff; }
+#mg-keys { margin: 0; font: 500 clamp(.78rem, 2vw, .92rem) var(--body); color: rgba(255,255,255,.75); }
+#mg-keys .ico { width: 1.1em; height: 1.1em; vertical-align: -.2em; }
+#mg-team { margin: 6px 0 0; font: 600 .95rem var(--body); }
+#mg-team:empty { display: none; }
+#mg-count { font-size: clamp(2.4rem, 8vw, 4rem); font-weight: 700; line-height: 1; margin-top: 8px; color: var(--accent); }
+#mg-board { top: 50%; left: 50%; transform: translate(-50%, -50%); width: min(420px, 90vw); max-height: 78vh; overflow: auto; pointer-events: none;
+  background: rgba(10,11,13,.86); border: 1px solid var(--line); border-radius: 16px; padding: 14px 18px 12px; font-family: var(--body); }
+#mg-board h3 { margin: 0 0 8px; font: 700 1.05rem var(--display); display: flex; align-items: center; gap: .45em; }
+#mg-board h3 .ico { width: 1.2em; height: 1.2em; color: #ffd27a; }
+#mg-board table { width: 100%; border-collapse: collapse; }
+#mg-board td, #mg-board th { padding: 5px 6px; text-align: left; border-bottom: 1px solid var(--line); }
+#mg-board th { color: var(--muted); font: 600 .7rem var(--display); letter-spacing: .1em; text-transform: uppercase; }
+#mg-board td.pl { width: 1.6em; color: var(--muted); }
+#mg-board td.pts { font-weight: 700; text-align: right; }
+#mg-board th:last-child { text-align: right; }
+#mg-board td.gain { color: #9dffb5; }
+#mg-board tr.me td { color: var(--accent); }
+#mg-board small { display: block; margin-top: 8px; color: var(--muted); text-align: center; }
+#mg-board small:empty { display: none; }
+body.touch #mg-side { font-size: max(10px, 1.5vh); top: 42%; }
+@media (max-height: 460px) { #mg-intro { top: 18%; padding: 10px 16px 12px; } #mg-count { margin-top: 4px; } }
+/* lobby and Practice: the Minigames' options */
+.lobby-row .mg-opt { display: none; margin: 0; }
+#lobby.mg .lobby-row .mg-opt { display: grid; }
+#lobby.mg .lobby-row label.check.mg-opt { display: flex; }
+#lobby.mg:not(.mg-single) .lobby-row .mg-single { display: none; }
+#lobby.mg .ffa-list { display: block; }
+#lobby.mg .teams, #lobby.mg #btn-shuffle, #lobby.mg #map-cards, #lobby.mg .night-toggle, #lobby.mg .lobby-settings > .eyebrow { display: none; }
+.p-mg { display: none; }
+#practice.m-mg .p-mg { display: grid; }
+#practice.m-mg p.p-mg { display: block; }
+#practice.m-mg label.check.p-mg { display: flex; }
+#practice.m-mg:not(.mg-single) .p-mgsingle { display: none; }
+#practice.m-mg .p-count, #practice.m-mg .p-botopt { display: grid; }
+#practice.m-mg .p-map, #practice.m-mg .p-nightopt, #practice.m-mg #p-note { display: none; }
+.mode-pick.five { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 700px) { .mode-pick.five { grid-template-columns: 1fr 1fr; } }
+#mg-count.wait { font-size: clamp(1rem, 3vw, 1.3rem); color: rgba(255,255,255,.8); }
+body.mg-boardup #crosshair, body.mg-boardup #hint { display: none !important; }

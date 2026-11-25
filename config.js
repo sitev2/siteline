@@ -69,4 +69,6 @@ export const RULES = {
   dm: { killLimit: 30, timeLimit: 600, respawn: 1, minPlayers: 2, maxPlayers: 6 },
   // the Backrooms online: 2–6 players together (alone it is played from Practice)
   br: { minPlayers: 2, maxPlayers: 6 },
+  // the Minigames online: 2–6 players (alone, from Practice with bots)
+  mg: { minPlayers: 2, maxPlayers: 6 },
 };
