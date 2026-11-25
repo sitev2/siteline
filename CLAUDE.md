@@ -50,6 +50,7 @@ The only folder is `server/` (the optional home game server).
   Keep it secret: no buy-menu entry, no entry in the key settings (`w3` is a hidden fallback in `keys.js`).
   Only its owner sees a 10 s reminder ("[[spoon]] Press 3 for the spoon") the first time it turns up in a game. `reverseMap` ignores
   saved key settings for actions that no longer exist (an old one on key 3 used to block the spoon).
+- `drone.js`, `dronehost.js`, `dronemaps.js`, `dronephys.js`, `droneview.js` — FPV drones (test account only; see **FPV drones** below)
 - `bots.js` — bots for practice games only (range / bot match / bot deathmatch): `NavGrid` walking grid + `BotBrain`.
   Runs on the host; `Server.startBotGame(cfg)` starts them. Friends who join take a bot's place. Never add bots to normal matches.
   Bots hear footsteps / gunfire / the bomb (`Ears`), remember and share sightings, pre-aim, counter-strafe, use cover, and read
@@ -615,6 +616,69 @@ The only folder is `server/` (the optional home game server).
   - `check_minigames.mjs` also checks: the same flat, clear court on the Pool Hall and all three maps; the serve, re-toss, reach, in / out
     / under / net / touches / twice, side-outs and servers, set scoring and the cap, the spike and the lift, uneven teams, best of 3 ending
     at 2 sets with the same teams, Practice evening the bots and a bot set finishing, the Minigames' 4-minute limit.
+- **FPV drones** (owner's request, v3.0; `settings.mode = 'fpv'`, server phase `'fpv'`, `this.fpv`, `this.droneHost`): **only the account `test123`
+  has access for now** (`DRONES_OPEN = false` / `DRONE_TESTERS` / `dronesAllowed()` in `main.js`: the mode buttons in the lobby and Practice
+  and the Settings → Drones tab are hidden for everyone else, re-checked on login/logout in `hideBackrooms()`). Friends who join a tester's
+  room fly along (the lock is in the page, like the Backrooms' was): the host's game tells the room `{t:'settings', fpvOk}` and `Server`
+  only accepts mode 'fpv' / starts it with `settings.fpvOk` (Practice: always). Set `DRONES_OPEN = true` to open it to everyone.
+  1–6 pilots (`RULES.fpv`, `roomMax()` 6), no bots, no account stats. Its own client, NOT `Game`: `main.js startGame` makes a `DroneGame`
+  (drone.js) for `msg.mode === 'fpv'` (same interface: onMessage, destroy, paused, input.requestLock, onLoaded, applyGraphics; `fpvMode`).
+  - `dronephys.js` (no three.js; host, screens, checks): the drone is a sphere (`DRONE.r` 0.17 m) with a quaternion ([x,y,z,w], forward −Z),
+    thrust along its up axis (`DRONE.thrust` 40 m/s² ≈ 4 g, hovers at ~25 %), linear + quadratic drag (+ extra along its up axis), motor lag.
+    `FLIGHT`: **easy** (self-levelling; the sticks ask for a SPEED — forward 20 / sideways 12 m/s — and it tilts to get there and brakes when
+    let go; the throttle is a climb rate and the height holds itself), **angle** (self-levelling, you hold the throttle), **acro** (rates
+    with expo, keeps its attitude; the real thing). `stepDrone(d, inp, dt, mode, col, t)` in small sub-steps (≤ 12 cm), returns
+    `{ crash, bump }`: straight into anything at > `DRONE.crash` 7 m/s (the normal part of the speed) or touching water = crash; glancing
+    hits bounce. Turtle mode: upside down on the ground, any stick flips it back. `MapCollider` (drone maps: boxes turned about Y, upright
+    cylinders and cones, capsules, spheres, the height field, water rects, map edges + ceiling = soft walls, wind-turbine blades that spin
+    with the clock, `rotorBlades`) and `GridCollider` (the game's other maps: every world.js span is a box; `world.solid` shapes pushed out
+    the open way; water = `world.waterAt`). `gateCross(g, a, b)`: the segment a→b went through gate g front to back.
+  - `dronemaps.js` — the maps (all our own): free flight **Bando** (factory yard: roofless hall with window holes, a 4-storey concrete frame,
+    chimney, tanks + pipe rack, water tower, containers, pylons), **Skyline** (5×5 city blocks, twin towers with a sky bridge, a car park,
+    a building site with a tower crane, a spire, a park with the pads, a railway on stilts), **Valley** (river with a waterfall step,
+    stone bridge, farm, lake, 3 wind turbines whose blades are solid, a rock arch, ~500 trees); circuits **Meadow Cup** (12 gates incl.
+    a ring, arches and a dive gate on a scaffold), **Hangar** (indoor, 11 LED gates: under the cargo plane's wing, over the crane beam,
+    a dive, a container tunnel, under and on the catwalk), **Canyon Run** (14 gates round a gorge loop: a rock arch, a rock-roof tunnel,
+    a trestle bridge). Built from `box/cyl/cone/sph/cap` helpers + `gate()` / `course()` (gate 0 = start/finish; a gate's legs and frame
+    are capsules). `loadDroneMap(id)` (cached) builds the height field, the collider and spawns; for the game's other maps (every `MAPS`
+    id + arena, pool, garage: `existingMaps()`) it builds the `World` (dm maps 'large') and lifts its spawns onto the lowest floor, adding
+    pads round them up to 6. `gateRespawn(md, i)`: just past gate i facing the next.
+  - `droneview.js` — the look: sky dome, sun (its shadow box follows the camera), vertex-coloured terrain (`GROUND`: yard / grass / desert
+    strata), merged meshes per material with textures in metres (`MATS`, canvas textures: facades with lit windows, corrugated metal…),
+    instanced trees, water, the hangar's shell, deco (pads, roofs, waterfall, flags, tents, cars…), turbine rotors, gates (`addGates`:
+    a glowing tube; `paintGates`: next = orange with a pulsing halo, passed = green, the rest blue-white; chequered banner on the start),
+    and `makeDroneModel(colour, name)` (a 5-inch quad: X frame, motors, props that blur into discs, camera, battery, LEDs, a coloured dot
+    and name tag for others). The other maps are drawn by `buildMapScene` as usual (garage with its power on, Poolrooms' water mirror).
+  - `drone.js` — `DroneGame`: flies your drone (sends `{t:'ds', s:[x,y,z,qx,qy,qz,qw,f%,flags]}` every 40 ms), draws the others 0.12 s
+    behind the host's `dsnap` (interpolated), camera FPV (`settings.drone.tilt` uptilt, `fov`) or behind the drone (C), a goggles-style
+    OSD on `#fpv-osd` (mode, throttle bar with the hover mark, speed, height, artificial horizon, lap / race time / place / best lap,
+    the next gate boxed or an arrow towards it, standings, countdown, "SIGNAL LOST" + `#fpv-static` after a crash, then back after 1.6 s:
+    in a race just past your last gate, otherwise on your pad; R any time), crash sparks, chat (#chat-box, `#fpv-feed`), sounds
+    (`droneVoice` motor whine following the throttle, wind, `playDrone` crash / bump / gate / lap / finish / static; the 4 nearest
+    others heard). Controls (`DroneInput`): **Easy** W/S forward/back, A/D sideways, mouse or ←/→ turn, Space/Shift up/down;
+    **Angle/Acro** W or Space throttle up, S or Shift down (letting go = a hover), A/D yaw, arrows (or the mouse: Acro turns directly,
+    Angle moves a stick that springs back) pitch/roll; R reset, C camera, F (inspect key) cycles the flight mode, Y chat, Tab pilots.
+    Game controller (Gamepad API: 'pad' Mode 2, centre = hover) or an RC radio over USB ('radio', AETR axes). **Touch: two floating sticks
+    (left / right half of the screen) whose jobs the player chooses (owner's request): Settings → Drones → Layout Mode 1/2/3/4 or Custom
+    (each of the four directions: throttle / turn / tilt / roll / nothing, + Invert; picking a job moves the axis that had it), a picture
+    of the sticks (`drawStickPreview` in main.js), "throttle springs back" (Angle/Acro; else it stays where you leave it, like a radio),
+    stick size.** Buttons top right: reset, camera, pilots, chat, menu. `settings.drone` (`DRONE_DEFAULTS`, synced to the account);
+    changes apply at once; the pause menu has a Flight mode picker (`#pause-fly`), and Settings opens on the Drones tab while flying.
+  - `dronehost.js` — `DroneHost` (made in `Server.startDrones`): pads (`slots`), passes everyone's drone on (`dsnap` every tick), crashes
+    (`fpvfx`). Races: 'wait' (until every pilot's game has loaded, `fpvReady`, at most 12 s) → 'count' (5 s) → 'race' → over. A pilot's
+    progress is `n` gates passed in order (gate = (n−1) % gates; passing gate 0 again after all the others = a lap). The host takes a
+    claimed gate (`{t:'gate', n}`) only if it is the next one and their positions of the last 2 s came within `FPV.near` 6 m (+ the gate's
+    size), else `{k:'reject'}`. Laps 1/2/3/5 (`fpvLaps`); lap times from GO, best lap; places = finished by time, then most gates; once
+    the first finishes the rest get `FPV.tail` 45 s; everyone done → `Server.fpvOver(results)` → `over` (mode 'fpv'; `showFpvOver`).
+    Someone joining during a race flies but isn't placed (`late`). Free flight never ends by itself: the leader's pause menu has
+    "End free flight" (`{t:'fpvEnd'}`). Lobby: `#fpv-maps` cards + `#lobby-fpvother` (the other maps) + `#lobby-fpvlaps`; Practice:
+    `#p-fpvmap` (optgroups), `#p-fpvlaps`, `#p-fpvfly`.
+  - `node check_drones.mjs` (~3 s): pads clear on every map and a drone stays on them; room to take off; every gate's opening clear with
+    room before/after, counted only front to back through it; a 3D route through the air from the pads to gate 0 and from every gate to
+    the next; an Easy-mode autopilot flies a lap of each circuit with the real flight model (no crash); the flight model (height hold,
+    braking, soft/hard landings, a post at 16 m/s, a glancing wall, the lake, Acro rates, turtle); full races on the real host code with
+    pretend pilots (countdown, out-of-order / far-away gates turned down, laps, places, the 45 s, late joiners, leaving, Play again, free
+    flight online, fpvOk, the room size, ending free flight). Changes to `server.js`, `config.js` or the drone files need the home server updated.
 - `check_map.mjs` — `node check_map.mjs outpost` / `node check_map.mjs quarry large` checks every area and spawn is reachable
 - `check_br.mjs` — `node check_br.mjs 300` (or `node check_br.mjs 300 0 hard` for one level; `node check_br.mjs 1 <seed>` prints a map) checks
   Level 0 layouts on the real floor: start, key, levers and exit reachable with every ordinary door shut; every room reachable; each gate the

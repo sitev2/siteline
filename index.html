@@ -22,12 +22,12 @@
     // New .js files: add them to this list (libraries stay unversioned).
     (function () {
       var v = Date.parse(document.lastModified) || Date.now();
-      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'brdm', 'brfx', 'brmap', 'brview', 'buy', 'config', 'crosshair', 'filter', 'flashshadow', 'friends', 'game', 'garmap', 'garprops', 'garview', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'mghost', 'mgmap', 'mgplay', 'models', 'monster', 'net', 'netlog', 'nettest', 'poolfx', 'poolhost', 'poolmap', 'poolplay', 'poolprops', 'poolview', 'post', 'ragdoll', 'server', 'shifter', 'shiftmodel', 'textures', 'touchlayout', 'vbmaps', 'volley', 'weapons', 'world'];
+      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'brdm', 'brfx', 'brmap', 'brview', 'buy', 'config', 'crosshair', 'drone', 'dronehost', 'dronemaps', 'dronephys', 'droneview', 'filter', 'flashshadow', 'friends', 'game', 'garmap', 'garprops', 'garview', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'mghost', 'mgmap', 'mgplay', 'models', 'monster', 'net', 'netlog', 'nettest', 'poolfx', 'poolhost', 'poolmap', 'poolplay', 'poolprops', 'poolview', 'post', 'ragdoll', 'server', 'shifter', 'shiftmodel', 'textures', 'touchlayout', 'vbmaps', 'volley', 'weapons', 'world'];
       var imports = { three: './three.module.js' };
       for (var i = 0; i < files.length; i++) imports['./' + files[i] + '.js'] = './' + files[i] + '.js?v=' + v;
       window.SITELINE_V = v;
       // the small "Version" line at the bottom of the home page: the time this page was published (UTC), so it changes by itself with every update
-      var NUMBER = '2.9';      // the version number: raise it by hand with each update (1.0 → 1.1 → …); the date after it is automatic
+      var NUMBER = '3.0';      // the version number: raise it by hand with each update (1.0 → 1.1 → …); the date after it is automatic
       document.addEventListener('DOMContentLoaded', function () {
         var el = document.getElementById('version'), d = new Date(v);
         if (el && !isNaN(d)) el.textContent = 'Version ' + NUMBER + ' · ' + d.toISOString().slice(0, 10).replace(/-/g, '.');
@@ -122,6 +122,24 @@
     <button id="spec-prev" aria-label="Watch the previous player"><i data-icon="prev"></i></button>
     <span id="spec-name"></span>
     <button id="spec-next" aria-label="Watch the next player"><i data-icon="next"></i></button>
+  </div>
+
+  <!-- FPV drones (drone.js): the goggles' display, static after a crash, chat lines, and the touch sticks + buttons -->
+  <div id="fpv" class="hidden">
+    <canvas id="fpv-osd"></canvas>
+    <canvas id="fpv-static" class="hidden" width="160" height="90"></canvas>
+    <div id="fpv-feed"></div>
+    <div id="fpv-touch">
+      <div class="fpv-stick" id="fpv-stick-l"><i></i></div>
+      <div class="fpv-stick" id="fpv-stick-r"><i></i></div>
+      <div class="fpv-btns">
+        <button data-fpv="reset" id="fpv-reset" aria-label="Reset the drone"></button>
+        <button data-fpv="cam" id="fpv-cam" aria-label="Camera"></button>
+        <button data-fpv="board" id="fpv-boardbtn" aria-label="Pilots"></button>
+        <button data-fpv="chat" id="fpv-chat" aria-label="Chat"></button>
+        <button data-fpv="menu" id="fpv-menu" aria-label="Menu"></button>
+      </div>
+    </div>
   </div>
 
   <!-- ================= TOUCH CONTROLS ================= -->
@@ -228,6 +246,7 @@
           <button class="mode-btn" data-mode="br"><b>The Backrooms</b><small>2–6 players together: find the exit, no guns</small></button>
           <button class="mode-btn" data-mode="mg"><b>Minigames</b><small>2–6 players: party games with the floaties, no guns</small></button>
           <button class="mode-btn" data-mode="vb"><b>Volleyball</b><small>2–6 players in two teams, three maps</small></button>
+          <button class="mode-btn hidden" data-mode="fpv"><b>FPV Drones</b><small>1–6 pilots: free flight or races through gates</small></button>
         </div>
         <div class="ffa-list team"><h3>Players <small>free-for-all</small></h3><ul id="list-ffa"></ul></div>
         <div class="teams">
@@ -237,6 +256,8 @@
         <div class="lobby-settings">
           <div class="eyebrow">Map</div>
           <div id="map-cards" class="map-cards"></div>
+          <div id="fpv-maps" class="map-cards fpv-only"></div>
+          <label class="field fpv-only fpv-other"><select id="lobby-fpvother"></select></label>
           <div class="lobby-row">
             <div class="match-rules" id="match-rules"><b>2v2</b> · first to <b>9</b> · sides swap after round <b>8</b> · 8–8 is a draw</div>
             <label class="check night-toggle"><input type="checkbox" id="lobby-night"> <i data-icon="moon"></i> Night mode</label>
@@ -246,6 +267,7 @@
             <label class="field mg-opt mg-single"><span>Game</span><select id="lobby-mggame" class="mg-games"></select></label>
             <label class="field mg-opt mg-single"><span>Rounds</span><select id="lobby-mgrounds"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></label>
             <label class="check mg-opt"><input type="checkbox" id="lobby-mgteams"> Dodgeball in two teams (with 4 or 6 players)</label>
+            <label class="field fpv-opt"><span>Laps</span><select id="lobby-fpvlaps"><option value="1">1 lap</option><option value="2">2 laps</option><option value="3">3 laps</option><option value="5">5 laps</option></select></label>
             <label class="field vb-opt"><span>Match</span><select id="lobby-vbsets"><option value="1">One set</option><option value="3">Best of 3 sets</option><option value="5">Best of 5 sets</option></select></label>
             <button id="btn-shuffle" class="ghost host-only">Shuffle teams</button>
             <button id="btn-start" class="primary host-only">Start match</button>
@@ -265,6 +287,7 @@
           <button class="pmode-btn mode-btn" data-pmode="br"><b>The Backrooms</b><small>Find the exit before it finds you</small></button>
           <button class="pmode-btn mode-btn" data-pmode="mg"><b>Minigames</b><small>Party games with the floaties, against bots</small></button>
           <button class="pmode-btn mode-btn" data-pmode="vb"><b>Volleyball</b><small>Two teams, with bots</small></button>
+          <button class="pmode-btn mode-btn hidden" data-pmode="fpv"><b>FPV Drones</b><small>Free flight or a time trial</small></button>
         </div>
         <label class="field p-map"><span>Map</span><select id="p-map"></select></label>
         <p class="note p-br">A new random maze every time. No guns: find the exit door and get out. Something else is in there with you: walking is quiet, sprinting (Shift) is not. Watch out for the holes in the floor. Friends can join you from the pause menu.</p>
@@ -274,6 +297,11 @@
         <label class="field p-mg p-mgsingle"><span>Rounds</span><select id="p-mgrounds"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></label>
         <label class="check p-mg"><input type="checkbox" id="p-mgteams"> Dodgeball in two teams (with 4 or 6 players)</label>
         <p class="note p-vb">Two teams, one net. Hit the ball over (it goes where you look) before it lands on your side: 3 touches a side, sets to 11. The bots fill both teams (one more joins if the teams would be uneven).</p>
+        <label class="field p-fpv"><span>Map</span><select id="p-fpvmap"></select></label>
+        <p class="note p-fpv" id="p-fpvnote"></p>
+        <label class="field p-fpv"><span>Laps</span><select id="p-fpvlaps"><option value="1">1 lap</option><option value="2">2 laps</option><option value="3">3 laps</option><option value="5">5 laps</option></select></label>
+        <label class="field p-fpv"><span>Flight mode</span><select id="p-fpvfly"><option value="easy">Easy: levels itself and holds its height</option><option value="angle">Angle: levels itself, you hold the throttle</option><option value="acro">Acro: full manual, like a real FPV drone</option></select></label>
+        <p class="note p-fpv">Controls and the phone sticks: Settings → Drones. A game controller or an RC radio plugged in over USB works too. Friends can join from the pause menu.</p>
         <label class="field p-vb"><span>Match</span><select id="p-vbsets"><option value="1">One set</option><option value="3">Best of 3 sets</option><option value="5">Best of 5 sets</option></select></label>
         <label class="check p-range"><input type="checkbox" id="p-bots"> Bots on the range</label>
         <label class="field p-count"><span>Number of bots <output id="p-count-out"></output></span><input type="range" id="p-count" min="1" max="8" step="1"></label>
@@ -306,6 +334,7 @@
           <button class="tab" data-tab="crosshair">Crosshair</button>
           <button class="tab" data-tab="layout">Phone layout</button>
           <button class="tab" data-tab="graphics">Graphics</button>
+          <button class="tab hidden" data-tab="drones">Drones</button>
         </div>
 
         <div class="tab-page" data-page="general">
@@ -367,6 +396,29 @@
           </label>
           <div id="gfx-custom" class="gfx-grid"></div>
           <label class="field"><span>Field of view <output id="fov-out"></output></span><input type="range" id="set-fov" min="60" max="100" step="1"></label>
+        </div>
+
+        <div class="tab-page hidden" data-page="drones">
+          <label class="field"><span>Flight mode</span><select id="dr-fly"><option value="easy">Easy: levels itself and holds its height</option><option value="angle">Angle: levels itself, you hold the throttle</option><option value="acro">Acro: full manual, like a real FPV drone</option></select></label>
+          <label class="field"><span>Camera</span><select id="dr-cam"><option value="fpv">FPV: from the drone's camera</option><option value="chase">Behind the drone</option></select></label>
+          <label class="field"><span>Camera angle (tilted up) <output id="dr-tilt-out"></output></span><input type="range" id="dr-tilt" min="0" max="50" step="1"></label>
+          <label class="field"><span>Field of view <output id="dr-fov-out"></output></span><input type="range" id="dr-fov" min="60" max="120" step="1"></label>
+          <h3>Phone and tablet sticks</h3>
+          <p class="note">Choose what each stick does. Modes 1–4 are the usual radio layouts; Custom lets you give every direction its own job.</p>
+          <label class="field"><span>Layout</span><select id="dr-sticks"><option value="mode2">Mode 2: left = throttle + turn, right = tilt + roll</option><option value="mode1">Mode 1: left = tilt + turn, right = throttle + roll</option><option value="mode3">Mode 3: left = tilt + roll, right = throttle + turn</option><option value="mode4">Mode 4: left = throttle + roll, right = tilt + turn</option><option value="custom">Custom</option></select></label>
+          <canvas id="dr-preview" class="dr-preview" width="420" height="190"></canvas>
+          <div class="dr-axes">
+            <span>Left stick up / down</span><select id="dr-ly" class="dr-axis"></select><label class="check"><input type="checkbox" id="dr-inv-ly"> Invert</label>
+            <span>Left stick left / right</span><select id="dr-lx" class="dr-axis"></select><label class="check"><input type="checkbox" id="dr-inv-lx"> Invert</label>
+            <span>Right stick up / down</span><select id="dr-ry" class="dr-axis"></select><label class="check"><input type="checkbox" id="dr-inv-ry"> Invert</label>
+            <span>Right stick left / right</span><select id="dr-rx" class="dr-axis"></select><label class="check"><input type="checkbox" id="dr-inv-rx"> Invert</label>
+          </div>
+          <label class="check"><input type="checkbox" id="dr-spring"> Throttle stick springs back to the middle (Angle / Acro; the middle is a hover)</label>
+          <label class="field"><span>Stick size <output id="dr-size-out"></output></span><input type="range" id="dr-size" min="0.7" max="1.5" step="0.05"></label>
+          <h3>Keyboard, controller, radio</h3>
+          <p class="note">Easy: W/S forward/back, A/D sideways, mouse or ←/→ turns, Space/Shift up/down. Angle and Acro: W/Space throttle up, S/Shift down, A/D turn, the mouse or arrow keys tilt and roll. R resets, C switches the camera, F changes the flight mode.</p>
+          <label class="field"><span>Game controller</span><select id="dr-pad"><option value="pad">Gamepad (left stick throttle + turn)</option><option value="radio">RC radio over USB (AETR channel order)</option></select></label>
+          <button id="btn-dr-reset" class="ghost">Reset drone settings</button>
         </div>
 
         <p class="note">Graphics and control changes apply from the next match.</p>
@@ -490,9 +542,11 @@
           <div><span class="eyebrow">Invite friends</span><b id="pause-code">-----</b></div>
           <button id="btn-pause-invite" class="secondary">Copy invite link</button>
         </div>
+        <div id="pause-fpv" class="hidden"><label class="field"><span>Flight mode</span><select id="pause-fly"><option value="easy">Easy: levels itself and holds its height</option><option value="angle">Angle: levels itself, you hold the throttle</option><option value="acro">Acro: full manual, like a real FPV drone</option></select></label></div>
         <button id="btn-resume" class="primary">Resume</button>
         <button id="btn-fullscreen" class="secondary">Full screen</button>
         <button id="btn-pause-settings" class="ghost">Settings</button>
+        <button id="btn-fpv-end" class="secondary hidden">End free flight (back to the lobby)</button>
         <button id="btn-leave" class="danger">Leave match</button>
       </div>
     </section>

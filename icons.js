@@ -51,6 +51,10 @@ const PATHS = {
   // a volleyball: a ball with its curved panel seams (Volleyball: who serves)
   ball: `<circle ${S} cx="12" cy="12" r="8.5"/><path ${S} d="M12 3.5c-1.5 3.5-1.2 7 1 9.5M20.3 13.5c-3.6-.6-6.6.2-8.3 2.9M5.6 17.8c2.2-2.9 3.4-6.2 2.6-9.8"/>`,
   trophy: `<path ${S} d="M7 4h10v5a5 5 0 0 1-10 0z"/><path ${S} d="M7 6H4v1.5A3.5 3.5 0 0 0 7.5 11M17 6h3v1.5a3.5 3.5 0 0 1-3.5 3.5M12 14v3.5M8 20.5h8M9.5 17.5h5v3h-5z"/>`,
+  // FPV drones: a quad seen from above, a camera, a chequered flag
+  drone: `<circle ${S} cx="5.5" cy="5.5" r="3"/><circle ${S} cx="18.5" cy="5.5" r="3"/><circle ${S} cx="5.5" cy="18.5" r="3"/><circle ${S} cx="18.5" cy="18.5" r="3"/><path ${S} d="M7.6 7.6l2.4 2.4M16.4 7.6L14 10M7.6 16.4L10 14M16.4 16.4L14 14"/><rect ${S} x="9.5" y="9.5" width="5" height="5" rx="1"/>`,
+  camera: `<path ${S} d="M3 7.5h4l1.6-2.5h6.8L17 7.5h4v11.5H3z"/><circle ${S} cx="12" cy="13" r="3.6"/>`,
+  flag: `<path ${S} d="M5 21V3.5"/><path ${S} d="M5 4h13.5v9H5"/><path ${F} d="M5 4h4.5v4.5H5zM14 4h4.5v4.5H14zM9.5 8.5H14V13H9.5z"/>`,
 };
 
 export function icon(name) {

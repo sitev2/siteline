@@ -32,6 +32,8 @@ A free, browser-based 2v2 tactical shooter (wingman). Two teams of two, one bomb
 - 2v2, up to 4 players per room. **First to 9 rounds** wins, the teams **swap sides after round 8**, and 8–8 is a draw. Rounds last 1:55, the buy menu is open for the first 20 seconds.
 - **Bomb:** plant in 3.2 s, explodes 40 s later. Defuse takes 10 s (5 s with a kit) and you must keep looking at it. The blast is a shockwave that walls block — while the bomb ticks the floor glows where it would hurt you and your health bar shows how much damage you'd take.
 
+- **FPV drones** (still being tested: only the `test123` account sees them; friends who join that account's room fly along) for 1–6 pilots. Fly a small racing drone through the goggles' view (or from behind it). **Free flight** on three drone maps (**Bando**, an empty factory yard; **Skyline**, city blocks with towers, a crane and a car park; **Valley**, a river with a waterfall, a farm and wind turbines) or on any of the game's other maps, and **races** through gates on three circuits (**Meadow Cup**, **Hangar**, **Canyon Run**) over 1, 2, 3 or 5 laps, with places and best laps. Three ways to fly: **Easy** (levels itself and holds its height), **Angle** (levels itself, you hold the throttle) and **Acro** (full manual, like a real FPV drone). Keyboard + mouse, a game controller or an RC radio over USB, or two touch sticks whose layout you choose (Settings → Drones).
+
 ## Put it on GitHub Pages
 
 1. Create a new repository on GitHub (e.g. `siteline`).
@@ -100,6 +102,7 @@ The host measures each player's round-trip time every 2 seconds. Under 80 ms is 
 - **Bot deathmatch:** you against 1–3 bots on the deathmatch maps (or the 2v2 maps with 3 players).
 - **Minigames:** a party run or one game against 1–5 bots (Pool Ball gets an extra bot if the teams would be uneven).
 - **Volleyball:** pick a map and one set or best of 3 / 5, with 1–5 bots (one more joins if the teams would be uneven).
+- **FPV drones** (test account only for now): free flight on any map, or a time trial on a circuit (no bots).
 
 Bots come in **easy, normal and hard**. Harder bots react faster, aim better, control recoil and go for headshots more often.
 
@@ -132,6 +135,8 @@ config.js             network settings and match rules (rounds to win, halftime,
 models.js, textures.js, audio.js, input.js, hud.js
 three.module.js, three.core.js, peerjs.min.js, cannon-es.js   bundled libraries (MIT licensed)
 check_map.mjs         checks a map's routes connect and draws a preview
+drone.js, dronehost.js, dronemaps.js, dronephys.js, droneview.js   FPV drones: the game on screen, the race on the host, the maps, flight + collisions, the look
+check_drones.mjs      checks the drone maps, the flight model and the races (node check_drones.mjs)
 ```
 
 ## Cover and wall-banging

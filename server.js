@@ -14,6 +14,8 @@ import { MiniHost, MiniBot } from './mghost.js';
 import { MG_GAMES } from './mgmap.js';
 import { BR_LEVELS, brLevel, brVariant, wallFace, brSection } from './brmap.js';
 import { cleanChat, CHAT_LIMIT } from './filter.js';
+import { DroneHost, FPV } from './dronehost.js';
+import { isDroneMapId } from './dronemaps.js';
 
 const BR_LIVES = 3;            // Backrooms: lives each player has (a caught player comes back in the start room)
 import {
@@ -50,10 +52,11 @@ export class Server {
     this.ownerId = ownerId;
     this.localId = localId;
     this.players = new Map();
-    this.settings = { map: 'outpost', winRounds: RULES.winRounds, mode: 'wingman', level: 'normal', mgRun: 'party', mgGame: 'dodge', mgRounds: 3, mgTeams: false, vbSets: 3 };   // level: Backrooms difficulty   // mode: 'wingman' (2v2 bomb), 'dm' (deathmatch), 'br' (Backrooms) or 'mg' (Minigames: mgRun 'party' | 'single', mgGame, mgRounds 1–5, mgTeams: Dodgeball in two teams)
+    this.settings = { map: 'outpost', winRounds: RULES.winRounds, mode: 'wingman', level: 'normal', mgRun: 'party', mgGame: 'dodge', mgRounds: 3, mgTeams: false, vbSets: 3, fpvMap: 'meadow', fpvLaps: 3, fpvOk: false };   // fpv: FPV drones (dronehost.js): fpvMap, fpvLaps; fpvOk = the host's game says this host may play it (test account only for now)   // level: Backrooms difficulty   // mode: 'wingman' (2v2 bomb), 'dm' (deathmatch), 'br' (Backrooms) or 'mg' (Minigames: mgRun 'party' | 'single', mgGame, mgRounds 1–5, mgTeams: Dodgeball in two teams)
     this.dm = false;               // true while a deathmatch is being played
     this.br = false;               // true while a Backrooms escape is being played
     this.mg = false;               // true while the Minigames are being played (mghost.js: this.mgHost)
+    this.fpv = false;              // true while FPV drones are flying (dronehost.js: this.droneHost)
     this.variant = null;           // deathmatch map size: 'small' or 'large'
     this.swapped = false;          // true after the halftime side swap
     this.squadScore = [0, 0];      // squad 0 starts as attackers, squad 1 as defenders
@@ -110,6 +113,7 @@ export class Server {
   // how many real people this room takes right now: 4 for 2v2, more for deathmatch and the Backrooms
   // (HostNet and the home server turn the next one away)
   roomMax() {
+    if (this.fpv || this.settings.mode === 'fpv') return RULES.fpv.maxPlayers;
     if (this.mg || this.settings.mode === 'mg' || this.settings.mode === 'vb') return RULES.mg.maxPlayers;
     if (this.br || this.settings.mode === 'br') return RULES.br.maxPlayers;
     if (this.dm || this.settings.mode === 'dm') return RULES.dm.maxPlayers;
@@ -138,14 +142,20 @@ export class Server {
     };
     p.spoon = hasSpoon(p.name);    // the secret spoon: only for the player with that name
     this.players.set(id, p);
-    const back = this.phase !== 'lobby' && this.phase !== 'over' ? this.restoreLeaver(p) : false;
-    if (this.botCfg && this.phase !== 'lobby' && !this.br && !this.mg) this.replaceBotWith(p);
+    const back = this.phase !== 'lobby' && this.phase !== 'over' && !this.fpv ? this.restoreLeaver(p) : false;
+    if (this.botCfg && this.phase !== 'lobby' && !this.br && !this.mg && !this.fpv) this.replaceBotWith(p);
     this.send(id, { t: 'welcome', id, settings: this.settings, phase: this.phase, roster: this.roster(), practice: this.practice });
     if (this.practice && this.phase === 'practice') {
       // practice range: start shooting straight away
       this.send(id, this.startMsg());
       this.send(id, this.dropsMsg());
       this.later(0.3, () => this.respawn(p));
+    } else if (this.fpv && this.phase === 'fpv') {
+      // FPV drones: a friend who joins gets a pad and flies straight away (in a race already on: not in the standings)
+      Object.assign(p, { team: 'ffa', w: 'none', inv: { primary: null, secondary: null }, money: 0, alive: true });
+      this.droneHost.join(p, true);
+      this.send(id, this.startMsg());
+      if (this.droneHost.race && this.droneHost.ph === 'race') this.later(0.5, () => this.send(id, { t: 'toast', text: 'A race is on: fly round the course, you race in the next one' }));
     } else if (this.mg && this.phase === 'mg') {
       // the Minigames: a friend who joins watches until the next round starts (mghost.js startRound)
       Object.assign(p, { team: 'ffa', w: 'none', inv: { primary: null, secondary: null }, money: 0, alive: false, mgLate: true });
@@ -200,7 +210,7 @@ export class Server {
   // Someone who leaves a running match is remembered by name, so if they rejoin they get their
   // team, score and money back.
   rememberLeaver(p) {
-    if (p.bot || p.dummy || this.practice || this.br || this.mg || this.phase === 'lobby' || this.phase === 'over') return;
+    if (p.bot || p.dummy || this.practice || this.br || this.mg || this.fpv || this.phase === 'lobby' || this.phase === 'over') return;
     if (!this.gone) this.gone = new Map();
     this.gone.set(p.name.toLowerCase(), {
       dm: this.dm, squad: p.squad, kills: p.kills, deaths: p.deaths, hs: p.hs, dmg: p.dmg, money: p.money, dmLoadout: p.dmLoadout,
@@ -229,7 +239,7 @@ export class Server {
     if (this.mg && this.mgHost) this.mgHost.leave(p);
     this.bots.delete(id);
     // a friend left a practice game: a bot takes their place again
-    if (this.botCfg && !p.bot && id !== this.localId && this.phase !== 'lobby' && this.phase !== 'over') {
+    if (this.botCfg && !this.fpv && !p.bot && id !== this.localId && this.phase !== 'lobby' && this.phase !== 'over') {
       this.later(0.1, () => this.refillBot(p.team));
     }
     if (this.bomb.carrier === id && this.bomb.state === 'carried') this.dropBomb(p);
@@ -240,6 +250,7 @@ export class Server {
       this.brGone.set(p.name.toLowerCase(), { lives: p.lives ?? BR_LIVES, escaped: !!p.escaped, escapeTime: p.escapeTime, brDeath: p.brDeath, alive: !!p.alive, respawning: !!p.respawning });
     }
     this.players.delete(id);
+    if (this.fpv && this.droneHost) this.droneHost.leave(p);
     if (id === this.ownerId) {
       const next = [...this.players.values()].find(q => !q.dummy && !q.bot);
       if (next) {
@@ -275,6 +286,12 @@ export class Server {
     if (this.mg && ['shot', 'melee', 'buy', 'refund', 'drop', 'pick', 'note', 'door', 'switch', 'boost', 'fell', 'slide', 'valve', 'drain'].includes(msg.t)) return;
     if (this.mg && (msg.t === 'ring' || msg.t === 'throw')) { if (this.phase === 'mg' && this.mgHost) this.mgHost.msg(p, msg); return; }
     if (msg.t === 'mgReady') { if (this.mg && this.mgHost) this.mgHost.ready(p); return; }      // (their game has loaded: mghost.js)
+    // FPV drones: where your drone is, gates, crashes go to dronehost.js; the room's leader can end free flight
+    if (this.fpv) {
+      if (msg.t === 'ds' || msg.t === 'gate' || msg.t === 'crash' || msg.t === 'reset' || msg.t === 'fpvReady') { if (this.phase === 'fpv' && this.droneHost) this.droneHost.msg(p, msg); return; }
+      if (msg.t === 'fpvEnd') { if (id === this.ownerId && this.phase === 'fpv' && this.droneHost) this.droneHost.end(); return; }
+      if (['shot', 'melee', 'buy', 'refund', 'drop', 'pick', 'note', 'door', 'switch', 'boost', 'fell', 'slide', 'valve', 'drain', 'ring', 'throw', 'st'].includes(msg.t)) return;
+    }
     switch (msg.t) {
       case 'st': return this.onState(p, msg);
       case 'shot': return this.onShot(p, msg);
@@ -332,7 +349,11 @@ export class Server {
         return;
       case 'settings':
         if (id !== this.ownerId || this.phase !== 'lobby') return;
-        if (msg.mode === 'wingman' || msg.mode === 'dm' || msg.mode === 'br' || msg.mode === 'mg' || msg.mode === 'vb') this.settings.mode = msg.mode;
+        // FPV drones: only when the host's game says this host may play them (the test account, for now)
+        if (typeof msg.fpvOk === 'boolean') { this.settings.fpvOk = msg.fpvOk; if (!msg.fpvOk && this.settings.mode === 'fpv') this.settings.mode = 'wingman'; }
+        if (msg.mode === 'wingman' || msg.mode === 'dm' || msg.mode === 'br' || msg.mode === 'mg' || msg.mode === 'vb' || (msg.mode === 'fpv' && this.settings.fpvOk)) this.settings.mode = msg.mode;
+        if (isDroneMapId(msg.fpvMap)) this.settings.fpvMap = msg.fpvMap;
+        if (FPV.laps.includes(msg.fpvLaps)) this.settings.fpvLaps = msg.fpvLaps;
         // the Volleyball mode: a match of 1 set, or the best of 3 or 5
         if (msg.vbSets === 1 || msg.vbSets === 3 || msg.vbSets === 5) this.settings.vbSets = msg.vbSets;
         // the Minigames: a party run or one game, how many rounds of it, Dodgeball in teams (4 or 6 players)
@@ -855,8 +876,9 @@ export class Server {
   // ---------- match flow ----------
   startMsg() {
     return {
-      t: 'start', map: this.settings.map, settings: this.settings, roster: this.roster(), practice: this.practice, phase: this.phase,
-      mode: this.mg ? 'mg' : this.br ? 'br' : this.dm ? 'dm' : 'wingman', variant: this.variant,
+      t: 'start', map: this.fpv ? this.fpvMap : this.settings.map, settings: this.settings, roster: this.roster(), practice: this.practice, phase: this.phase,
+      mode: this.fpv ? 'fpv' : this.mg ? 'mg' : this.br ? 'br' : this.dm ? 'dm' : 'wingman', variant: this.variant,
+      fpv: this.fpv && this.droneHost ? this.droneHost.state() : undefined,       // FPV drones: the race so far, everyone's pad
       doors: (this.br || this.dm) && this.world && this.world.doors.length ? this.world.doors.map(d => (d.broken ? 2 : d.open ? 1 : 0)) : undefined,     // 2 = kicked in
       notes: this.br ? this.notes : undefined,
       key: this.br && this.brKey ? (this.brKey.holder ? 1 : 0) : undefined,      // the red key isn't on its shelf
@@ -869,6 +891,7 @@ export class Server {
 
   // keep the chosen map valid for the mode and the number of players in the room
   fixMap() {
+    if (this.settings.mode === 'fpv') return;          // (drones keep their own map choice: fpvMap)
     if (this.settings.mode === 'br') { this.settings.map = 'backrooms'; return; }
     if (this.settings.mode === 'mg') { this.settings.map = 'arena'; return; }
     if (this.settings.mode === 'vb') { if (!isVbMap(this.settings.map)) this.settings.map = mapsFor('vb')[0]; return; }
@@ -935,7 +958,16 @@ export class Server {
     this.dm = false;
     if (this.br) this.brEnd();
     if (this.mg) this.mgEnd();
+    if (this.fpv) this.fpvEnd();
     const humans = [...this.players.values()];
+    if (cfg.kind === 'fpv') {
+      // FPV drones in Practice: on your own (friends can join from the pause menu); a circuit is a time trial
+      this.settings.mode = 'fpv';
+      this.settings.fpvMap = isDroneMapId(cfg.map) ? cfg.map : 'meadow';
+      this.settings.fpvLaps = FPV.laps.includes(cfg.laps) ? cfg.laps : 3;
+      this.startDrones();
+      return;
+    }
     if (cfg.kind === 'vb') {
       // the Volleyball mode against bots: cfg.count bots (one more if the teams would be uneven), cfg.map, cfg.sets
       this.settings.mode = 'vb';
@@ -1225,6 +1257,41 @@ export class Server {
   // ---------- the Minigames (mgmap.js: the arena; mghost.js: the rules, the floaties, the bots) ----------
   // A party run (5 rounds of random games) or one game for 1–5 rounds. Online 2–6 players; in Practice bots fill in.
   // vb: the Volleyball mode instead (one of its maps, a match of sets: the same engine, mghost.js, with only Volleyball)
+  // ---------- FPV drones (dronehost.js) ----------
+  startDrones() {
+    const n = this.humans().length, F = RULES.fpv;
+    if (!this.botCfg && (n < F.minPlayers || n > F.maxPlayers || !this.settings.fpvOk)) {
+      this.send(this.ownerId, { t: 'toast', text: !this.settings.fpvOk ? 'FPV drones are still being tested.' : `FPV drones take ${F.maxPlayers} players at most.` });
+      return;
+    }
+    if (this.br) this.brEnd();
+    if (this.mg) this.mgEnd();
+    for (const [id, p] of [...this.players]) if (p.bot) { this.bots.delete(id); this.players.delete(id); }
+    if (!isDroneMapId(this.settings.fpvMap)) this.settings.fpvMap = 'meadow';
+    this.dm = false; this.fpv = true; this.fpvMap = this.settings.fpvMap;
+    this.world = null; this.variant = null;
+    this.bomb = this.freshBomb();
+    this.drops.clear();
+    for (const p of this.players.values()) {
+      if (p.dummy) continue;
+      if (this.phase === 'lobby') p.lobbyTeam = p.team;
+      Object.assign(p, { team: 'ffa', w: 'none', inv: { primary: null, secondary: null }, ammo: {}, armor: 0, helmet: false, kit: false, money: 0, alive: true, kills: 0, deaths: 0, hs: 0, dmg: 0, q: null });
+    }
+    this.droneHost = new DroneHost(this, { map: this.fpvMap, laps: this.settings.fpvLaps });
+    this.phase = 'fpv';
+    this.broadcast(this.startMsg());
+    this.broadcastRoster();
+  }
+  fpvEnd() {
+    for (const p of this.humans()) { p.team = p.lobbyTeam === 'def' ? 'def' : 'atk'; p.w = STARTER_PISTOL[p.team]; p.inv = { primary: null, secondary: STARTER_PISTOL[p.team] }; p.q = null; p.alive = false; }
+    this.fpv = false; this.droneHost = null;
+  }
+  // the race is over (results: everyone's place, time, best lap), or the leader ended free flight (results null)
+  fpvOver(results) {
+    this.phase = 'over';
+    this.broadcast({ t: 'over', mode: 'fpv', map: this.fpvMap, race: !!results, results: results || [], laps: this.droneHost ? this.droneHost.laps : 0 });
+  }
+
   startMinigames(vb = false) {
     const n = this.humans().length, total = [...this.players.values()].filter(p => !p.dummy).length, M = RULES.mg;
     const what = vb ? 'Volleyball' : 'The Minigames';
@@ -1850,6 +1917,7 @@ export class Server {
       return this.settings.stage === 1 && this.settings.l1 ? this.startGarage() : this.startBackrooms();
     }
     if (this.settings.mode === 'dm' && !this.practice) return this.startDeathmatch();
+    if (this.settings.mode === 'fpv' && !this.practice) return this.startDrones();
     if (this.settings.mode === 'mg' && !this.practice) return this.startMinigames();
     if (this.settings.mode === 'vb' && !this.practice) return this.startMinigames(true);
     this.dm = false;
@@ -2068,6 +2136,7 @@ export class Server {
 
   toLobby() {
     this.phase = 'lobby';
+    if (this.fpv) this.fpvEnd();
     if (this.br) this.brEnd();
     if (this.mg) this.mgEnd();
     if (this.dm) {
@@ -2098,6 +2167,8 @@ export class Server {
       this.pingTimer = 2;
       for (const p of this.players.values()) if (!p.dummy && p.id !== this.localId) this.send(p.id, { t: 'ping', ts: now });
     }
+    // FPV drones: the race and everyone's drones (dronehost.js); nothing else runs
+    if (this.fpv) { if (this.phase === 'fpv' && this.droneHost) this.droneHost.tick(dt); return; }
     if (!this.world || this.phase === 'lobby') return;
     if (this.bots.size) for (const brain of this.bots.values()) brain.update(dt, now / 1000);
     if (this.phase !== 'over') this.autoPickup();

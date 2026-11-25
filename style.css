@@ -819,3 +819,59 @@ body.mg-boardup #crosshair, body.mg-boardup #hint { display: none !important; }
 .mode-pick.six { grid-template-columns: repeat(3, 1fr); }
 @media (max-width: 700px) { .mode-pick.six { grid-template-columns: 1fr 1fr; } }
 #mg-score small { font-size: .8em; color: rgba(255,255,255,.75); }
+
+/* ---------------- FPV drones (drone.js) ---------------- */
+.mode-pick.six { grid-template-columns: repeat(3, 1fr); }
+.mode-pick.seven { grid-template-columns: repeat(3, 1fr); }
+@media (max-width: 700px) { .mode-pick.seven { grid-template-columns: 1fr 1fr; } }
+/* the lobby: one list of pilots, the drone maps instead of the map cards, laps for a circuit */
+.fpv-only, .lobby-row .fpv-opt { display: none; }
+#lobby.fpv .ffa-list { display: block; }
+#lobby.fpv .teams, #lobby.fpv #btn-shuffle, #lobby.fpv #map-cards, #lobby.fpv .night-toggle { display: none; }
+#lobby.fpv .fpv-only { display: grid; }
+#lobby.fpv .lobby-row .fpv-opt { display: grid; margin: 0; }
+#lobby.fpv .lobby-row .fpv-opt.hidden, #lobby.fpv .fpv-only.hidden { display: none; }
+.fpv-card { text-align: left; grid-template-columns: 1fr; padding: 4px; }
+.fpv-card > div { padding: 8px 10px; display: grid; gap: 4px; }
+.fpv-card .map-size { margin-top: 0; }
+.fpv-other { margin: 8px 0 4px; }
+/* Practice */
+.p-fpv { display: none; }
+#practice.m-fpv .p-fpv { display: grid; }
+#practice.m-fpv p.p-fpv { display: block; }
+#practice.m-fpv .p-fpv.hidden { display: none; }
+#practice.m-fpv .p-map, #practice.m-fpv .p-nightopt, #practice.m-fpv #p-note { display: none; }
+/* Settings → Drones */
+.dr-preview { width: 100%; max-width: 420px; height: auto; aspect-ratio: 420 / 190; display: block; margin: 4px auto; background: rgba(255,255,255,.04); border-radius: 12px; }
+.dr-axes { display: grid; grid-template-columns: auto 1fr auto; gap: 8px 10px; align-items: center; font-size: .9rem; }
+.dr-axes select { padding: 8px; border-radius: 8px; background: rgba(255,255,255,.06); border: 1px solid var(--line); }
+.dr-axes select:disabled { opacity: .55; }
+@media (max-width: 520px) { .dr-axes { grid-template-columns: 1fr auto; } .dr-axes > span { grid-column: 1 / -1; margin-top: 4px; } }
+#pause-fpv { display: grid; min-width: 0; }
+#pause-fpv .field, #pause-fpv select { min-width: 0; width: 100%; }
+#pause-fpv select { text-overflow: ellipsis; }
+#pause-fpv.hidden { display: none; }
+/* in flight: the goggles' display over the picture; the shooter's HUD and buttons are not used */
+body.fpv-mode #hud, body.fpv-mode #touch { display: none !important; }
+#fpv { position: fixed; inset: 0; z-index: 20; pointer-events: none; }
+#fpv.hidden { display: none; }
+#fpv-osd { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#fpv-static { position: absolute; inset: 0; width: 100%; height: 100%; image-rendering: pixelated; opacity: .82; mix-blend-mode: screen; pointer-events: none; }
+#fpv-static.hidden { display: none; }
+#fpv-feed { position: absolute; left: calc(16px + var(--sal)); bottom: calc(70px + var(--sab)); display: grid; gap: 3px; max-width: min(520px, 70vw);
+  font: 700 .9rem ui-monospace, Menlo, Consolas, monospace; text-shadow: 0 0 3px #000, 0 0 3px #000; pointer-events: none; }
+body.touch #fpv-feed { bottom: auto; top: calc(110px + var(--sat)); left: 50%; transform: translateX(-50%); text-align: center; }
+#fpv-touch { display: none; position: absolute; inset: 0; pointer-events: auto; touch-action: none; }
+body.touch #fpv-touch { display: block; }
+.fpv-stick { --r: 62px; position: absolute; width: calc(var(--r) * 2); height: calc(var(--r) * 2); border-radius: 50%; transform: translate(-50%, -50%);
+  border: 2px solid rgba(255,255,255,.28); background: rgba(20,21,25,.18); pointer-events: none; opacity: .55; }
+.fpv-stick.active { opacity: 1; border-color: rgba(255,255,255,.5); }
+#fpv-stick-l:not(.active) { left: calc(var(--r) + 40px + var(--sal)); top: calc(100% - var(--r) - 34px - var(--sab)); }
+#fpv-stick-r:not(.active) { left: calc(100% - var(--r) - 40px - var(--sar)); top: calc(100% - var(--r) - 34px - var(--sab)); }
+.fpv-stick i { position: absolute; left: 50%; top: 50%; width: 46%; height: 46%; border-radius: 50%; transform: translate(-50%, -50%);
+  background: rgba(240,160,64,.55); border: 2px solid rgba(255,255,255,.6); }
+.fpv-btns { position: absolute; right: calc(12px + var(--sar)); top: calc(10px + var(--sat)); display: flex; gap: 8px; }
+.fpv-btns button { width: 46px; height: 46px; border-radius: 12px; display: grid; place-items: center; background: rgba(20,21,25,.45);
+  border: 2px solid rgba(255,255,255,.35); color: #fff; padding: 0; }
+.fpv-btns button.down { background: rgba(240,160,64,.45); border-color: var(--accent); }
+.fpv-btns button .ico { width: 58%; height: 58%; }
