@@ -16,7 +16,7 @@ globalThis.performance = { now: () => simNow };
 globalThis.setInterval = () => 0;
 const { Server } = await import('./server.js');
 const { loadDroneMap, DRONE_MAPS, existingMaps, spawnFor, gateRespawn } = await import('./dronemaps.js');
-const { makeDrone, stepDrone, DRONE, gateCross, qaxis, qrot } = await import('./dronephys.js');
+const { makeDrone, stepDrone, DRONE, gateCross, qaxis, qrot, qypr, throttleCurve } = await import('./dronephys.js');
 const { FPV } = await import('./dronehost.js');
 const { RULES } = await import('./config.js');
 
@@ -103,12 +103,14 @@ for (const id of Object.keys(DRONE_MAPS).filter(i => DRONE_MAPS[i].kind === 'rac
   // from the pads to gate 0, then each gate to the next (round to gate 0 again)
   const legs = [];
   const s0 = md.spawns[0];
-  const lead = route(md, [s0.x, s0.y + 1.2, s0.z], add(G[0].c, G[0].n, -2.5));
+  // (a roomy route where there is room — the autopilot below follows it — else a tight one: there must be a way)
+  const roomy = (a, b) => route(md, a, b, 0.9) || route(md, a, b, 0.45);
+  const lead = roomy([s0.x, s0.y + 1.2, s0.z], add(G[0].c, G[0].n, -2.5));
   ok(!!lead, `${id}: no way from the pads to the first gate`);
   legs.push(lead);
   for (let i = 0; i < G.length; i++) {
     const a = G[i], b = G[(i + 1) % G.length];
-    const r = route(md, add(a.c, a.n, 2.5), add(b.c, b.n, -2.5));
+    const r = roomy(add(a.c, a.n, 2.5), add(b.c, b.n, -2.5));
     ok(!!r, `${id}: no way to fly from gate ${i} to gate ${(i + 1) % G.length}`);
     legs.push(r);
   }
@@ -163,34 +165,86 @@ function len(path) { let s = 0; for (let i = 1; i < path.length; i++) s += Math.
   const r1 = qrot(a.q, [1, 0, 0]);
   const ang = Math.atan2(-r1[1], r1[0]);
   ok(Math.abs(ang) > 2 && Math.abs(ang) < 3.3, `Acro: full roll for 0.3 s turned ${ang.toFixed(2)} rad`);
-  for (let k = 0; k < 60; k++) stepDrone(a, { thr: 0.3 }, 1 / 120, 'acro', null, 0);
+  // let go: it stops turning within a moment (it has some weight), then stays at that angle
+  for (let k = 0; k < 24; k++) stepDrone(a, { thr: 0.5 }, 1 / 120, 'acro', null, 0);
+  const r15 = qrot(a.q, [1, 0, 0]), ang2 = Math.atan2(-r15[1], r15[0]);
+  ok(Math.abs(ang2 - ang) < 0.45, `Acro keeps turning too long after the stick is let go (${(ang2 - ang).toFixed(2)} rad)`);
+  for (let k = 0; k < 60; k++) stepDrone(a, { thr: 0.5 }, 1 / 120, 'acro', null, 0);
   const r2 = qrot(a.q, [1, 0, 0]);
-  ok(Math.abs(Math.atan2(-r2[1], r2[0]) - ang) < 0.05, 'Acro doesn\'t keep its attitude when the sticks are let go');
+  ok(Math.abs(Math.atan2(-r2[1], r2[0]) - ang2) < 0.02, 'Acro doesn\'t keep its attitude when the sticks are let go');
   // turtle: upside down on the ground, throttle flips it back
   const tu = makeDrone(100, DRONE.r + 0.1, 150, 0); tu.q = qaxis(0, 0, 1, Math.PI); tu.ground = true;
   for (let k = 0; k < 240; k++) stepDrone(tu, { thr: 0.5 }, 1 / 120, 'acro', md.col, 0);
   ok(qrot(tu.q, [0, 1, 0])[1] > 0.3, 'turtle mode doesn\'t flip an upside-down drone back over');
+  // the Bodycam-like feel: a heavy drone that hovers at about half throttle (the middle of the stick), with a throttle
+  // curve that is gentle round the middle, and about 100 km/h flat out (not a 140 km/h racing quad)
+  ok(DRONE.hover > 0.44 && DRONE.hover < 0.52, `it should hover at about half throttle (hovers at ${(DRONE.hover * 100).toFixed(0)} %)`);
+  ok(throttleCurve(0) === 0 && throttleCurve(1) === 1 && Math.abs(throttleCurve(0.5) - 0.5) < 1e-9, 'the throttle curve doesn\'t run 0 → 1 through its middle');
+  ok(throttleCurve(0.55) - throttleCurve(0.45) < 0.1 * 0.8, 'the throttle curve isn\'t gentler round the middle');
+  for (let m = 0.3; m <= 0.7; m += 0.2) for (let t = 0; t < 1; t += 0.05) ok(throttleCurve(t + 0.05, m, 0.6) >= throttleCurve(t, m, 0.6), `the throttle curve goes down somewhere (mid ${m})`);
+  const hv = makeDrone(100, 40, 100, 0); hv.air = true; hv.f = DRONE.hover;
+  for (let k = 0; k < 360; k++) stepDrone(hv, { thr: 0.5 }, 1 / 120, 'angle', null, 0);
+  ok(Math.abs(hv.v[1]) < 1.2, `the middle of the throttle stick isn't about a hover (${hv.v[1].toFixed(2)} m/s up)`);
+  const fast = makeDrone(100, 60, 100, 0); fast.air = true; fast.f = 1;
+  fast.q = qypr(0, -0.85, 0);              // nose down ~50° (about level flight), full throttle, for 10 s (Acro keeps the attitude)
+  for (let k = 0; k < 1200; k++) stepDrone(fast, { thr: 1 }, 1 / 120, 'acro', null, 0);
+  const vmax = Math.hypot(fast.v[0], fast.v[2]) * 3.6;
+  ok(vmax > 80 && vmax < 125, `flat out it does ${vmax.toFixed(0)} km/h (should be about 100)`);
   // a race restart point is just past the gate and facing the next one
   const rp = gateRespawn(md, 3);
   ok(md.col.free(rp.x, rp.y, rp.z, DRONE.r), 'the restart point past gate 3 is blocked');
 }
 
-// ---------- an autopilot flies each circuit in Easy, with the real flight model ----------
-// (follows the route found above, a few metres ahead, at a sensible speed; every gate must count, in order, with no crash)
+// ---------- an autopilot flies each circuit in Casual ('easy'), with the real flight model ----------
+// (follows the route found above, a few metres ahead, slowing down near gates and flying through each gate's middle
+// before aiming further on, like a person would; every gate must count, in order, with no crash)
 for (const id of Object.keys(routes)) {
   const md = loadDroneMap(id), legs = routes[id], G = md.gates;
   if (legs.some(l => !l)) continue;
   const pts = [];
+  const through = (g) => pts.push(add(g.c, g.n, -2.5), g.c, add(g.c, g.n, 2.5));
   pts.push(...legs[0]);
-  for (let i = 0; i < G.length; i++) { pts.push(add(G[i].c, G[i].n, -2.5), G[i].c, add(G[i].c, G[i].n, 2.5)); pts.push(...legs[i + 1]); }
-  pts.push(add(G[0].c, G[0].n, -2.5), G[0].c, add(G[0].c, G[0].n, 3), add(G[0].c, G[0].n, 9));
+  for (let i = 0; i < G.length; i++) { through(G[i]); pts.push(...legs[i + 1]); }
+  through(G[0]); pts.push(add(G[0].c, G[0].n, 9));
+  // the route by distance along it
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1], pts[i][2] - pts[i - 1][2]));
+  const total = cum[cum.length - 1];
+  let seg = 0;
+  const at = (q) => {
+    q = Math.max(0, Math.min(total, q));
+    let i = Math.max(0, Math.min(seg, cum.length - 2));
+    while (i > 0 && cum[i] > q) i--;
+    while (i < cum.length - 2 && cum[i + 1] < q) i++;
+    const f = cum[i + 1] > cum[i] ? (q - cum[i]) / (cum[i + 1] - cum[i]) : 0, A = pts[i], B = pts[i + 1];
+    return [A[0] + (B[0] - A[0]) * f, A[1] + (B[1] - A[1]) * f, A[2] + (B[2] - A[2]) * f];
+  };
   const s = md.spawns[0], d = makeDrone(s.x, s.y, s.z, s.yaw);
-  let k = 0, n = 0, crashes = 0, t = 0, prev = [...d.p];
-  for (let step = 0; step < 120 * 600 && k < pts.length - 1; step++) {
-    // the point to aim at: along the route, about 3 m ahead
-    while (k < pts.length - 1 && Math.hypot(pts[k][0] - d.p[0], pts[k][1] - d.p[1], pts[k][2] - d.p[2]) < 3) k++;
-    const tg = pts[k], dx = tg[0] - d.p[0], dy = tg[1] - d.p[1], dz = tg[2] - d.p[2], dh = Math.hypot(dx, dz) || 1;
-    const sp = Math.min(9, dh * 2.2);
+  let q = 0, n = 0, crashes = 0, t = 0, prev = [...d.p];
+  for (let step = 0; step < 120 * 600 && q < total - 0.6; step++) {
+    // how far along the route it is: the nearest point a little ahead of where it was
+    let best = q, bd = Infinity;
+    for (let r = q; r <= q + 8; r += 0.25) { const P = at(r), e = Math.hypot(P[0] - d.p[0], P[1] - d.p[1], P[2] - d.p[2]); if (e < bd) { bd = e; best = r; } }
+    q = best;
+    while (seg < cum.length - 2 && cum[seg + 1] < q) seg++;
+    // aim 3 m further on; slow down for a sharp bend ahead and near the next gate
+    // (close to the next gate: straight through its middle)
+    const gn = G[n % G.length], rel = [d.p[0] - gn.c[0], d.p[1] - gn.c[1], d.p[2] - gn.c[2]];
+    const along = rel[0] * gn.n[0] + rel[1] * gn.n[1] + rel[2] * gn.n[2];
+    const side = Math.hypot(rel[0] - gn.n[0] * along, rel[1] - gn.n[1] * along, rel[2] - gn.n[2] * along);
+    const lined = along > -4.5 && along < 0 && side < 1.6;      // in front of it and lined up with its middle
+    // (still drifting across it: settle in front of its middle first, then go through)
+    const vAlong = d.v[0] * gn.n[0] + d.v[1] * gn.n[1] + d.v[2] * gn.n[2];
+    const vSide = Math.hypot(d.v[0] - gn.n[0] * vAlong, d.v[1] - gn.n[1] * vAlong, d.v[2] - gn.n[2] * vAlong);
+    const settled = side < 0.7 && vSide < 1.2;
+    // close to the gate it still has to pass: line up in front of it (missed it: back round to the front), else the route
+    const close = Math.hypot(...rel) < 7;
+    const tg = (close && along < 0.2) || lined ? add(gn.c, gn.n, settled && lined ? 2 : -2.5) : close ? add(gn.c, gn.n, -3) : at(q + 3), A = at(q), B = at(q + 9);
+    const u1 = [tg[0] - A[0], tg[2] - A[2]], u2 = [B[0] - tg[0], B[2] - tg[2]];
+    const bend = Math.acos(Math.max(-1, Math.min(1, (u1[0] * u2[0] + u1[1] * u2[1]) / ((Math.hypot(...u1) * Math.hypot(...u2)) || 1))));
+    const ng = G[n % G.length].c, near = Math.hypot(ng[0] - d.p[0], ng[2] - d.p[2]);
+    const dx = tg[0] - d.p[0], dy = tg[1] + 0.2 - d.p[1], dz = tg[2] - d.p[2], dh = Math.hypot(dx, dz) || 1;
+    const sp = Math.min(near < 10 ? 5 : 9 * (1 - 0.65 * bend / Math.PI), dh * 2.2);
     const want = Math.atan2(-dx, -dz);
     let diff = want - d.hd; while (diff > Math.PI) diff -= Math.PI * 2; while (diff < -Math.PI) diff += Math.PI * 2;
     const fx = -Math.sin(d.hd), fz = -Math.cos(d.hd), rx = Math.cos(d.hd), rz = -Math.sin(d.hd);
@@ -202,8 +256,8 @@ for (const id of Object.keys(routes)) {
     if (ev.crash) { crashes++; if (crashes < 4) console.log(`    ${id}: autopilot crashed at (${d.p.map(v => v.toFixed(1))}) on the way to gate ${n % G.length}, ${ev.crash.speed.toFixed(1)} m/s`); const r = n > 0 ? gateRespawn(md, (n - 1) % G.length) : s; Object.assign(d, makeDrone(r.x, r.y, r.z, r.yaw)); d.air = !!r.air; }
     if (gateCross(G[n % G.length], prev, d.p, 0.2)) n++;
   }
-  ok(n === G.length + 1, `${id}: the Easy autopilot got through ${n} of ${G.length + 1} gates in order`);
-  ok(crashes === 0, `${id}: the Easy autopilot crashed ${crashes} times`);
+  ok(n === G.length + 1, `${id}: the Casual autopilot got through ${n} of ${G.length + 1} gates in order`);
+  ok(crashes === 0, `${id}: the Casual autopilot crashed ${crashes} times`);
   console.log(`  ${id}: autopilot lap ${(t).toFixed(1)} s, ${n} gates, ${crashes} crashes`);
 }
 

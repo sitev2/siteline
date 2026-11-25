@@ -986,7 +986,7 @@ function renderLobby() {
   const sets = app.lobby.vbSets || 3;
   const fk = droneKind(app.lobby.fpvMap || 'meadow');
   $('match-rules').innerHTML = fpv
-    ? `<b>FPV drones</b> · 1–${RULES.fpv.maxPlayers} pilots · ${droneMapName(app.lobby.fpvMap || 'meadow')}: ${fk === 'race' ? `a race of ${app.lobby.fpvLaps || 3} lap${(app.lobby.fpvLaps || 3) > 1 ? 's' : ''} through the gates` : 'free flight'} · each pilot picks Easy, Angle or Acro in Settings → Drones`
+    ? `<b>FPV drones</b> · 1–${RULES.fpv.maxPlayers} pilots · ${droneMapName(app.lobby.fpvMap || 'meadow')}: ${fk === 'race' ? `a race of ${app.lobby.fpvLaps || 3} lap${(app.lobby.fpvLaps || 3) > 1 ? 's' : ''} through the gates` : 'free flight'} · each pilot picks Casual, Angle or Acro in Settings → Drones`
     : vb
     ? `<b>Volleyball</b> · ${M.minPlayers}–${M.maxPlayers} players in two teams · ${sets > 1 ? `best of ${sets} sets` : 'one set'} to 11 · 3 touches a side · the same court and net on every map`
     : mg
@@ -1364,6 +1364,10 @@ function bindSettings() {
     $('dr-fov').value = d.fov; $('dr-fov-out').textContent = `${d.fov}°`;
     $('dr-sticks').value = d.sticks; $('dr-spring').checked = !!d.spring; $('dr-pad').value = d.pad;
     $('dr-size').value = d.size; $('dr-size-out').textContent = `${Math.round(d.size * 100)}%`;
+    $('dr-thrmid').value = d.thrMid; $('dr-thrmid-out').textContent = Number(d.thrMid).toFixed(2);
+    $('dr-threxpo').value = d.thrExpo; $('dr-threxpo-out').textContent = Number(d.thrExpo).toFixed(2);
+    $('dr-rate').value = d.rate; $('dr-rate-out').textContent = `${d.rate}°/s`;
+    $('dr-expo').value = d.expo; $('dr-expo-out').textContent = Number(d.expo).toFixed(2);
     const ax = d.sticks === 'custom' ? d.axes : STICK_MODES[d.sticks] || STICK_MODES.mode2;
     for (const k of ['ly', 'lx', 'ry', 'rx']) { $(`dr-${k}`).value = ax[k]; $(`dr-${k}`).disabled = d.sticks !== 'custom'; $(`dr-inv-${k}`).checked = !!d.inv[k]; }
     drawStickPreview(d);
@@ -1374,6 +1378,10 @@ function bindSettings() {
   $('dr-tilt').addEventListener('input', e => setDrone({ tilt: Number(e.target.value) }));
   $('dr-fov').addEventListener('input', e => setDrone({ fov: Number(e.target.value) }));
   $('dr-size').addEventListener('input', e => setDrone({ size: Number(e.target.value) }));
+  $('dr-thrmid').addEventListener('input', e => setDrone({ thrMid: Number(e.target.value) }));
+  $('dr-threxpo').addEventListener('input', e => setDrone({ thrExpo: Number(e.target.value) }));
+  $('dr-rate').addEventListener('input', e => setDrone({ rate: Number(e.target.value) }));
+  $('dr-expo').addEventListener('input', e => setDrone({ expo: Number(e.target.value) }));
   $('dr-spring').addEventListener('change', e => setDrone({ spring: e.target.checked }));
   $('dr-pad').addEventListener('change', e => setDrone({ pad: e.target.value }));
   $('dr-sticks').addEventListener('change', e => {
@@ -1679,7 +1687,7 @@ function drawStickPreview(d) {
     g.font = '700 12px system-ui, sans-serif'; g.fillStyle = '#f0a040';
     g.fillText(`↕ ${v[0]}   ↔ ${h[0]}`, x, 160);
   });
-  if (d.fly === 'easy') { g.font = '500 11px system-ui, sans-serif'; g.fillStyle = '#a7a39a'; g.fillText('Easy: the throttle stick climbs / sinks and springs back.', W / 2, 181); }
+  if (d.fly === 'easy') { g.font = '500 11px system-ui, sans-serif'; g.fillStyle = '#a7a39a'; g.fillText('Casual: the throttle stick climbs / sinks and springs back.', W / 2, 181); }
 }
 
 function openSub(id) {

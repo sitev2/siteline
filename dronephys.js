@@ -3,31 +3,45 @@
 //
 // A drone is a sphere (DRONE.r) with an orientation (quaternion [x, y, z, w]; forward = -Z, up = +Y, right = +X,
 // like the camera), a velocity and a thrust that pushes along its own up axis. Three ways to fly (FLIGHT):
-//   easy  — self-levelling, the height holds by itself (W/S forward/back, A/D sideways, mouse turns, Space/Shift up/down)
+//   easy  — "Casual": self-levelling, holds its height and stops when let go (W/S forward/back, A/D sideways, mouse turns,
+//           Space/Shift up/down)
 //   angle — self-levelling, but you hold the throttle yourself (like a real drone in "angle" mode)
 //   acro  — the real thing: the sticks turn the drone and it stays where you leave it; throttle is all yours
 // Hitting something hard (DRONE.crash m/s straight into it) or touching water crashes it; a glancing hit only bounces.
 import { CELL } from './world.js';
 
+// Tuned to feel like the heavy FPV drone in the game Bodycam (owner's request, v3.1): a drone carrying a load, about
+// twice its weight in thrust, so it hovers near half throttle (the middle of the stick), carries its speed, slides in
+// turns, and its turning builds up over a moment instead of snapping. (The first version was a light racing quad: 4 g.)
 export const DRONE = {
-  r: 0.17,          // collision radius (m): a 5-inch racing quad with its props
+  r: 0.17,          // collision radius (m): a 5-inch quad with its props
   g: 9.81,
-  thrust: 40,       // m/s² at full throttle (≈ 4 g): hovers at about a quarter throttle
-  drag1: 0.06,      // linear drag (1/s)
-  drag2: 0.025,     // quadratic drag (1/m): about 38 m/s flat out
-  dragUp: 0.07,     // extra drag along its own up axis (the props' disc): it "grips" in a turn
+  thrust: 19.9,     // m/s² at full throttle (≈ 2 g): hovers at about half throttle
+  drag1: 0.04,      // linear drag (1/s)
+  drag2: 0.012,     // quadratic drag (1/m): about 27 m/s (≈ 97 km/h) flat out holding its height; it coasts a long way
+  dragUp: 0.02,     // extra drag along its own up axis (the props' disc): a little grip in a turn, it still slides
   crash: 7,         // m/s straight into a surface breaks it
   bounce: 0.3,
-  spool: 0.035,     // how fast the motors follow the throttle (s)
-  hover: 9.81 / 40,
+  spool: 0.05,      // how fast the motors follow the throttle (s)
+  rateLag: 0.035,   // how fast its turning follows the sticks in Acro (s): it has some weight
+  hover: 9.81 / 19.9,
 };
+// The throttle stick → the motors (Angle and Acro), like a real drone's (and Bodycam's) Throttle Mid and Expo: the curve
+// passes through (mid, mid) and is flatter round it, so small moves near the middle (about a hover) are gentle.
+export const THROTTLE = { mid: 0.5, expo: 0.35 };
+export function throttleCurve(t, mid = THROTTLE.mid, expo = THROTTLE.expo) {
+  t = clamp(t, 0, 1); mid = clamp(mid, 0.05, 0.95); expo = clamp(expo, 0, 1);
+  const dx = t - mid, n = dx / (dx > 0 ? 1 - mid : mid);
+  return clamp(mid + dx * (1 - expo + expo * n * n), 0, 1);
+}
 
 export const FLIGHT = {
-  easy: { level: true, tilt: 0.7, yaw: 2.4, snap: 9, climb: 6.5, speed: 20, side: 12, brake: 1.4 },
-  angle: { level: true, tilt: 0.95, yaw: 3.0, snap: 12 },
-  acro: { level: false, rate: 11, yaw: 6, expo: 0.55 },
+  easy: { level: true, tilt: 0.7, yaw: 2.2, snap: 7.5, climb: 6, speed: 20, side: 12, brake: 1.5 },     // (Casual: the beginners' mode, it holds its place)
+  angle: { level: true, tilt: 0.95, yaw: 2.6, snap: 8 },
+  acro: { level: false, rate: 600 * Math.PI / 180, yaw: 5, expo: 0.55 },     // (rate and expo: Settings → Drones can change them)
 };
-export const FLIGHT_NAMES = { easy: 'Easy', angle: 'Angle', acro: 'Acro' };
+// ('easy' is shown as "Casual", Bodycam's name for its self-levelling mode; the settings keep the key 'easy')
+export const FLIGHT_NAMES = { easy: 'Casual', angle: 'Angle', acro: 'Acro' };
 
 // ---------- quaternion helpers ([x, y, z, w]) ----------
 export function qmul(a, b) {
@@ -90,7 +104,7 @@ export function stepDrone(d, inp, dt, mode, col, t = 0) {
       if (d.hd > Math.PI) d.hd -= Math.PI * 2; else if (d.hd < -Math.PI) d.hd += Math.PI * 2;
       let tp = (inp.pitch || 0) * F.tilt, tr = (inp.roll || 0) * F.tilt;
       if (F.speed) {
-        // Easy: the sticks ask for a speed (forward / sideways); it tilts to get there, and to stop when let go
+        // Casual: the sticks ask for a speed (forward / sideways); it tilts to get there, and to stop when let go
         const fx = -Math.sin(d.hd), fz = -Math.cos(d.hd), rx = Math.cos(d.hd), rz = -Math.sin(d.hd);
         const vf = d.v[0] * fx + d.v[2] * fz, vr = d.v[0] * rx + d.v[2] * rz;
         const af = ((inp.pitch || 0) * F.speed - vf) * F.brake, ar = ((inp.roll || 0) * F.side - vr) * F.brake;
@@ -100,9 +114,12 @@ export function stepDrone(d, inp, dt, mode, col, t = 0) {
       d.q = qslerp(d.q, tgt, 1 - Math.exp(-F.snap * dt));
       d.w = [0, 0, 0];
     } else {
-      const rx = -curve(inp.pitch || 0, F.expo) * F.rate, ry = -(inp.yaw || 0) * F.yaw, rz = -curve(inp.roll || 0, F.expo) * F.rate;
-      d.w = [rx, ry, rz];
-      const ax = rx * dt - (inp.dPitch || 0), ay = ry * dt - (inp.dYaw || 0), az = rz * dt - (inp.dRoll || 0);
+      // the sticks set how fast it turns; it gets there over a moment (it has weight) and keeps its attitude when let go
+      const rate = inp.rate || F.rate, expo = inp.expo ?? F.expo;
+      const rx = -curve(inp.pitch || 0, expo) * rate, ry = -(inp.yaw || 0) * F.yaw, rz = -curve(inp.roll || 0, expo) * rate;
+      const k = 1 - Math.exp(-dt / D.rateLag);
+      d.w = [d.w[0] + (rx - d.w[0]) * k, d.w[1] + (ry - d.w[1]) * k, d.w[2] + (rz - d.w[2]) * k];
+      const ax = d.w[0] * dt - (inp.dPitch || 0), ay = d.w[1] * dt - (inp.dYaw || 0), az = d.w[2] * dt - (inp.dRoll || 0);
       const a = Math.hypot(ax, ay, az);
       if (a > 1e-7) d.q = qnorm(qmul(d.q, qaxis(ax / a, ay / a, az / a, a)));
       d.hd = droneHeading(d.q);
@@ -126,8 +143,9 @@ export function stepDrone(d, inp, dt, mode, col, t = 0) {
       }
       if (d.ground && thr <= 0.02 && d.v[1] <= 0.5) { d.air = false; want = 0; }
     } else {
-      want = clamp(inp.thr || 0, 0, 1);
-      if (want > 0.04) d.air = true;
+      const stick = clamp(inp.thr || 0, 0, 1);
+      want = throttleCurve(stick, inp.mid, inp.texpo);
+      if (stick > 0.04) d.air = true;
       else if (d.ground) d.air = false;
     }
     d.armed = want > 0.02 || d.air;
