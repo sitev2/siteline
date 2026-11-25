@@ -141,6 +141,16 @@ export function buildGarageScene(world, renderer, gfx = {}) {
   // count as one step lower
   const rampStep = FL / ((plan.ramps[0].x1 - plan.ramps[0].x0) / CELL);
   const top_ = s => (s.m === 'ramp' ? s.y1 - rampStep : s.y1);
+  // the slope's height on a ramp cell's side: x sides at that edge (the high end = the full floor height), z sides
+  // at the cell's lower edge (they stand against the ramp's side walls anyway)
+  const rampTop = (ix, iz, nx) => {
+    const x = (ix + 0.5) * CELL, z = (iz + 0.5) * CELL;
+    const r = plan.ramps.find(q => x > q.x0 && x < q.x1 && z > q.z0 && z < q.z1);
+    if (!r) return 0;
+    const at = ex => Math.max(0, Math.min(FL, (r.dir === '+x' ? ex - r.x0 : r.x1 - ex) / (r.x1 - r.x0) * FL));
+    const xa = ix * CELL, xb = xa + CELL;
+    return nx === 1 ? at(xb) : nx === -1 ? at(xa) : Math.min(at(xa), at(xb));
+  };
 
   // ---------- what blocks light, per floor (walls and pillars: anything solid from knee to head height) ----------
   const block = [0, 1].map(f => {
@@ -306,17 +316,21 @@ export function buildGarageScene(world, renderer, gfx = {}) {
       if (spans.some(s => s.m === '_ceiling') && !drawn.some(s => s.y0 < TOP && s.y1 >= TOP)) flat('ceil', x0, z0, x1, z1, TOP, -1, 3);
     }
     for (const s of drawn) {
-      if (s.m === 'ramp') continue;
+      // a ramp cell: no flat top or underside (the smooth slope below is its top), but its sides where it meets
+      // anything that isn't more ramp — above all the tall end at the top, which faces the lower floor (it was
+      // never drawn, so you could see through the back of the slope). A side's top follows the slope.
+      const ramp = s.m === 'ramp';
       const y1 = Math.min(s.y1, TOP), isMass = s.m === 'mass';
-      if (!isMass) {
+      if (!isMass && !ramp) {
         if (y1 < TOP - 0.01 && !drawn.some(t => t !== s && t.y0 <= y1 + 0.001 && t.y1 > y1 + 0.001)) flat(s.m === 'slab' || s.m === 'stairs' ? 'deck' : 'conc', x0, z0, x1, z1, y1, 1, 4);
         if (s.y0 > 0.01 && !drawn.some(t => t !== s && t.y1 >= s.y0 - 0.001 && t.y0 < s.y0 - 0.001)) flat('ceil', x0, z0, x1, z1, s.y0, -1, 3);
       }
       for (const [nx, nz] of SIDES) {
         const nb = cell(ix + nx, iz + nz);
         if (!nb) continue;
+        if (ramp && nb.some(t => t.m === 'ramp')) continue;
         // the parts of this span's side that the neighbouring cell doesn't cover
-        let parts = [[s.y0, y1]];
+        let parts = [[s.y0, ramp ? rampTop(ix, iz, nx) : y1]];
         for (const t of nb) {
           if (!vis_(t)) continue;
           const t1 = top_(t), next = [];
