@@ -334,7 +334,7 @@ The only folder is `server/` (the optional home game server).
   DONE: everything in the owner's brief except stage 8 (the final real-device test and hand-over).
   - `garmap.js` — ONE fixed layout (`resolveMap('garage', difficulty)`, theme `garage`, `world.def.gar` = the plan): 64 × 52 m, two floors
     (lower "P2" y 0, upper "P1" y `GAR.FL` 3.4; 3 m clear), about half Level 0's area. Rows of 0.5 × 1 m pillars, parking bays, two car
-    ramps (`plan.ramps`, collision = 11 cm steps, drawn smooth), two stairwells, 7 side rooms (`plan.rooms`: attendant booths / storerooms,
+    ramps (`plan.ramps`, collision = 11 cm steps, drawn smooth; garview also draws a ramp's sides where it meets no more ramp — the tall back end under the top, seen from the lower floor, was see-through until v2.9), two stairwells, 7 side rooms (`plan.rooms`: attendant booths / storerooms,
     each with windows and a door; NEVER call them "safe rooms"), puddles on the lower floor (`b.water`), and the places for the order:
     `plan.fuse` (lower, north wall), `plan.crank` + `plan.shutter` (a door with `lock: 'shutter'`) + `plan.lift` (upper, north-west),
     `plan.start` (upper, south-east), `plan.log`, plus cars / cones / drain pipes. Each side room has furniture (`r.furn`: steel
