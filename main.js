@@ -20,6 +20,9 @@ import { initFriends, openFriends, activityChanged } from './friends.js';
 import { initAdmin, openAdmin } from './admin.js';
 import { WEAPONS } from './weapons.js';
 import { MG_GAMES, MG_ORDER } from './mgmap.js';
+import { DroneGame, droneSettings, DRONE_DEFAULTS, STICK_MODES } from './drone.js';
+import { DRONE_MAPS, existingMaps, droneMapName, droneKind } from './dronemaps.js';
+import { FLIGHT_NAMES } from './dronephys.js';
 
 const $ = (id) => document.getElementById(id);
 const screens = ['menu', 'lobby', 'settings', 'practice', 'account', 'nettest', 'friends', 'admin'];
@@ -71,6 +74,15 @@ function level1Allowed() {
   const p = acct.currentProfile();
   return !!(p && LEVEL1_TESTERS.includes(String(p.username || '').toLowerCase()));
 }
+// FPV drones are still being tested: only these accounts see them (friends who join their room fly along; the lock is
+// only in the page, and the host's game tells its room it may: settings.fpvOk). Set DRONES_OPEN to true to open them to all.
+const DRONES_OPEN = false;
+const DRONE_TESTERS = ['test123'];
+function dronesAllowed() {
+  if (DRONES_OPEN) return true;
+  const p = acct.loggedIn() && acct.currentProfile();
+  return !!(p && DRONE_TESTERS.includes(String(p.username || '').toLowerCase()));
+}
 function backroomsAllowed() {
   if (BACKROOMS_OPEN) return true;
   const p = acct.loggedIn() && acct.currentProfile();
@@ -83,7 +95,8 @@ const defaults = {
   name: '', sens: 1, fov: 75, volume: 0.7, ambience: 0.6, camShake: 0.5, headBob: 0.5, mapColor: 0, quality: 'auto', touchMode: 'auto', invert: false, showChat: true,
   keys: {}, crosshair: { ...DEFAULT_CROSSHAIR }, touchLayout: {}, graphics: { preset: 'auto', custom: {} },
   // last practice choices
-  practice: { kind: 'range', map: 'outpost', bots: true, count: 6, behavior: 'still', side: 'atk', level: 'normal', dmMap: 'quarry', dmCount: 3, mgCount: 3, mgRun: 'party', mgGame: 'dodge', mgRounds: 3, mgTeams: false, vbMap: 'sandbar', vbSets: 3, vbCount: 3 },
+  practice: { kind: 'range', map: 'outpost', bots: true, count: 6, behavior: 'still', side: 'atk', level: 'normal', dmMap: 'quarry', dmCount: 3, mgCount: 3, mgRun: 'party', mgGame: 'dodge', mgRounds: 3, mgTeams: false, vbMap: 'sandbar', vbSets: 3, vbCount: 3, fpvMap: 'meadow', fpvLaps: 3 },
+  drone: { ...DRONE_DEFAULTS },
 };
 function loadSettings() {
   try {
@@ -93,7 +106,7 @@ function loadSettings() {
   } catch (e) { return { ...defaults, practice: { ...defaults.practice } }; }
 }
 // the settings that follow you to other devices when you're logged in
-const SYNCED = ['keys', 'crosshair', 'touchLayout', 'graphics', 'sens', 'fov', 'invert', 'volume', 'ambience', 'showChat', 'camShake', 'headBob'];
+const SYNCED = ['keys', 'crosshair', 'touchLayout', 'graphics', 'sens', 'fov', 'invert', 'volume', 'ambience', 'showChat', 'camShake', 'headBob', 'drone'];
 function saveSettings() {
   try {
     const { touch, ...rest } = settings;
@@ -600,14 +613,31 @@ function updatePauseInvite() {
 // the Backrooms buttons show only for its testers (backroomsAllowed); for everyone else the other buttons close up.
 // Checked at start-up and whenever someone logs in or out.
 function hideBackrooms() {
-  const ok = backroomsAllowed();
+  const ok = backroomsAllowed(), fpv = dronesAllowed();
   for (const el of document.querySelectorAll('[data-mode="br"], [data-pmode="br"]')) el.classList.toggle('hidden', !ok);
-  const lm = $('lobby').querySelector('.mode-pick');
-  lm.classList.toggle('five', ok); lm.classList.toggle('four', !ok);
-  const pm = $('practice').querySelector('.mode-pick');
-  pm.classList.toggle('six', ok); pm.classList.toggle('five', !ok);
+  // FPV drones: the mode buttons and the Drones tab in Settings, for the test account only (for now)
+  for (const el of document.querySelectorAll('[data-mode="fpv"], [data-pmode="fpv"], .tab[data-tab="drones"]')) el.classList.toggle('hidden', !fpv);
+  // (lay the buttons out in rows that fit how many there are)
+  for (const pick of [$('lobby').querySelector('.mode-pick'), $('practice').querySelector('.mode-pick')]) {
+    const n = [...pick.children].filter(b => !b.classList.contains('hidden')).length;
+    for (const c of ['four', 'five', 'six', 'seven']) pick.classList.toggle(c, c === ['four', 'five', 'six', 'seven'][Math.max(0, Math.min(3, n - 4))]);
+  }
   if (!ok && settings.practice.kind === 'br') { settings.practice.kind = 'range'; if (!$('practice').classList.contains('hidden')) renderPracticeMenu(); }
+  if (!fpv && settings.practice.kind === 'fpv') { settings.practice.kind = 'range'; if (!$('practice').classList.contains('hidden')) renderPracticeMenu(); }
 }
+
+// FPV drones: the maps to pick from, grouped (free flight / circuits / the game's other maps)
+function fillDroneMaps(sel) {
+  if (sel.options.length) return;
+  const groups = [['Free flight', Object.keys(DRONE_MAPS).filter(id => DRONE_MAPS[id].kind === 'free')], ['Circuits (races)', Object.keys(DRONE_MAPS).filter(id => DRONE_MAPS[id].kind === 'race')], ['The game\'s other maps (free flight)', existingMaps().map(e => e.id)]];
+  for (const [label, ids] of groups) {
+    const g = document.createElement('optgroup');
+    g.label = label;
+    for (const id of ids) { const o = document.createElement('option'); o.value = id; o.textContent = droneMapName(id); g.appendChild(o); }
+    sel.appendChild(g);
+  }
+}
+function droneMapNote(id) { return DRONE_MAPS[id] ? DRONE_MAPS[id].desc : 'One of the game\'s own maps, to fly round freely.'; }
 
 // ---------- practice menu ----------
 function practiceMaps(kind, count) {
@@ -617,7 +647,8 @@ function practiceMaps(kind, count) {
 function renderPracticeMenu() {
   const P = settings.practice;
   const el = $('practice');
-  el.classList.remove('m-range', 'm-match', 'm-dm', 'm-br', 'm-mg', 'm-vb');
+  el.classList.remove('m-range', 'm-match', 'm-dm', 'm-br', 'm-mg', 'm-vb', 'm-fpv');
+  if (P.kind === 'fpv' && !dronesAllowed()) P.kind = 'range';
   el.classList.add(`m-${P.kind}`);
   el.classList.toggle('mg-single', P.mgRun === 'single');
   el.classList.toggle('bots-on', !!P.bots);
@@ -650,6 +681,13 @@ function renderPracticeMenu() {
   $('p-mgrounds').value = String(P.mgRounds || 3);
   $('p-mgteams').checked = !!P.mgTeams;
   $('p-vbsets').value = String(P.vbSets || 3);
+  // FPV drones: the map (free flight, a circuit, or another map), laps for a circuit, the way you fly
+  fillDroneMaps($('p-fpvmap'));
+  $('p-fpvmap').value = P.fpvMap && (DRONE_MAPS[P.fpvMap] || existingMaps().some(e => e.id === P.fpvMap)) ? P.fpvMap : 'meadow';
+  $('p-fpvlaps').value = String(P.fpvLaps || 3);
+  $('p-fpvlaps').closest('label').classList.toggle('hidden', droneKind($('p-fpvmap').value) !== 'race');
+  $('p-fpvnote').textContent = droneMapNote($('p-fpvmap').value);
+  $('p-fpvfly').value = droneSettings(settings).fly;
   $('p-night').checked = !!P.night;
   // Levels 1 and 2 (testers only while Level 1 is being tested): each locked until you escaped the one before
   const l1 = P.kind === 'br' && level1Allowed(), open = level1Unlocked(), open2 = level2Unlocked();
@@ -672,6 +710,9 @@ function bindPracticeMenu() {
   $('p-bots').addEventListener('change', e => { P().bots = e.target.checked; save(); });
   $('p-count').addEventListener('input', e => { if (P().kind === 'dm') P().dmCount = Number(e.target.value); else if (P().kind === 'mg') P().mgCount = Number(e.target.value); else if (P().kind === 'vb') P().vbCount = Number(e.target.value); else P().count = Number(e.target.value); save(); });
   $('p-vbsets').addEventListener('change', e => { P().vbSets = Number(e.target.value) || 3; save(); });
+  $('p-fpvmap').addEventListener('change', e => { P().fpvMap = e.target.value; save(); });
+  $('p-fpvlaps').addEventListener('change', e => { P().fpvLaps = Number(e.target.value) || 3; save(); });
+  $('p-fpvfly').addEventListener('change', e => { settings.drone = { ...droneSettings(settings), fly: e.target.value }; save(); });
   $('p-mgrun').addEventListener('change', e => { P().mgRun = e.target.value; save(); });
   $('p-mggame').addEventListener('change', e => { P().mgGame = e.target.value; save(); });
   $('p-mgrounds').addEventListener('change', e => { P().mgRounds = Number(e.target.value) || 3; save(); });
@@ -683,6 +724,11 @@ function bindPracticeMenu() {
   $('p-stage').addEventListener('change', e => { P().stage = Number(e.target.value) || 0; save(); });
   $('p-start').addEventListener('click', () => {
     const p = P();
+    if (p.kind === 'fpv') {
+      if (!dronesAllowed()) return;
+      practice({ kind: 'fpv', map: $('p-fpvmap').value || 'meadow', laps: p.fpvLaps || 3 });
+      return;
+    }
     if (p.kind === 'vb') {
       const maps = practiceMaps('vb');
       practice({ kind: 'vb', map: maps.includes($('p-map').value) ? $('p-map').value : maps[0], sets: p.vbSets || 3, count: Math.max(1, Math.min(RULES.mg.maxPlayers - 1, p.vbCount || 3)), level: p.level });
@@ -762,6 +808,7 @@ function showLobby() {
 
 // what friends see next to your name (friends.js)
 function activityText() {
+  if (app.game && app.game.fpvMode) return 'Flying FPV drones';
   if (app.mode === 'practice') return app.botGame === 'range' ? 'At the practice range' : app.botGame === 'br' ? 'In the Backrooms' : app.botGame === 'mg' ? 'Playing minigames' : app.botGame === 'vb' ? 'Playing volleyball' : 'Playing against bots';
   if (app.game) return app.lobby.mode === 'dm' ? 'In a deathmatch' : app.lobby.mode === 'br' ? 'In the Backrooms' : app.lobby.mode === 'mg' ? 'Playing minigames' : app.lobby.mode === 'vb' ? 'Playing volleyball' : 'In a 2v2 match';
   if (app.mode === 'host' || app.mode === 'client') return 'In a lobby';
@@ -816,11 +863,47 @@ function renderMapCards() {
 
 function humans() { return app.roster.filter(p => !p.dummy); }
 
+// the lobby's drone maps: the six drone maps as cards, then the game's other maps as a list
+function renderDroneLobby(on) {
+  const wrap = $('fpv-maps');
+  if (!on) return;
+  if (!wrap.children.length) {
+    for (const id of Object.keys(DRONE_MAPS)) {
+      const d = DRONE_MAPS[id];
+      const b = document.createElement('button');
+      b.className = 'map-card fpv-card';
+      b.dataset.fpvmap = id;
+      b.innerHTML = '<div><b></b><small class="map-size"></small><span></span></div>';
+      b.querySelector('b').textContent = d.name;
+      b.querySelector('small').textContent = d.kind === 'race' ? 'Circuit' : 'Free flight';
+      b.querySelector('span').textContent = d.desc;
+      b.addEventListener('click', () => sendToServer({ t: 'settings', fpvMap: id }));
+      wrap.appendChild(b);
+    }
+    fillDroneMaps($('lobby-fpvother'));
+    // (the other list only offers the game's other maps)
+    for (const g of [...$('lobby-fpvother').querySelectorAll('optgroup')].slice(0, 2)) g.remove();
+    const none = document.createElement('option'); none.value = ''; none.textContent = 'Or fly round one of the game\'s other maps…';
+    $('lobby-fpvother').prepend(none);
+  }
+  const cur = app.lobby.fpvMap || 'meadow';
+  for (const b of wrap.children) { b.classList.toggle('selected', b.dataset.fpvmap === cur); b.disabled = !isLeader(); }
+  $('lobby-fpvother').value = DRONE_MAPS[cur] ? '' : cur;
+  $('lobby-fpvother').disabled = !isLeader();
+  $('lobby-fpvlaps').value = String(app.lobby.fpvLaps || 3);
+  $('lobby-fpvlaps').disabled = !isLeader();
+  $('lobby-fpvlaps').closest('label').classList.toggle('hidden', droneKind(cur) !== 'race');
+}
+
 function renderLobby() {
   if ($('lobby').classList.contains('hidden')) return;
   document.body.classList.toggle('is-host', isLeader());
   $('room-code').textContent = app.code || '-----';
-  const dm = app.lobby.mode === 'dm', br = app.lobby.mode === 'br', mg = app.lobby.mode === 'mg', vb = app.lobby.mode === 'vb';
+  const dm = app.lobby.mode === 'dm', br = app.lobby.mode === 'br', mg = app.lobby.mode === 'mg', vb = app.lobby.mode === 'vb', fpv = app.lobby.mode === 'fpv';
+  // FPV drones: the host's game tells the room whether this host may fly them (test account only, for now)
+  if (isLeader() && !!app.lobby.fpvOk !== dronesAllowed()) sendToServer({ t: 'settings', fpvOk: dronesAllowed() });
+  $('lobby').classList.toggle('fpv', fpv);
+  renderDroneLobby(fpv);
   $('lobby').classList.toggle('dm', dm);
   $('lobby').classList.toggle('br', br);
   $('lobby').classList.toggle('mg', mg);
@@ -901,7 +984,10 @@ function renderLobby() {
   const D = RULES.dm;
   const M = RULES.mg, single = app.lobby.mgRun === 'single', gname = (MG_GAMES[app.lobby.mgGame] || MG_GAMES.dodge).name;
   const sets = app.lobby.vbSets || 3;
-  $('match-rules').innerHTML = vb
+  const fk = droneKind(app.lobby.fpvMap || 'meadow');
+  $('match-rules').innerHTML = fpv
+    ? `<b>FPV drones</b> · 1–${RULES.fpv.maxPlayers} pilots · ${droneMapName(app.lobby.fpvMap || 'meadow')}: ${fk === 'race' ? `a race of ${app.lobby.fpvLaps || 3} lap${(app.lobby.fpvLaps || 3) > 1 ? 's' : ''} through the gates` : 'free flight'} · each pilot picks Easy, Angle or Acro in Settings → Drones`
+    : vb
     ? `<b>Volleyball</b> · ${M.minPlayers}–${M.maxPlayers} players in two teams · ${sets > 1 ? `best of ${sets} sets` : 'one set'} to 11 · 3 touches a side · the same court and net on every map`
     : mg
     ? `<b>Minigames</b> · ${M.minPlayers}–${M.maxPlayers} players · ${single ? `${app.lobby.mgRounds || 3} round${(app.lobby.mgRounds || 3) > 1 ? 's' : ''} of ${gname}` : 'a party run of 5 random games'} · 1st 3 points, 2nd 2, 3rd 1 · no guns`
@@ -912,7 +998,12 @@ function renderLobby() {
     : dm ? `<b>Deathmatch</b> · everyone for themselves · first to <b>${D.killLimit}</b> kills or <b>${D.timeLimit / 60}</b> minutes · ${n === 3 ? 'played on a 2v2 map with 3 players' : 'small map for 2, large for 4 to ${D.maxPlayers}'}`
     : '<b>2v2</b> · first to <b>9</b> · sides swap after round <b>8</b> · 8–8 is a draw';
   let note, ready;
-  if (vb) {
+  if (fpv) {
+    const F = RULES.fpv;
+    ready = n >= F.minPlayers && n <= F.maxPlayers && !!app.lobby.fpvOk;
+    note = !isLeader() ? 'Waiting for the host to start…'
+      : n > F.maxPlayers ? `FPV drones take ${F.maxPlayers} pilots at most.` : `${n} pilot${n > 1 ? 's' : ''} ready. Friends can join after it has started too.`;
+  } else if (vb) {
     ready = n >= M.minPlayers && n <= M.maxPlayers;
     note = !isLeader() ? (n < M.minPlayers ? `Volleyball needs ${M.minPlayers} to ${M.maxPlayers} players. Waiting for one more…` : 'Waiting for the host to start…')
       : n < M.minPlayers ? `Volleyball needs ${M.minPlayers} to ${M.maxPlayers} players online. Share the room code or invite link (to play with bots, use Practice).`
@@ -973,7 +1064,7 @@ async function shareInvite() {
 // ---------- game ----------
 // The loading screen: building a map (and baking the Backrooms' lighting) can take a moment, so the
 // screen says what is loading and the bar moves on as each step is done.
-const MODE_NAMES = { wingman: '2v2 Bomb', dm: 'Deathmatch', br: 'Co-op escape', mg: 'Minigames', vb: 'Volleyball' };
+const MODE_NAMES = { wingman: '2v2 Bomb', dm: 'Deathmatch', br: 'Co-op escape', mg: 'Minigames', vb: 'Volleyball', fpv: 'FPV drones' };
 const nextPaint = () => new Promise(r => {
   let done = false;
   const go = () => { if (!done) { done = true; setTimeout(r, 0); } };
@@ -989,10 +1080,10 @@ function gameLoading(step, frac, msg = null) {
     return;
   }
   if (msg) {
-    const def = msg.map === 'backrooms' ? { name: 'The Backrooms' } : msg.map === 'garage' ? { name: 'Level 1: The Garage' } : msg.map === 'pool' ? { name: 'The Poolrooms' } : msg.map === 'arena' ? { name: 'The Pool Hall' } : MAPS[msg.map];
+    const def = msg.mode === 'fpv' ? { name: droneMapName(msg.map) } : msg.map === 'backrooms' ? { name: 'The Backrooms' } : msg.map === 'garage' ? { name: 'Level 1: The Garage' } : msg.map === 'pool' ? { name: 'The Poolrooms' } : msg.map === 'arena' ? { name: 'The Pool Hall' } : MAPS[msg.map];
     const lv = msg.mode === 'br' && typeof msg.variant === 'string' ? msg.variant.split(':').pop() : '';
     $('gl-title').textContent = def ? def.name : 'Loading';
-    $('gl-sub').textContent = [msg.practice ? 'Practice' : '', MODE_NAMES[isVbMap(msg.map) ? 'vb' : msg.mode] || '', lv ? lv[0].toUpperCase() + lv.slice(1) : ''].filter(Boolean).join(' · ');
+    $('gl-sub').textContent = [msg.practice ? 'Practice' : '', MODE_NAMES[msg.mode === 'fpv' ? 'fpv' : isVbMap(msg.map) ? 'vb' : msg.mode] || '', msg.mode === 'fpv' ? (droneKind(msg.map) === 'race' ? 'Race' : 'Free flight') : '', lv ? lv[0].toUpperCase() + lv.slice(1) : ''].filter(Boolean).join(' · ');
     el.dataset.mode = msg.mode || '';
     el.dataset.map = msg.map || '';
     $('gl-fill').style.transition = 'none'; $('gl-fill').style.width = '0';
@@ -1031,6 +1122,14 @@ function startGame(msg) {
   $('over').classList.add('hidden');
   settings.touch = resolvedTouch();
   document.body.classList.add('in-game');
+  if (msg.mode === 'fpv') {
+    // FPV drones: their own game (drone.js)
+    app.game = new DroneGame({ transport: { send: sendToServer }, myId: app.myId, roster: msg.roster, map: msg.map, practice: !!msg.practice, settings, quality: resolvedQuality(), isHost: app.mode !== 'client', onPause: showPause, fpv: msg.fpv });
+    if (window.__debug) window.__game = app.game;
+    if (!settings.touch) showPause(true);
+    activityChanged();
+    return;
+  }
   app.game = new Game({
     transport: { send: sendToServer },
     myId: app.myId,
@@ -1067,9 +1166,15 @@ function endGame() {
 function showPause(first = false) {
   if (!app.game) return;
   app.game.paused = true;
-  const titles = { range: 'Practice range', match: 'Bot match', dm: 'Bot deathmatch', mg: 'Minigames', vb: 'Volleyball' };
+  const titles = { range: 'Practice range', match: 'Bot match', dm: 'Bot deathmatch', mg: 'Minigames', vb: 'Volleyball', fpv: 'FPV drones' };
+  const fpv = !!app.game.fpvMode;
+  // FPV drones: the leader can end free flight online; the flight mode can be changed right here
+  $('btn-fpv-end').classList.toggle('hidden', !(fpv && !app.game.race && isLeader() && app.mode !== 'practice'));
+  $('pause-fpv').classList.toggle('hidden', !fpv);
+  if (fpv) $('pause-fly').value = droneSettings(settings).fly;
   $('pause-title').textContent = first === true ? (titles[app.botGame] || 'Ready?') : 'Paused';
-  $('pause-sub').textContent = first === true
+  $('pause-sub').textContent = fpv ? (first === true ? 'Click Play, then fly. Change the controls in Settings → Drones. Press Esc any time for this menu.' : 'Your drone keeps hovering while you\'re in this menu.')
+    : first === true
     ? 'Click Play, then use your mouse to aim. Press Esc any time for this menu.'
     : (app.botGame === 'range' ? 'Bots respawn after 3 seconds. Bots marked (armour) wear a vest and helmet. Everything in the buy menu is free.'
       : 'The match keeps running while you\'re in this menu.');
@@ -1094,6 +1199,7 @@ function showOver(msg) {
   if (msg.mode === 'dm') return showDmOver(msg);
   if (msg.mode === 'br') return showBrOver(msg);
   if (msg.mode === 'mg') return showMgOver(msg);
+  if (msg.mode === 'fpv') return showFpvOver(msg);
   $('over-title').textContent = msg.reason === 'draw' ? 'Draw — 8 rounds each'
     : msg.reason === 'forfeit' ? `${names[msg.winner]} win — the other team left` : `${names[msg.winner]} win the match`;
   $('over-title').style.color = msg.winner === 'atk' ? 'var(--atk)' : msg.winner === 'def' ? 'var(--def)' : 'var(--text)';
@@ -1199,6 +1305,28 @@ function showVbOver(msg) {
   finishOver();
 }
 
+// FPV drones: the race's places, times and best laps (or, when the leader ended free flight, just that)
+function showFpvOver(msg) {
+  const fmt = (s) => { if (!(s >= 0)) return '—'; const m = Math.floor(s / 60), r = s - m * 60; return `${m}:${r < 10 ? '0' : ''}${r.toFixed(2)}`; };
+  const res = msg.results || [];
+  const win = res.find(r => r.pos === 1 && r.time != null);
+  $('over-title').textContent = !msg.race ? 'Free flight over' : !win ? 'Race over' : win.id === app.myId ? (res.length > 1 ? 'You win the race!' : 'Finished!') : `${win.name} wins the race`;
+  $('over-title').style.color = win && win.id === app.myId ? 'var(--accent)' : 'var(--text)';
+  $('over-score').innerHTML = win ? `<span>${fmt(win.time)}</span>` : '';
+  if (!msg.race) { $('over-stats').replaceChildren(); finishOver(); return; }
+  const table = document.createElement('table');
+  table.innerHTML = '<tr><th>#</th><th>Pilot</th><th>Time</th><th>Best lap</th><th>Laps</th></tr>';
+  for (const r of res) {
+    const tr = document.createElement('tr');
+    const laps = r.laps && r.laps.length ? r.laps.map(fmt).join('  ') : '—';
+    for (const v of [r.pos || '–', r.name + (r.left ? ' (left)' : r.late ? ' (joined late)' : ''), r.time != null ? fmt(r.time) : 'did not finish', fmt(r.best), laps]) { const td = document.createElement('td'); td.textContent = v; tr.appendChild(td); }
+    if (r.id === app.myId) tr.style.color = 'var(--accent)';
+    table.appendChild(tr);
+  }
+  $('over-stats').replaceChildren(table);
+  finishOver();
+}
+
 function showDmOver(msg) {
   const winner = msg.stats.find(s => s.id === msg.winner);
   $('over-title').textContent = msg.reason === 'draw' ? 'Draw — tied on kills'
@@ -1227,6 +1355,45 @@ function bindSettings() {
       if (t.dataset.tab === 'crosshair') syncCrosshair();
     });
   }
+  // ---- FPV drones ----
+  for (const sel of document.querySelectorAll('select.dr-axis')) for (const [v, t] of [['thr', 'Throttle (up / down)'], ['yaw', 'Turn (yaw)'], ['pitch', 'Tilt forward / back (pitch)'], ['roll', 'Roll left / right'], ['none', 'Nothing']]) { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); }
+  const syncDrones = app.syncDrones = () => {
+    const d = droneSettings(settings);
+    $('dr-fly').value = d.fly; $('dr-cam').value = d.cam;
+    $('dr-tilt').value = d.tilt; $('dr-tilt-out').textContent = `${d.tilt}°`;
+    $('dr-fov').value = d.fov; $('dr-fov-out').textContent = `${d.fov}°`;
+    $('dr-sticks').value = d.sticks; $('dr-spring').checked = !!d.spring; $('dr-pad').value = d.pad;
+    $('dr-size').value = d.size; $('dr-size-out').textContent = `${Math.round(d.size * 100)}%`;
+    const ax = d.sticks === 'custom' ? d.axes : STICK_MODES[d.sticks] || STICK_MODES.mode2;
+    for (const k of ['ly', 'lx', 'ry', 'rx']) { $(`dr-${k}`).value = ax[k]; $(`dr-${k}`).disabled = d.sticks !== 'custom'; $(`dr-inv-${k}`).checked = !!d.inv[k]; }
+    drawStickPreview(d);
+  };
+  const setDrone = (patch) => { settings.drone = { ...droneSettings(settings), ...patch }; saveSettings(); syncDrones(); };
+  $('dr-fly').addEventListener('change', e => setDrone({ fly: e.target.value }));
+  $('dr-cam').addEventListener('change', e => setDrone({ cam: e.target.value }));
+  $('dr-tilt').addEventListener('input', e => setDrone({ tilt: Number(e.target.value) }));
+  $('dr-fov').addEventListener('input', e => setDrone({ fov: Number(e.target.value) }));
+  $('dr-size').addEventListener('input', e => setDrone({ size: Number(e.target.value) }));
+  $('dr-spring').addEventListener('change', e => setDrone({ spring: e.target.checked }));
+  $('dr-pad').addEventListener('change', e => setDrone({ pad: e.target.value }));
+  $('dr-sticks').addEventListener('change', e => {
+    const d = droneSettings(settings), v = e.target.value;
+    // switching to Custom starts from the layout you had
+    setDrone(v === 'custom' ? { sticks: v, axes: { ...(d.sticks === 'custom' ? d.axes : STICK_MODES[d.sticks] || STICK_MODES.mode2) } } : { sticks: v });
+  });
+  for (const k of ['ly', 'lx', 'ry', 'rx']) {
+    $(`dr-${k}`).addEventListener('change', e => {
+      const d = droneSettings(settings), axes = { ...d.axes }, v = e.target.value, was = axes[k];
+      // each job on one axis only: whatever had this job takes the one this axis had
+      if (v !== 'none') for (const o of ['ly', 'lx', 'ry', 'rx']) if (o !== k && axes[o] === v) axes[o] = was;
+      axes[k] = v;
+      setDrone({ axes });
+    });
+    $(`dr-inv-${k}`).addEventListener('change', e => setDrone({ inv: { ...droneSettings(settings).inv, [k]: e.target.checked } }));
+  }
+  $('btn-dr-reset').addEventListener('click', () => { settings.drone = { ...DRONE_DEFAULTS }; saveSettings(); syncDrones(); });
+  $('pause-fly').addEventListener('change', e => { setDrone({ fly: e.target.value }); if (app.game && app.game.setFly) app.game.setFly(e.target.value); });
+  syncDrones();
   // ---- general ----
   const sync = () => {
     $('set-sens').value = settings.sens; $('sens-out').textContent = Number(settings.sens).toFixed(2);
@@ -1467,7 +1634,7 @@ function onLogin() {
     setVolume(settings.volume);
     setAmbienceVolume(settings.ambience == null ? 0.6 : settings.ambience);
     try { const { touch, ...rest } = settings; localStorage.setItem(STORE, JSON.stringify(rest)); } catch (e) { /* ignore */ }
-    app.syncGeneral && app.syncGeneral(); app.renderKeys && app.renderKeys(); app.syncCrosshair && app.syncCrosshair(); app.renderGfx && app.renderGfx(); app.liveGfx && app.liveGfx();
+    app.syncGeneral && app.syncGeneral(); app.syncDrones && app.syncDrones(); app.renderKeys && app.renderKeys(); app.syncCrosshair && app.syncCrosshair(); app.renderGfx && app.renderGfx(); app.liveGfx && app.liveGfx();
     applyTouchLayout(settings.touchLayout);
     toast('Loaded your saved settings');
   } else saveSettings();   // first login: upload this device's settings
@@ -1475,7 +1642,7 @@ function onLogin() {
 
 // After a real online match, add it to the account (practice and bot games never count).
 async function reportToAccount(msg) {
-  if (!acct.loggedIn() || app.botGame || app.mode === 'practice' || !app.game || msg.mode === 'br' || msg.mode === 'mg' || msg.mode === 'vb') return;
+  if (!acct.loggedIn() || app.botGame || app.mode === 'practice' || !app.game || msg.mode === 'br' || msg.mode === 'mg' || msg.mode === 'vb' || msg.mode === 'fpv') return;
   const me = msg.stats.find(s => s.id === app.myId);
   if (!me) return;
   const dm = msg.mode === 'dm';
@@ -1490,10 +1657,37 @@ async function reportToAccount(msg) {
   } catch (e) { toast(`Couldn't save stats: ${e.message}`); }
 }
 
+// Settings → Drones: a picture of the two sticks with what each direction does
+const DRONE_JOBS = { thr: ['Throttle', 'more', 'less'], yaw: ['Turn', 'right', 'left'], pitch: ['Tilt', 'forward', 'back'], roll: ['Roll', 'right', 'left'], none: ['Nothing', '', ''] };
+function drawStickPreview(d) {
+  const c = $('dr-preview');
+  if (!c) return;
+  const g = c.getContext('2d'), W = c.width = 420, H = c.height = 190;
+  g.clearRect(0, 0, W, H);
+  const ax = d.sticks === 'custom' ? d.axes : STICK_MODES[d.sticks] || STICK_MODES.mode2;
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  [['l', 105], ['r', 315]].forEach(([s, x]) => {
+    const y = 80, v = DRONE_JOBS[ax[s + 'y']] || DRONE_JOBS.none, h = DRONE_JOBS[ax[s + 'x']] || DRONE_JOBS.none;
+    const iy = d.inv[s + 'y'], ix = d.inv[s + 'x'];
+    g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 44, 0, 7); g.stroke();
+    g.fillStyle = 'rgba(240,160,64,.9)'; g.beginPath(); g.arc(x, y, 12, 0, 7); g.fill();
+    g.font = '700 11px system-ui, sans-serif'; g.fillStyle = '#a7a39a';
+    g.fillText(s === 'l' ? 'LEFT STICK' : 'RIGHT STICK', x, 12);
+    g.font = '600 11px system-ui, sans-serif'; g.fillStyle = '#f2efe8';
+    if (v[1]) { g.fillText(iy ? v[2] : v[1], x, y - 55); g.fillText(iy ? v[1] : v[2], x, y + 55); }
+    if (h[1]) { g.textAlign = 'right'; g.fillText(ix ? h[1] : h[2], x - 50, y); g.textAlign = 'left'; g.fillText(ix ? h[2] : h[1], x + 50, y); g.textAlign = 'center'; }
+    g.font = '700 12px system-ui, sans-serif'; g.fillStyle = '#f0a040';
+    g.fillText(`↕ ${v[0]}   ↔ ${h[0]}`, x, 160);
+  });
+  if (d.fly === 'easy') { g.font = '500 11px system-ui, sans-serif'; g.fillStyle = '#a7a39a'; g.fillText('Easy: the throttle stick climbs / sinks and springs back.', W / 2, 181); }
+}
+
 function openSub(id) {
   app.returnTo = app.game ? 'game' : (!$('lobby').classList.contains('hidden') ? 'lobby' : 'menu');
   if (app.game) $('pause').classList.add('hidden');
   show(id);
+  // flying a drone: Settings opens on the Drones tab
+  if (id === 'settings' && app.game && app.game.fpvMode) document.querySelector('#settings .tab[data-tab="drones"]').click();
 }
 
 function closeSub() {
@@ -1570,7 +1764,10 @@ function init() {
   $('btn-leave-lobby').addEventListener('click', leaveToMenu);
   for (const b of document.querySelectorAll('.team-join')) b.addEventListener('click', () => sendToServer({ t: 'team', team: b.dataset.team }));
   $('btn-shuffle').addEventListener('click', () => sendToServer({ t: 'shuffle' }));
-  for (const b of document.querySelectorAll('.mode-btn[data-mode]')) b.addEventListener('click', () => sendToServer({ t: 'settings', mode: b.dataset.mode }));
+  for (const b of document.querySelectorAll('.mode-btn[data-mode]')) b.addEventListener('click', () => sendToServer(b.dataset.mode === 'fpv' ? { t: 'settings', fpvOk: dronesAllowed(), mode: 'fpv' } : { t: 'settings', mode: b.dataset.mode }));
+  $('lobby-fpvlaps').addEventListener('change', e => sendToServer({ t: 'settings', fpvLaps: Number(e.target.value) || 3 }));
+  $('lobby-fpvother').addEventListener('change', e => { if (e.target.value) sendToServer({ t: 'settings', fpvMap: e.target.value }); });
+  $('btn-fpv-end').addEventListener('click', () => sendToServer({ t: 'fpvEnd' }));
   $('lobby-night').addEventListener('change', e => sendToServer({ t: 'settings', night: e.target.checked }));
   $('lobby-level').addEventListener('change', e => sendToServer({ t: 'settings', level: e.target.value }));
   $('lobby-mgrun').addEventListener('change', e => sendToServer({ t: 'settings', mgRun: e.target.value }));

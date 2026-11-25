@@ -833,6 +833,91 @@ export function playMG(kind, pos = null, gain = 1, rate = 1) {
   play(cache.get(key), { pos, gain, rate, ref: pos ? 3 : 1, roll: 0.9, air: 50, wet: pos ? 0.5 : 0.15, important: kind !== 'puff' });
 }
 
+// ---------- FPV drones ----------
+// The motors: one second of four slightly different whines (whole numbers of cycles, so it loops without a click),
+// sped up and down with the throttle; prop wash and wind are noise loops whose loudness follows the speed.
+const loopNoise = (seconds, fill) => buf(seconds, (x, sr) => {
+  fill(x, sr);
+  const f = Math.floor(0.08 * sr);      // fade the end into the start
+  for (let i = 0; i < f; i++) { const k = i / f; x[x.length - f + i] = x[x.length - f + i] * (1 - k) + x[i] * k; }
+});
+let droneBufs = null;
+function droneBuffers() {
+  if (droneBufs) return droneBufs;
+  const motor = buf(1, (x, sr) => {
+    const fs = [180, 183, 177, 186];
+    for (let i = 0; i < x.length; i++) {
+      const t = i / sr;
+      let v = 0;
+      for (let m = 0; m < 4; m++) for (let h = 1; h <= 9; h++) v += Math.sin(6.2831853 * fs[m] * h * t + h * 1.3 + m) / (h * (h > 2 ? 1.4 : 1));
+      x[i] = v * 0.05;
+    }
+  });
+  const wash = loopNoise(2, (x, sr) => { for (let i = 0; i < x.length; i++) x[i] = rnd(); biquad(x, 'bandpass', 900, 0.6, sr); normalize(x, 0.5); });
+  const wind = loopNoise(3, (x, sr) => { for (let i = 0; i < x.length; i++) x[i] = rnd(); biquad(x, 'lowpass', 500, 0.7, sr); biquad(x, 'lowpass', 900, 0.5, sr); normalize(x, 0.7); });
+  droneBufs = { motor, wash, wind };
+  return droneBufs;
+}
+// a drone's own sound. pos: null for yours (in your head), else it is placed in the world.
+// .set(throttle 0…1, speed m/s, pos) every frame; .stop() when it goes.
+export function droneVoice(pos = null) {
+  if (!ctx) return null;
+  const B = droneBuffers(), t0 = ctx.currentTime;
+  const mk = (b, rate) => { const s = ctx.createBufferSource(); s.buffer = b; s.loop = true; s.playbackRate.value = rate; return s; };
+  const motor = mk(B.motor, 0.6), wash = mk(B.wash, 1), wind = pos ? null : mk(B.wind, 1);
+  const gm = ctx.createGain(), gw = ctx.createGain(), gwi = ctx.createGain();
+  gm.gain.value = 0; gw.gain.value = 0; gwi.gain.value = 0;
+  const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = pos ? 5000 : 9000;
+  motor.connect(gm); wash.connect(gw); gm.connect(lp); gw.connect(lp);
+  let out = lp, pan = null;
+  if (pos) {
+    pan = ctx.createPanner();
+    pan.panningModel = isTouch ? 'equalpower' : 'HRTF'; pan.distanceModel = 'inverse';
+    pan.refDistance = 2.5; pan.rolloffFactor = 1.1; pan.maxDistance = 400;
+    lp.connect(pan); out = pan;
+  }
+  out.connect(master);
+  if (wind) { wind.connect(gwi); gwi.connect(master); wind.start(t0); }
+  motor.start(t0, Math.random()); wash.start(t0, Math.random());
+  let alive = true;
+  return {
+    set(f, speed, p) {
+      if (!alive) return;
+      const t = ctx.currentTime, on = f > 0.005;
+      motor.playbackRate.setTargetAtTime(0.5 + f * 1.55 + Math.min(0.25, speed / 120), t, 0.03);
+      gm.gain.setTargetAtTime(on ? (pos ? 0.9 : 0.16) * (0.35 + f * 0.9) : 0, t, 0.06);
+      gw.gain.setTargetAtTime(on ? (pos ? 0.35 : 0.05) * (0.2 + f) : 0, t, 0.08);
+      if (wind) { gwi.gain.setTargetAtTime(Math.min(0.5, (speed / 32) ** 2 * 0.5), t, 0.1); wind.playbackRate.setTargetAtTime(0.7 + Math.min(1, speed / 35), t, 0.1); }
+      if (pan && p) {
+        if (pan.positionX) { pan.positionX.setTargetAtTime(p.x, t, 0.04); pan.positionY.setTargetAtTime(p.y, t, 0.04); pan.positionZ.setTargetAtTime(p.z, t, 0.04); }
+        else pan.setPosition(p.x, p.y, p.z);
+      }
+    },
+    stop() {
+      if (!alive) return;
+      alive = false;
+      const t = ctx.currentTime;
+      for (const g of [gm, gw, gwi]) { g.gain.cancelScheduledValues(t); g.gain.setTargetAtTime(0, t, 0.05); }
+      for (const s of [motor, wash, wind]) if (s) { try { s.stop(t + 0.3); } catch (e) { /* stopped */ } }
+    },
+  };
+}
+const DRS = {
+  // a crash: carbon and plastic cracking, a thump, props clattering to a stop
+  crash: () => buf(1.1, (x, sr) => { noiseHit(x, sr, 0, 'highpass', 1800, 0.7, 0.02, 1, 0.0005); thump(x, sr, 0, 160, 60, 0.12, 0.9, 2); for (let k = 0; k < 9; k++) click(x, sr, 0.03 + k * 0.045 + Math.random() * 0.02, 2500 + Math.random() * 2000, 3, 0.5 * Math.exp(-k * 0.3)); grains(x, sr, 0.02, 0.5, 30, 3200, 1.5, 0.5); normalize(x, 0.9); }),
+  bump: () => buf(0.25, (x, sr) => { click(x, sr, 0, 2600, 2, 0.8); thump(x, sr, 0, 220, 120, 0.04, 0.5); normalize(x, 0.6); }),
+  gate: () => buf(0.35, (x, sr) => { partials(x, sr, 0, [[1568, 0.6, 0.12], [2349, 0.35, 0.09], [3136, 0.15, 0.05]], 1); normalize(x, 0.5); }),
+  lap: () => buf(0.8, (x, sr) => { partials(x, sr, 0, [[1047, 0.6, 0.18], [2093, 0.2, 0.1]], 1); partials(x, sr, 0.14, [[1568, 0.6, 0.3], [3136, 0.2, 0.12]], 1); normalize(x, 0.55); }),
+  finish: () => buf(1.4, (x, sr) => { [1047, 1319, 1568, 2093].forEach((f, k) => partials(x, sr, k * 0.12, [[f, 0.55, 0.5], [f * 2, 0.15, 0.2]], 1)); normalize(x, 0.6); }),
+  static: () => buf(0.6, (x, sr) => { for (let i = 0; i < x.length; i++) x[i] = rnd() * Math.min(1, (x.length - i) / (0.2 * sr)); biquad(x, 'highpass', 1200, 0.7, sr); normalize(x, 0.25); }),
+};
+export function playDrone(kind, pos = null, gain = 1) {
+  if (!ctx || !DRS[kind]) return;
+  const key = `fpv:${kind}`;
+  if (!cache.has(key)) cache.set(key, DRS[kind]());
+  play(cache.get(key), { pos, gain, ref: pos ? 3 : 1, roll: 1, air: 60, wet: pos ? 0.4 : 0.05, important: kind !== 'bump', rate: kind === 'crash' || kind === 'bump' ? 0.9 + Math.random() * 0.2 : 1 });
+}
+
 export function playBR(kind, pos = null, occ = 0, gain = 1) {
   const key = `br:${kind}#${Math.floor(Math.random() * 2)}`;
   if (!cache.has(key)) cache.set(key, BRS[kind]());

@@ -71,4 +71,6 @@ export const RULES = {
   br: { minPlayers: 2, maxPlayers: 6 },
   // the Minigames online: 2–6 players (alone, from Practice with bots)
   mg: { minPlayers: 2, maxPlayers: 6 },
+  // FPV drones online: 1–6 pilots (free flight or a race; dronehost.js)
+  fpv: { minPlayers: 1, maxPlayers: 6 },
 };
