@@ -38,13 +38,14 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   const UNI = poolUniforms(S);
   UNI.uGrade.value = gfx.look ? 1 : 0;                // (the Poolrooms' own faint colour grade goes with 'Picture shaders')
   const spansAt = (ix, iz) => (ix < 0 || iz < 0 || ix >= Wc || iz >= Dc ? null : world.spans[iz * Wc + ix]);
-  const outdoors = (ix, iz) => ix < 3 || iz < 3 || iz >= 101;            // beyond the glazed walls: open sky
+  const outdoors = plan.outdoors || ((ix, iz) => ix < 3 || iz < 3 || iz >= 101);            // beyond the glazed walls: open sky
+  // (the Minigames arena, mgmap.js, is drawn from the same kind of plan: it has no exit, slanted wall, tower, drain…)
   const drawn = s => s.m[0] !== '_';
   const solidAt = (ix, iz, y) => { const sp = spansAt(ix, iz); if (!sp) return true; for (const s of sp) if (s.y0 < y && s.y1 > y) return true; return false; };
   const bodyIdx = (ix, iz) => (ix < 0 || iz < 0 || ix >= Wc || iz >= Dc ? 0 : world.waterGrid[iz * Wc + ix]);
   // which water a surface at this cell can be under: 0 none, 1 a pool, 2 the Great Pool (and its tunnel), 3 flooded
   const wkOf = (ix, iz) => { const b = bodyIdx(ix, iz); if (!b) return 0; const o = world.bodies[b - 1]; return o.shallow ? 3 : o.name === 'great' ? 2 : 1; };
-  const inExit = (x, z) => { const t = plan.exit.tunnel; return x > t.x0 - 0.01 && x < t.x1 + 0.01 && z > t.z0 - 0.01 && z < t.z1 + 0.01; };
+  const inExit = (x, z) => { const t = plan.exit && plan.exit.tunnel; return !!t && x > t.x0 - 0.01 && x < t.x1 + 0.01 && z > t.z0 - 0.01 && z < t.z1 + 0.01; };
   const sdfMin = (x, z) => { let d = 9; for (const p of plan.pools) if (x > p.x0 - 1.5 && x < p.x1 + 1.5 && z > p.z0 - 1.5 && z < p.z1 + 1.5) d = Math.min(d, p.sdf(x, z)); return d; };
   // the same, but a pool also ends at the room it is clipped to: the Great Pool's shape runs on to x = 60, into the grotto,
   // and the deck there (and the floor of the three arches between them) was taken for water and never drawn, so the
@@ -130,10 +131,10 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     if (o.axis === 'z') aperture([uc, yc, at], [0, 0, -o.out], [hu, 0, 0], [0, hy, 0], o.shape);
     else aperture([at, yc, uc], [-o.out, 0, 0], [0, 0, hu], [0, hy, 0], o.shape);
   }
-  { const s = plan.slant; for (const w of s.windows) aperture([s.x - 0.1, (w.y0 + w.y1) / 2, w.z], [1, 0, 0], [0, 0, w.w / 2], [0, (w.y1 - w.y0) / 2, 0], 'capsule'); }
-  { const w = plan.well; aperture([(w.x0 + w.x1) / 2, ROOF + 0.2, (w.z0 + w.z1) / 2], [0, -1, 0], [(w.x1 - w.x0) / 2, 0, 0], [0, 0, (w.z1 - w.z0) / 2], 'rect'); }
+  if (plan.slant) { const s = plan.slant; for (const w of s.windows) aperture([s.x - 0.1, (w.y0 + w.y1) / 2, w.z], [1, 0, 0], [0, 0, w.w / 2], [0, (w.y1 - w.y0) / 2, 0], 'capsule'); }
+  if (plan.well) { const w = plan.well; aperture([(w.x0 + w.x1) / 2, ROOF + 0.2, (w.z0 + w.z1) / 2], [0, -1, 0], [(w.x1 - w.x0) / 2, 0, 0], [0, 0, (w.z1 - w.z0) / 2], 'rect'); }
   // the exit hatch: a square of white light at the top of the shaft
-  { const h = plan.exit.hatch; addEmit(h.x, h.y - 0.08, h.z, 0, -1, 0, SKY.map(v => v * 1.6), true); }
+  if (plan.exit) { const h = plan.exit.hatch; addEmit(h.x, h.y - 0.08, h.z, 0, -1, 0, SKY.map(v => v * 1.6), true); }
   for (const v of vpl.values()) {
     if (v.w < 0.02) continue;
     const k = v.w / Math.PI * 3.2;
@@ -594,9 +595,13 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       quad(B, V(B, x0, y, z, 0, 1, 0, x0, z, FIN.blue, wk), V(B, x1, y, z, 0, 1, 0, x1, z, FIN.blue, wk), V(B, x1, y, zb, 0, 1, 0, x1, zb, FIN.blue, wk), V(B, x0, y, zb, 0, 1, 0, x0, zb, FIN.blue, wk), 0, 1, 0);
     }
   };
-  for (const xm of [48, 52, 56]) { stripe(xm - 0.15, 27, xm + 0.15, 39, 0.004, 2); stripe(xm - 0.6, 26.7, xm + 0.6, 27, 0.004, 2); stripe(xm - 0.6, 39, xm + 0.6, 39.3, 0.004, 2); }
-  stripe(3.65, 18, 3.95, 41, plan.pools[6].bottom + 0.004, 1);
-  stripe(37.85, 23, 38.15, 44, plan.pools[3].bottom + 0.004, 1);
+  if (!plan.arena) {
+    for (const xm of [48, 52, 56]) { stripe(xm - 0.15, 27, xm + 0.15, 39, 0.004, 2); stripe(xm - 0.6, 26.7, xm + 0.6, 27, 0.004, 2); stripe(xm - 0.6, 39, xm + 0.6, 39.3, 0.004, 2); }
+    stripe(3.65, 18, 3.95, 41, plan.pools[6].bottom + 0.004, 1);
+    stripe(37.85, 23, 38.15, 44, plan.pools[3].bottom + 0.004, 1);
+  }
+  // (the arena's court lines and the pool's lane lines, from its plan)
+  for (const q of plan.stripes || []) stripe(q.x0, q.z0, q.x1, q.z1, q.y + 0.004, q.wk || 0);
 
   // ---- round pillars ----
   const segsRound = Q === 0 ? 20 : 36;
@@ -668,7 +673,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   // round wall, and the doorway's own cells are invisible stair collision, so a strip there was left open: you saw down the stairwell).
   // It stops exactly on the landing's own outline (the same straight pieces the landing is drawn with: every 15° on top, every
   // 7.5° underneath), so the two never overlap: they did, both at y = U, and fought (a jagged edge across the floor).
-  {
+  if (plan.tower) {
     const g = plan.rings[0].gaps[1], T = plan.tower, RAD = Math.PI / 180;
     const strip = (y, ny, step) => {
       const pts = [];
@@ -690,7 +695,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     strip(g.y0, 1, 15);              // (the landing's top: sector() below, two pieces over its 30°)
     strip(g.y0 - 0.35, -1, 7.5);     // (its underside: the slab below, in 7.5° pieces)
   }
-  {
+  if (plan.tower) {
     const T = plan.tower, RAD = Math.PI / 180;
     const at = (th, r) => [T.x + Math.cos((th + 90) * RAD) * r, T.z + Math.sin((th + 90) * RAD) * r];
     const tan = (th) => [-Math.sin((th + 90) * RAD), Math.cos((th + 90) * RAD)];         // the way round (uphill)
@@ -788,7 +793,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     shapedHole({ ...o, fin, uAt: u => o.u0 + u, vAt: v => o.y0 + v }, w, h, to3, plates, o.a0 - (o.pad0 || 0), o.a1 + (o.pad1 || 0));
   }
   // the way from the stair tower's top out to the corridor: an arch in the corridor's wall
-  { const g = plan.rings[0].gaps[1], o = { shape: 'arch', fin: FIN.cream, uAt: u => g.z0 + u, vAt: v => g.y0 + v };
+  if (plan.tower) { const g = plan.rings[0].gaps[1], o = { shape: 'arch', fin: FIN.cream, uAt: u => g.z0 + u, vAt: v => g.y0 + v };
     shapedHole(o, g.z1 - g.z0, g.y1 - g.y0 - 0.02, (u, v, d) => [d, g.y0 + v, g.z0 + u], [[50, [-1, 0, 0]]], 50, 50.45); }      // (only through the wall: deeper, it hung into the tower)
   // round skylights: the ceiling round the circle, and the circle's edge up through the roof
   for (const s of plan.skylights) {
@@ -798,7 +803,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   }
 
   // ---- the lane hall's slanted wall with its row of capsule windows ----
-  {
+  if (plan.slant) {
     const s = plan.slant, hgt = s.y1 - s.y0, len = Math.hypot(hgt, s.lean), n = [hgt / len, -s.lean / len, 0];
     const xAt = y => s.x + (y - s.y0) / hgt * s.lean;
     const P = (B, y, z) => V(B, xAt(y), y, z, n[0], n[1], n[2], z, s.y0 + (y - s.y0) * len / hgt, FIN.cream, 0);
@@ -823,7 +828,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     rect(z, s.z1, s.y0, s.y1);
   }
   // (the capsule's straight sides back to the glass line, which the corner pieces above don't cover)
-  {
+  if (plan.slant) {
     const s = plan.slant, hgt = s.y1 - s.y0, xAt = y => s.x + (y - s.y0) / hgt * s.lean;
     for (const w of s.windows) {
       const r = w.w / 2;
@@ -1041,7 +1046,8 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   };
   const shadowRT = mkDepthRT(shadowSize);
   {
-    fitSun(sunCam, 32, 6.5, 26, [1.5, 0, 1.5, 64, ROOFT, 50.5]);
+    const sb = plan.sunBox || { c: [32, 6.5, 26], box: [1.5, 0, 1.5, 64, ROOFT, 50.5] };
+    fitSun(sunCam, sb.c[0], sb.c[1], sb.c[2], sb.box);
     const sc = new THREE.Scene();
     sc.add(casters);
     sc.overrideMaterial = depthMat;
@@ -1134,7 +1140,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     }
     for (let y = G - 0.14; y > L.bottom + 0.1; y -= 0.27) rod([L.x + tx * -0.25 - L.nx * 0.13, y, L.z + tz * -0.25 - L.nz * 0.13], [L.x + tx * 0.25 - L.nx * 0.13, y, L.z + tz * 0.25 - L.nz * 0.13], 0.02, 'chrome');
   }
-  { const L = plan.exit.ladder;                              // the exit ladder up the shaft
+  if (plan.exit) { const L = plan.exit.ladder;                              // the exit ladder up the shaft
     for (const sd of [-0.25, 0.25]) rod([L.x + sd, 0.02, L.z - 0.12], [L.x + sd, L.top - 0.15, L.z - 0.12], 0.024, 'chrome');
     for (let y = 0.3; y < L.top - 0.2; y += 0.28) rod([L.x - 0.25, y, L.z - 0.12], [L.x + 0.25, y, L.z - 0.12], 0.02, 'chrome'); }
   for (const d of plan.drains) {
@@ -1143,7 +1149,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     put('plain', new THREE.CircleGeometry(0.056, 14), d.x, d.y + 0.3, d.z, '#1c1d1e', new THREE.Matrix4().makeRotationX(-Math.PI / 2).setPosition(d.x, d.y + 0.004, d.z));
     for (const k of [-0.03, 0, 0.03]) rod([d.x - 0.05, d.y + 0.007, d.z + k], [d.x + 0.05, d.y + 0.007, d.z + k], 0.006, 'chrome');
   }
-  { // the lift you came in by: shut steel doors at the east end of the hallway
+  if (plan.lift) { // the lift you came in by: shut steel doors at the east end of the hallway
     const L = plan.lift, x = L.x - 0.03;
     const panel = (z0, z1, y0, y1, col, dx = 0) => put('plain', new THREE.PlaneGeometry(z1 - z0, y1 - y0), x - 1, y0 + 1, (z0 + z1) / 2, col, new THREE.Matrix4().makeRotationY(-Math.PI / 2).setPosition(x - dx, (y0 + y1) / 2, (z0 + z1) / 2));
     panel(L.z - 1.15, L.z + 1.15, L.y, L.y + 2.35, '#8f9396', 0);
@@ -1199,7 +1205,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       // the streak down the wall from the pipe's lower bracket
       const g = new THREE.PlaneGeometry(0.34, 0.5); g.rotateY(th); g.translate(px - v.nx * 0.046, v.y + 0.25, pz - v.nz * 0.046); streaks.push(g);
     }
-    spot(plan.drain.x + 0.2 * -plan.drain.nx, plan.drain.y, plan.drain.z, 0.36);
+    if (plan.drain) spot(plan.drain.x + 0.2 * -plan.drain.nx, plan.drain.y, plan.drain.z, 0.36);
     const merge = (list) => { const pos = [], uv = []; for (const g of list) { const ng = g.index ? g.toNonIndexed() : g; pos.push(...ng.attributes.position.array); uv.push(...ng.attributes.uv.array); g.dispose(); } const o = new THREE.BufferGeometry(); o.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); o.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2)); o.computeBoundingSphere(); return o; };
     for (const [list, map] of [[spots, spotTex], [streaks, streakTex]]) if (list.length) { const m = new THREE.Mesh(merge(list), mat(map)); m.renderOrder = 1; group.add(m); }
   }
@@ -1253,15 +1259,14 @@ export function buildPoolScene(world, renderer, gfx = {}) {
   // valves and the drain
   const valves = plan.valves.map(v => { const o = makeValve(!!v.post, v.post ? POOL.ROOF - v.y : 3.2); o.root.position.set(v.x, v.y, v.z); o.root.rotation.y = Math.atan2(v.nx, v.nz); movers.add(o.root); return o; });
   ud.setValve = (i, p) => { const o = valves[i]; if (o) o.wheel.userData.want = p * Math.PI * 2 * 3; };
-  const drain = makeDrain();
-  drain.root.position.set(plan.drain.x, plan.drain.y, plan.drain.z); drain.root.rotation.y = Math.atan2(plan.drain.nx, plan.drain.nz);
-  movers.add(drain.root);
-  ud.setDrain = (p) => { drain.wheel.userData.want = p * Math.PI * 2 * 4; };
-  ud.setGauges = (heat) => { for (let k = 0; k < 3; k++) drain.needles[k].userData.want = heat[k]; };
-  ud.setUnlocked = (on) => { drain.lock.userData.want = on ? 1 : 0; };
-  ud.jiggleDrain = () => { drain.wheel.userData.jiggle = 0.35; };
+  const drain = plan.drain ? makeDrain() : null;
+  if (drain) { drain.root.position.set(plan.drain.x, plan.drain.y, plan.drain.z); drain.root.rotation.y = Math.atan2(plan.drain.nx, plan.drain.nz); movers.add(drain.root); }
+  ud.setDrain = (p) => { if (drain) drain.wheel.userData.want = p * Math.PI * 2 * 4; };
+  ud.setGauges = (heat) => { if (drain) for (let k = 0; k < 3; k++) drain.needles[k].userData.want = heat[k]; };
+  ud.setUnlocked = (on) => { if (drain) drain.lock.userData.want = on ? 1 : 0; };
+  ud.jiggleDrain = () => { if (drain) drain.wheel.userData.jiggle = 0.35; };
   // steam over the Great Pool's lanes and the grotto's basin
-  const steam = (() => {
+  const steam = !plan.lanes ? null : (() => {
     const pos = [], seed = [], src = [], per = Q === 0 ? 50 : 130;
     const add = (r, k, n) => { for (let i = 0; i < n; i++) { pos.push(r.x0 + R() * (r.x1 - r.x0), 0, r.z0 + R() * (r.z1 - r.z0)); seed.push(R(), R(), R(), R()); src.push(k); } };
     plan.lanes.forEach((l, k) => add(l, k, per));
@@ -1272,9 +1277,9 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     group.add(m);
     return m;
   })();
-  ud.setHeat = (h) => { const v = steam.material.uniforms.uHeat.value; v.x = h[0]; v.y = h[1]; v.z = h[2]; };
+  ud.setHeat = (h) => { if (!steam) return; const v = steam.material.uniforms.uHeat.value; v.x = h[0]; v.y = h[1]; v.z = h[2]; };
   // the exit hatch
-  { const h = makeHatch(); h.position.set(plan.exit.hatch.x, plan.exit.hatch.y - 0.01, plan.exit.hatch.z); movers.add(h); }
+  if (plan.exit) { const h = makeHatch(); h.position.set(plan.exit.hatch.x, plan.exit.hatch.y - 0.01, plan.exit.hatch.z); movers.add(h); }
   // the slides from the inside: dark tubes, faint seams going by, light at both ends (only drawn during a ride)
   const tubes = plan.slides.map(sl => {
     const c = slideCurve(sl.path), N = Math.max(40, Math.round(c.total / 0.25)), RS = 18, rad = 0.7;
@@ -1315,6 +1320,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
     for (const row of plates) for (const m of row) { m.userData.k = ease(m.userData.k, m.userData.want || 0, dt * 14); m.position.y = -0.03 * m.userData.k; }
     for (const m of bridges) { m.userData.up = ease(m.userData.up, m.userData.want || 0, dt * 6); m.position.y = BRIDGE_LOW * (1 - m.userData.up); }
     for (const o of valves) o.wheel.rotation.z = ease(o.wheel.rotation.z, -(o.wheel.userData.want || 0), dt * 8);
+    if (!drain) return;
     const jg = drain.wheel.userData.jiggle || 0;
     drain.wheel.rotation.z = ease(drain.wheel.rotation.z, -(drain.wheel.userData.want || 0), dt * 6) + (jg > 0 ? Math.sin(jg * 60) * 0.04 * jg : 0);
     drain.wheel.userData.jiggle = Math.max(0, jg - dt);
@@ -1489,7 +1495,7 @@ export function buildPoolScene(world, renderer, gfx = {}) {
       const d = o.out > 0 ? o.a1 + 0.6 : o.a0 - 0.6;
       if (o.axis === 'z') card(w, h, u, y, d); else card(w, h, d, y, u, Math.PI / 2);
     }
-    { const sw = plan.slant.windows; card(sw[sw.length - 1].z - sw[0].z + 4, 5, 0.9, (sw[0].y0 + sw[0].y1) / 2, (sw[0].z + sw[sw.length - 1].z) / 2, Math.PI / 2); }
+    if (plan.slant) { const sw = plan.slant.windows; card(sw[sw.length - 1].z - sw[0].z + 4, 5, 0.9, (sw[0].y0 + sw[0].y1) / 2, (sw[0].z + sw[sw.length - 1].z) / 2, Math.PI / 2); }
     // the skylights and the light well: one sheet of sky lying right on the roof closes every shaft at its top (a small card
     // a metre above each one let you see past its edge, into the empty grey above the roof, when you looked up at a slant)
     card(80, 70, 32, ROOFT + 0.002, 26, 0, -Math.PI / 2);

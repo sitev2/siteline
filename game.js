@@ -30,6 +30,8 @@ import { POOL, poolUnstickSpot } from './poolmap.js';
 import { PoolHands, PoolClient, poolTint } from './poolplay.js';
 import { FALL_KILL } from './poolhost.js';
 import { makeShifterModel, animateShifter, TAKE, takePull } from './shiftmodel.js';
+import { MiniClient } from './mgplay.js';
+import { MG } from './mghost.js';
 
 const BOMB_STATES = ['none', 'carried', 'dropped', 'planted', 'defused', 'exploded'];
 const INTERP_DELAY = 110; // ms
@@ -68,7 +70,7 @@ const d0 = (esc) => ({ x: esc.door.x + esc.door.nx * 0.15, z: esc.door.z + esc.d
 const smoothstep = t => t * t * (3 - 2 * t);
 
 export class Game {
-  constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night, doors, notes, key, crossed, gar, pool, onEscape }) {
+  constructor({ transport, myId, roster, map, practice, settings, quality, isHost, onPause, mode, variant, night, doors, notes, key, crossed, gar, pool, mg, onEscape }) {
     this.transport = transport;
     this.myId = myId;
     this.practice = practice;
@@ -82,6 +84,8 @@ export class Game {
     this.world = new World(resolveMap(map, variant));
     this.gar = this.br && this.world.def.theme === 'garage';   // Backrooms Level 1: the garage, and the thing that copies you
     this.pool = this.br && this.world.def.theme === 'pool';    // Backrooms Level 2: the Poolrooms (no creature: water and falls)
+    this.mg = mode === 'mg';   // the Minigames (mgplay.js): party games with the floaties, no guns, in the Pool Hall
+    this.water = this.world.def.theme === 'pool';             // swimming in deep water (the Poolrooms and the Minigames' pool)
     this.hud = new Hud();
     this.running = true;
     this.paused = false;
@@ -89,7 +93,7 @@ export class Game {
 
     // ---- renderer (graphics settings: graphics.js) ----
     const G = this.gfx = quality && typeof quality === 'object' ? quality : resolveGraphics(null, !!settings.touch);
-    this.night = !!night && this.world.def.theme !== 'backrooms';     // (the Backrooms deathmatch map has its own baked light)
+    this.night = !!night && this.world.def.theme !== 'backrooms' && !this.mg;     // (the Backrooms deathmatch map has its own baked light; the Minigames are always played by day)
     const usePost = G.ao || G.bloom || G.look || G.aa === 'fxaa';
     this.nativeAA = G.aa === 'msaa' && !usePost;     // (the screen's own MSAA can only be chosen now; applyGraphics uses PostFX's instead)
     this.renderer = new THREE.WebGLRenderer({ antialias: this.nativeAA, powerPreference: 'high-performance' });
@@ -294,6 +298,13 @@ export class Game {
       const rb = document.getElementById('btn-inspect');
       rb.innerHTML = icon('run'); rb.setAttribute('aria-label', 'Sprint');
       this.brHintUntil = 12;
+    } else if (this.mg) {
+      // the Minigames: your arms when you swim, the floaties, the goals, the rounds' HUD (mgplay.js)
+      this.poolLadders = [];
+      this.poolHands = new PoolHands(this.vmScene);
+      this.mgc = new MiniClient(this);
+      if (mg) this.mgc.apply(mg);
+      this.mgReadyAt = -1;                        // (the host waits for everyone before the first round: see updateHud)
     } else if (this.br) {
       if (this.gar) this.hud.center('Level 1', 'The garage. Stay with the others.', '#e8b46a', 7);
       else this.hud.center('The Backrooms', 'Heavy door, key, locked door, pits, levers, exit. Walking is quiet: it hears you sprint.', '#e8dc8a', 7);
@@ -303,6 +314,9 @@ export class Game {
       this.brHintUntil = 14;
     }
   }
+
+  // the loading screen has gone (main.js beginGame): the game is on screen
+  onLoaded() { this.loadedAt = performance.now(); }
 
   // Settings → Graphics changed during a game: apply it now, no need to leave (owner's request). Render scale, FPS cap,
   // anti-aliasing, AO, bloom, picture shaders and effects take effect at once. On the 2v2 / deathmatch maps a change of
@@ -374,6 +388,7 @@ export class Game {
     if (this.br && !this.pool) { const jb = document.getElementById('btn-jump'); jb.innerHTML = icon('jump'); jb.setAttribute('aria-label', 'Jump'); }
     if (this.fx) this.fx.destroy();
     if (this.poolc) this.poolc.destroy();
+    if (this.mgc) this.mgc.destroy();
     document.getElementById('spec-bar').classList.add('hidden');
     document.getElementById('spec-prev').onclick = document.getElementById('spec-next').onclick = null;
     sfx.stopAmbience();
@@ -440,7 +455,9 @@ export class Game {
         continue;
       }
       let rem = this.remotes.get(r.id);
-      if (rem && rem.team !== r.team) { this.scene.remove(rem.model.root); rem = null; this.remotes.delete(r.id); }
+      // (a new team: a new uniform. The model's own team too: the Minigames change teams each round, and a snapshot may have
+      //  told us the new team before the roster did)
+      if (rem && (rem.team !== r.team || (rem.model && rem.model.team && rem.model.team !== r.team && r.team !== 'monster'))) { if (rem.model) this.scene.remove(rem.model.root); rem = null; this.remotes.delete(r.id); }
       if (!rem) {
         rem = {
           id: r.id, name: r.name, team: r.team, dummy: r.dummy, buf: [], alive: false, hp: 100, w: STARTER_PISTOL[r.team] || 'glock',
@@ -460,8 +477,8 @@ export class Game {
       }
       if (!rem.model) {
         // the Backrooms: hazmat suits, with the name on the back instead of a tag over the head
-        rem.model = this.br ? makePlayerModel(r.team, r.name, false, 'hazmat') : makePlayerModel(r.team, r.name, this.isMate(r));
-        if (this.pool) { rem.model.root.traverse(o => o.layers.enable(this.builtMap.group.userData.castLayer)); poolTint(rem.model.root); }      // (they throw shadows in the sun, and are seen through the water)
+        rem.model = this.br ? makePlayerModel(r.team, r.name, false, 'hazmat') : makePlayerModel(r.team, r.name, this.mg || this.isMate(r));
+        if (this.water) { rem.model.root.traverse(o => o.layers.enable(this.builtMap.group.userData.castLayer)); poolTint(rem.model.root); }      // (they throw shadows in the sun, and are seen through the water)
         rem.model.root.visible = false;
         this.scene.add(rem.model.root);
       }
@@ -472,10 +489,11 @@ export class Game {
     // teammates' name tags depend on our team
     for (const rem of this.remotes.values()) {
       if (rem.model.monster || this.br) continue;
-      const shouldLabel = this.isMate(rem);
+      const shouldLabel = this.mg || this.isMate(rem);
       if (!!rem.model.label !== shouldLabel) {
         this.scene.remove(rem.model.root);
         rem.model = makePlayerModel(rem.team, rem.name, shouldLabel);
+        if (this.water) { rem.model.root.traverse(o => o.layers.enable(this.builtMap.group.userData.castLayer)); poolTint(rem.model.root); }
         this.scene.add(rem.model.root);
       }
     }
@@ -678,6 +696,8 @@ export class Game {
         return;
       }
       case 'pool': if (this.poolc) this.poolc.apply(m.s); return;
+      case 'mg': if (this.mgc) this.mgc.apply(m.s); return;
+      case 'mgfx': if (this.mgc) this.mgc.fx(m); return;
       case 'pfx': if (this.poolc) this.poolc.fx(m); return;
       case 'slide': if (this.poolc) this.poolc.remoteSlide(m); return;
       case 'escaped':
@@ -889,6 +909,13 @@ export class Game {
   }
 
   onKill(m) {
+    // the Minigames: out of the round (hit, caught, popped): a puff of smoke, no body, no kill feed
+    if (m.w === 'mg') {
+      if (m.victim === this.myId) { this.me.alive = false; this.me.deathTime = performance.now(); this.me.spectate = null; }
+      else { const r = this.remotes.get(m.victim); if (r) { r.alive = false; r.deadT = performance.now(); } }
+      if (this.mgc) this.mgc.onOut(m);
+      return;
+    }
     if (m.killer === this.myId && m.victim !== this.myId && WEAPONS[m.w]) this.weaponKills[m.w] = (this.weaponKills[m.w] || 0) + 1;
     const killer = m.killer ? this.playerById(m.killer) : null;
     const victim = this.playerById(m.victim);
@@ -1138,7 +1165,7 @@ export class Game {
   surfaceAt(x, y, z) {
     const theme = this.world.def.theme;
     const ground = { desert: 'sand', industrial: 'hard', snow: 'snow', harbour: 'hard', quarry: 'gravel', railyard: 'gravel', village: 'hard', tuscan: 'hard' }[theme] || 'hard';
-    if (this.pool ? this.world.waterAt(x, z) > y + 0.05 : y < 0.3 && this.world.waterAt(x, z) > 0) return 'water';
+    if (this.water ? this.world.waterAt(x, z) > y + 0.05 : y < 0.3 && this.world.waterAt(x, z) > 0) return 'water';
     if (y < 0.1) return ground;
     const spans = this.world.cellSpans(Math.floor(x / CELL), Math.floor(z / CELL));
     let best = null;
@@ -1361,7 +1388,7 @@ export class Game {
 
   // a ring on the water at (x, z); does nothing away from water
   addRipple(x, z, size = 0.6, life = 0.9) {
-    if (this.pool) { if (!this.world.bodyAt(x, z)) return false; this.builtMap.group.userData.addRipple(x, z, size); return true; }      // (rings drawn by the water itself)
+    if (this.water) { if (!this.world.bodyAt(x, z)) return false; this.builtMap.group.userData.addRipple(x, z, size); return true; }      // (rings drawn by the water itself)
     const wy = this.world.waterAt(x, z);
     if (!wy || !this.ripples.length) return false;
     const r = this.ripples[this.rippleIdx++ % this.ripples.length];
@@ -1571,7 +1598,7 @@ export class Game {
 
   // ---------- local player ----------
   canBuy() {
-    if (!this.me.alive) return false;
+    if (!this.me.alive || this.mg) return false;
     if (this.practice || this.dm) return true;
     if (this.phase !== 'freeze' && this.phase !== 'live') return false;
     if (this.roundElapsed >= RULES.buyTime) return false;
@@ -1659,6 +1686,16 @@ export class Game {
       return;
     }
 
+    if (this.mg) {
+      // the Minigames: E / the hand button picks a floatie up (or catches one thrown at you), fire / the aim button
+      // throws it; jumping works; no guns, nothing to buy. Nobody moves during the countdown.
+      if (inp.consume('click') && this.mgc) this.mgc.throw();
+      if (inp.consume('use') && this.mgc) this.mgc.use();
+      for (const a of ['reload', 'alt', 'w1', 'w2', 'w3', 'w5', 'next', 'prev', 'swap', 'drop', 'buy', 'note', 'map', 'inspect']) inp.consume(a);
+      this.updateMovement(dt, !!(this.mgc && this.mgc.frozen()));
+      if (this.mgc) this.mgc.clamp(me.pos);
+      return;
+    }
     if (this.br) {
       // the Poolrooms: fire / tap throws the floatie you hold; on a slide nothing else happens
       if (this.pool && this.poolc) {
@@ -1754,13 +1791,14 @@ export class Game {
     // the Backrooms: you walk (quietly) unless you hold Shift / the run button to sprint
     // the Poolrooms: on a ladder nothing else moves you; in deep water you swim (80 % of a walk); knee-deep water
     // hardly slows you, waist-deep a little more
-    const pw = this.pool ? this.poolWater() : null;
+    const pw = this.water ? this.poolWater() : null;
     if (pw && this.poolLadder(dt, wx, wz, amount, pw)) return;
     // no climbing out over a pool's edge any more (owner's request): only ladders and the lane pool's steps
     const EDGE_CLIMB = false;
     if (EDGE_CLIMB && pw && this.poolEdge(dt, wx, wz, amount, pw)) return;
     const swim = !!(pw && pw.swim);
-    const maxSpeed = pw ? (swim ? BR.walk * 0.8 : (this.sprinting() ? BR.sprint : BR.walk) * (pw.depth > 0.62 ? 0.8 : pw.depth > 0.05 ? 0.95 : 1))
+    const maxSpeed = this.mg ? (swim ? MG.speed.swim : MG.speed.run * gait) * (this.mgc ? this.mgc.speedK() : 1)      // (the Minigames: running is the normal pace)
+      : pw ? (swim ? BR.walk * 0.8 : (this.sprinting() ? BR.sprint : BR.walk) * (pw.depth > 0.62 ? 0.8 : pw.depth > 0.05 ? 0.95 : 1))
       : this.br ? (this.sprinting() ? BR.sprint : BR.walk) * (wading ? 0.8 : 1)      // (Level 1's puddles slow you a little)
       : runSpeed(w, me.zoom > 0) * gait * (1 - 0.45 * me.tag) * (1 - me.landSlow) * (wading ? WADE : 1);
     const wish = maxSpeed * amount;
@@ -1834,7 +1872,7 @@ export class Game {
 
     const speed = Math.hypot(v.x, v.z);
     // wading can't be done quietly: even walking splashes
-    const inWater = this.pool ? !!(pw && pw.depth > 0.05 && me.onGround) : me.onGround && me.pos.y < 0.3 && this.world.waterAt(me.pos.x, me.pos.z) > 0;
+    const inWater = this.water ? !!(pw && pw.depth > 0.05 && me.onGround) : me.onGround && me.pos.y < 0.3 && this.world.waterAt(me.pos.x, me.pos.z) > 0;
     if (me.onGround && (inWater ? speed > 0.8 : speed > STEP_SPEED && (this.br || !inp.walk))) {
       me.stepTimer -= dt;
       if (me.stepTimer <= 0) {
@@ -1976,7 +2014,7 @@ export class Game {
     }
     this.vmLand = Math.min(1, 0.4 + fall * 0.25);
     // (the Poolrooms: only a real drop thumps — its stairs' small steps banged on every step)
-    if (fall > (this.pool ? 1.2 : 0.4) && !this.input.walk) sfx.playLand({ surface: this.surfaceAt(me.pos.x, me.pos.y, me.pos.z), hard: Math.min(1, fall / 3) });
+    if (fall > (this.water ? 1.2 : 0.4) && !this.input.walk) sfx.playLand({ surface: this.surfaceAt(me.pos.x, me.pos.y, me.pos.z), hard: Math.min(1, fall / 3) });
   }
 
   updateWeapon(dt, frozen) {
@@ -2381,9 +2419,9 @@ export class Game {
       if (r.alive) {
         m.root.rotation.set(0, r.rp.yaw, 0);
         const fx = -Math.sin(r.rp.yaw), fz = -Math.cos(r.rp.yaw);
-        // the Poolrooms: swimming in deep water, or on a ladder
+        // the Poolrooms (and the Minigames' pool): swimming in deep water, or on a ladder
         let swim = false, climb = null;
-        if (this.pool) {
+        if (this.water) {
           const b = this.world.bodyAt(r.rp.x, r.rp.z);
           if (b) { const fl = this.world.groundAt(r.rp.x, r.rp.z, 0.3, r.rp.y + 0.05, 0.05); swim = b.y - fl > POOL.deep && r.rp.y < b.y - POOL.swim + 0.15; }
           if (m.root.userData.setWaterY) m.root.userData.setWaterY(b ? b.y : -1000);
@@ -2405,7 +2443,7 @@ export class Game {
   remoteSteps(r, speed, vy, py, dt) {
     {
       const d = Math.hypot(r.rp.x - this.me.pos.x, r.rp.z - this.me.pos.z);
-      const wet = this.pool ? this.world.waterAt(r.rp.x, r.rp.z) > r.rp.y + 0.05 : r.rp.y < 0.3 && this.world.waterAt(r.rp.x, r.rp.z) > 0;
+      const wet = this.water ? this.world.waterAt(r.rp.x, r.rp.z) > r.rp.y + 0.05 : r.rp.y < 0.3 && this.world.waterAt(r.rp.x, r.rp.z) > 0;
       if ((wet ? speed > 0.8 : speed > STEP_SPEED) && Math.abs(vy) < 0.5) {
         r.stepTimer -= dt;
         if (r.stepTimer <= 0) {
@@ -2419,7 +2457,7 @@ export class Game {
       else if (r.fallFrom != null && vy > -0.3) {
         const fall = r.fallFrom - r.rp.y;
         r.fallFrom = null;
-        if (fall > (this.pool ? 1.2 : 0.5) && d < 30) sfx.playLand({ pos: { x: r.rp.x, y: r.rp.y + 0.05, z: r.rp.z }, surface: this.surfaceAt(r.rp.x, r.rp.y, r.rp.z), hard: Math.min(1, fall / 3), occ: this.occlusion(r.rp.x, r.rp.y + 0.3, r.rp.z) });
+        if (fall > (this.water ? 1.2 : 0.5) && d < 30) sfx.playLand({ pos: { x: r.rp.x, y: r.rp.y + 0.05, z: r.rp.z }, surface: this.surfaceAt(r.rp.x, r.rp.y, r.rp.z), hard: Math.min(1, fall / 3), occ: this.occlusion(r.rp.x, r.rp.y + 0.3, r.rp.z) });
       }
     }
   }
@@ -2769,7 +2807,7 @@ export class Game {
         pitch += (Math.abs(s) - 0.5) * 0.006 * a;
       }
     }
-    if (this.pool && me.alive && me.swim) {
+    if (this.water && me.alive && me.swim) {
       // afloat: the camera rides the water gently (and dips for a moment when you drop in)
       const t = this.clock, d = t - (me.dunk == null ? -9 : me.dunk);
       y += Math.sin(t * 1.7) * 0.028 + Math.sin(t * 2.9 + 1) * 0.011;
@@ -3065,7 +3103,18 @@ export class Game {
       hint = touch ? '[[spoon]] Tap [[swap]] for the spoon' : code ? `[[spoon]] Press ${keyLabel(code)} for the spoon` : '[[spoon]] Scroll the mouse wheel for the spoon';
     } else if (me.alive && this.phase === 'freeze') hint = touch ? 'Tap [[cart]] to buy' : `Press ${this.key('buy')} to buy`;
     else if (me.alive && this.dm && this.clock - (this.spawnedAt || 0) < 3) hint = touch ? 'Tap [[cart]] to change guns' : `Press ${this.key('buy')} to change guns`;
-    if (this.pool) {
+    // the Minigames: tell the host my game is ready (once I have left the first "Play" menu, or after 8 s anyway)
+    if (this.mg && this.mgReadyAt === -1 && this.loadedAt) this.mgReadyAt = performance.now();      // (from when the loading screen went: main.js onLoaded)
+    if (this.mg && this.mgReadyAt > 0 && (!this.paused || performance.now() - this.mgReadyAt > 8000)) { this.mgReadyAt = 0; this.transport.send({ t: 'mgReady' }); }
+    if (this.mg) {
+      // the Minigames: what E / the hand button and fire / the aim button do right now
+      const u = me.alive && this.mgc ? this.mgc.useTarget() : null, press = touch ? 'Tap [[hand]]' : `Press ${this.key('use')}`;
+      hint = !me.alive || !this.mgc ? ''
+        : this.mgc.holdHint() ? this.mgc.holdHint()
+        : u && u.kind === 'catch' ? `${press} to catch it!`
+        : this.mgc.canThrow() ? (touch ? 'Tap [[aim]] to throw it' : 'Click to throw it')
+        : u && u.kind === 'ring' ? `${press} to pick it up` : '';
+    } else if (this.pool) {
       // (only how to move, for the first few seconds; never what to do)
       const u = me.alive && this.poolc ? this.poolc.useTarget() : null, hold = touch ? 'Hold [[hand]]' : `Hold ${this.key('use')}`, press = touch ? 'Tap [[hand]]' : `Press ${this.key('use')}`;
       hint = !me.alive ? (me.escaped && !this.escapeScene ? 'You got out. Watching the others…' : '')
@@ -3103,6 +3152,7 @@ export class Game {
     useBtn.classList.toggle('hidden', use !== 'plant' && use !== 'defuse' && !pick);
     useBtn.classList.toggle('pick', !!pick && use !== 'plant' && use !== 'defuse');
     if (this.br) useBtn.classList.toggle('hidden', !this.useTarget() || !!this.ring);
+    if (this.mg) { const u = this.mgc && this.mgc.useTarget(); useBtn.classList.toggle('hidden', !u); useBtn.classList.toggle('pick', !!u && u.kind === 'ring'); }
     const altBtn = document.getElementById('btn-alt');
     altBtn.classList.toggle('hidden', !w.alt);
     const altLabel = w.alt === 'scope' ? 'scope' : w.alt === 'stab' ? 'spoon' : 'burst';
@@ -3129,6 +3179,7 @@ export class Game {
       const watching = !!(target && target.alive && since > 2 && !this.escapeScene && !this.engulfMe);
       if (watching) text = touch ? 'Tap the arrows to watch someone else' : 'Click / right-click to watch someone else';
       if ((this.practice || this.dm) && !this.br) text = me.killedBy ? `Killed by ${me.killedBy} — respawning…` : 'Respawning…';
+      if (this.mg) text = watching ? text : me.killedBy === 'pop' ? 'Popped! You are out this round' : me.killedBy ? 'You are out this round' : 'You play from the next round';
       if (this.br && this.escapeScene) text = null;     // (the ending scene says it)
       else if (this.br && !(target && since > 2)) text = me.escaped ? 'You escaped!' : me.killedBy === 'It' ? 'It caught you' : me.killedBy === 'the fall' ? 'You fell into the dark' : 'You are out';
       hud.death(text);
@@ -3151,7 +3202,7 @@ export class Game {
       if (r.team === 'monster') continue;
       list.push({ name: r.name, team: r.team, kills: kd(r.kills), deaths: kd(r.deaths), alive: r.alive || (fake === r.id && !r.escaped), dummy: r.dummy, ping: r.bot ? 'bot' : r.id === 'host' ? 'host' : r.ping, money: r.money });
     }
-    hud.scoreboard(this.input.scoreHeld, list, this.score, me.team, this.dm || this.br);
+    hud.scoreboard(this.input.scoreHeld && !this.mg, list, this.score, me.team, this.dm || this.br);      // (the Minigames show their own standings: mgplay.js)
 
     // radar
     this.radarTimer = (this.radarTimer || 0) - dt;
@@ -3248,6 +3299,7 @@ export class Game {
     this.updateRemotes(dt);
     if (this.fx) this.fx.update(dt);
     if (this.poolc) this.poolc.update(dt);
+    if (this.mgc) this.mgc.update(dt);
     this.ragdolls.update(dt);
     this.updateDrops(dt);
     this.updateBomb(dt);
@@ -3265,8 +3317,8 @@ export class Game {
     // the sky follows the camera (so a short view distance never cuts it off)
     const skyK = (this.camera.far * 0.9) / 500;
     for (const s of this.sky) { s.position.copy(this.camera.position); s.scale.setScalar(skyK); }
-    // the Poolrooms: the water's mirror picture and people's shadows are drawn first
-    if (this.pool) {
+    // the Poolrooms (and the Minigames' hall): the water's mirror picture and people's shadows are drawn first
+    if (this.water) {
       const ud = this.builtMap.group.userData, me = this.me, blobs = [];
       if (me.alive && !me.swim && !me.ladder) blobs.push({ x: me.pos.x, y: me.pos.y, z: me.pos.z });
       for (const r of this.remotes.values()) if (r.alive && r.model && r.model.root.visible && !(this.world.waterAt(r.rp.x, r.rp.z) > r.rp.y + 0.9)) blobs.push({ x: r.rp.x, y: r.rp.y, z: r.rp.z });
@@ -3283,7 +3335,7 @@ export class Game {
       this.renderer.render(this.scene, this.camera);
     }
     // no gun in your hands in the Backrooms (in the Poolrooms: your arms while you swim or climb)
-    if (this.pool && this.poolHands) {
+    if (this.water && this.poolHands) {
       const me = this.me;
       const k = Math.tan(this.vmCamera.fov * Math.PI / 360) / Math.tan(this.camera.fov * Math.PI / 360);      // (so a hand on a rail lines up with the rail)
       this.poolHands.update(dt, { swim: me.alive && me.swim, speed: Math.hypot(me.vel.x, me.vel.z), climb: me.alive && me.ladder ? { eyeY: this.camera.position.y, L: me.ladder, camera: this.camera, k } : null, ledge: me.alive && me.edgeClimb ? { c: me.edgeClimb, camera: this.camera, k } : null });
@@ -3294,8 +3346,8 @@ export class Game {
       }
       return;
     }
-    // (Level 1: the fuse in your hand)
-    if (this.br) {
+    // (Level 1: the fuse in your hand; the Minigames: empty hands)
+    if (this.br || this.mg) {
       if (this.carryVM) { this.updateCarry(dt); if (this.carryVM.visible) { if (this.viewModel) this.viewModel.visible = false; this.renderer.clearDepth(); this.renderer.render(this.vmScene, this.vmCamera); } }
       return;
     }

@@ -811,6 +811,27 @@ export function playPool(kind, pos = null, occ = 0, gain = 1, rate = 1) {
   play(cache.get(key), { pos, gain, rate, ref: pos ? 3 : 1, roll: 0.9, air: 50, occ, wet: 0.55, important: kind === 'drain' || kind === 'rush' || kind === 'whoosh' });
 }
 
+// ---------- the Minigames ----------
+const MGS = {
+  // Hot Potato's end: a rubber ring bursting (a sharp crack and a puff of air)
+  pop: () => buf(0.7, (x, sr) => { noiseHit(x, sr, 0, 'highpass', 900, 0.7, 0.012, 1, 0.0005); thump(x, sr, 0, 180, 70, 0.08, 0.9, 2); sweepNoise(x, sr, 0.01, 0.5, 1800, 400, 0.8, 0.6, 0.4); normalize(x, 0.95); }),
+  // a puff of smoke where someone went out
+  puff: () => buf(0.6, (x, sr) => { sweepNoise(x, sr, 0, 0.5, 600, 1600, 0.9, 0.8, 0.5); normalize(x, 0.4); }),
+  // a referee's whistle: someone is out
+  whistle: () => buf(0.55, (x, sr) => { for (let i = 0; i < x.length; i++) { const t = i / sr, e = Math.min(1, t / 0.02) * Math.min(1, (0.5 - t) / 0.06); x[i] = Math.max(0, e) * Math.sin(6.283 * 2950 * t + Math.sin(6.283 * 32 * t) * 3) * (0.75 + 0.25 * Math.sin(6.283 * 32 * t)); } noiseHit(x, sr, 0, 'bandpass', 3000, 2, 0.4, 0.15, 0.02); normalize(x, 0.5); }),
+  // a goal: a two-note air horn
+  horn: () => buf(1.3, (x, sr) => { for (let i = 0; i < x.length; i++) { const t = i / sr, f = t < 0.45 ? 466 : 622, e = Math.min(1, t / 0.03) * (t < 1.15 ? 1 : Math.max(0, (1.3 - t) / 0.15)) * (Math.abs(t - 0.45) < 0.03 ? 0.5 : 1); let v = 0; for (let h = 1; h < 7; h++) v += Math.sign(Math.sin(6.283 * f * h * t)) / (h * h); x[i] = v * e * 0.4; } biquad(x, 'lowpass', 2400, 0.7, sr); normalize(x, 0.6); }),
+  // the countdown: three blips and a higher one for GO
+  count: () => buf(0.18, (x, sr) => { partials(x, sr, 0, [[880, 0.6, 0.07], [1760, 0.15, 0.04]], 1); normalize(x, 0.5); }),
+  go: () => buf(0.5, (x, sr) => { partials(x, sr, 0, [[1320, 0.6, 0.16], [2640, 0.2, 0.08]], 1); partials(x, sr, 0.08, [[1760, 0.5, 0.2]], 1); normalize(x, 0.55); }),
+};
+export function playMG(kind, pos = null, gain = 1, rate = 1) {
+  if (!ctx || !MGS[kind]) return;
+  const key = `mg:${kind}`;
+  if (!cache.has(key)) cache.set(key, MGS[kind]());
+  play(cache.get(key), { pos, gain, rate, ref: pos ? 3 : 1, roll: 0.9, air: 50, wet: pos ? 0.5 : 0.15, important: kind !== 'puff' });
+}
+
 export function playBR(kind, pos = null, occ = 0, gain = 1) {
   const key = `br:${kind}#${Math.floor(Math.random() * 2)}`;
   if (!cache.has(key)) cache.set(key, BRS[kind]());

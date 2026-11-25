@@ -16,6 +16,7 @@
 import { backroomsMap } from './brmap.js';
 import { garageMap } from './garmap.js';
 import { poolMap } from './poolmap.js';
+import { arenaMap } from './mgmap.js';
 import { brDmDef } from './brdm.js';
 
 const EAST = -Math.PI / 2, WEST = Math.PI / 2, NORTH = 0, SOUTH = Math.PI;
@@ -943,6 +944,8 @@ export function resolveMap(id, variant) {
   if (id === 'garage') return garageMap(variant);
   // Level 2: the Poolrooms, one fixed layout too
   if (id === 'pool') return poolMap(variant);
+  // the Minigames' arena (mgmap.js): one small hall in the Poolrooms' look
+  if (id === 'arena') return arenaMap();
   const d = MAPS[id] || MAPS.outpost;
   if (!d.sizes) return d;
   const v = d.sizes[variant] ? variant : 'small';

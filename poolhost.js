@@ -13,7 +13,7 @@ const { G, U, WY } = POOL;
 const r2 = v => Math.round(v * 100) / 100;
 const DRAIN_SECS = 10;
 export const FALL_KILL = 6;            // metres onto a hard floor
-const RING_G = 12;                     // a floatie falls a little slower than a person (it is light and catches the air)
+export const RING_G = 12;                     // a floatie falls a little slower than a person (it is light and catches the air)
 
 export class PoolHost {
   constructor(S) {

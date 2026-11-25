@@ -22,12 +22,12 @@
     // New .js files: add them to this list (libraries stay unversioned).
     (function () {
       var v = Date.parse(document.lastModified) || Date.now();
-      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'brdm', 'brfx', 'brmap', 'brview', 'buy', 'config', 'crosshair', 'filter', 'flashshadow', 'friends', 'game', 'garmap', 'garprops', 'garview', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'models', 'monster', 'net', 'netlog', 'nettest', 'poolfx', 'poolhost', 'poolmap', 'poolplay', 'poolprops', 'poolview', 'post', 'ragdoll', 'server', 'shifter', 'shiftmodel', 'textures', 'touchlayout', 'weapons', 'world'];
+      var files = ['accounts', 'admin', 'anim', 'audio', 'bots', 'brdm', 'brfx', 'brmap', 'brview', 'buy', 'config', 'crosshair', 'filter', 'flashshadow', 'friends', 'game', 'garmap', 'garprops', 'garview', 'graphics', 'houses', 'hud', 'icons', 'input', 'keys', 'mapdeco', 'maps', 'mapview', 'mghost', 'mgmap', 'mgplay', 'models', 'monster', 'net', 'netlog', 'nettest', 'poolfx', 'poolhost', 'poolmap', 'poolplay', 'poolprops', 'poolview', 'post', 'ragdoll', 'server', 'shifter', 'shiftmodel', 'textures', 'touchlayout', 'weapons', 'world'];
       var imports = { three: './three.module.js' };
       for (var i = 0; i < files.length; i++) imports['./' + files[i] + '.js'] = './' + files[i] + '.js?v=' + v;
       window.SITELINE_V = v;
       // the small "Version" line at the bottom of the home page: the time this page was published (UTC), so it changes by itself with every update
-      var NUMBER = '2.6';      // the version number: raise it by hand with each update (1.0 → 1.1 → …); the date after it is automatic
+      var NUMBER = '2.7';      // the version number: raise it by hand with each update (1.0 → 1.1 → …); the date after it is automatic
       document.addEventListener('DOMContentLoaded', function () {
         var el = document.getElementById('version'), d = new Date(v);
         if (el && !isNaN(d)) el.textContent = 'Version ' + NUMBER + ' · ' + d.toISOString().slice(0, 10).replace(/-/g, '.');
@@ -50,6 +50,12 @@
     </div>
     <!-- the Backrooms: your tasks in order, finished ones crossed out (replaces the top bar there) -->
     <div id="br-tasks"><div id="br-mates" class="hidden"></div><div id="br-carry" class="hidden"></div><div class="br-tasks-title">Tasks</div><ol id="br-task-list"></ol></div>
+    <!-- the Minigames (mgplay.js): the game, its timer and score on top; who is still in on the left; the 3-2-1 and how
+         to play at the start of each round; the standings between rounds (and while the scoreboard key is held) -->
+    <div id="mg-top" class="hidden"><div id="mg-game"></div><div id="mg-timer"></div><div id="mg-score"></div></div>
+    <div id="mg-side" class="hidden"></div>
+    <div id="mg-intro" class="hidden"><small id="mg-round"></small><b id="mg-title"></b><p id="mg-how"></p><p id="mg-keys"></p><p id="mg-team"></p><div id="mg-count"></div></div>
+    <div id="mg-board" class="hidden"><h3 id="mg-board-title"></h3><table id="mg-board-table"></table><small id="mg-board-next"></small></div>
     <!-- Level 1: the crank's ring (drawn in code) -->
     <canvas id="crank-ring" class="hidden"></canvas>
     <div id="radar-wrap"><canvas id="radar"></canvas><div id="team-label"></div></div>
@@ -216,10 +222,11 @@
             <button id="btn-leave-lobby" class="ghost">Leave</button>
           </div>
         </div>
-        <div class="mode-pick three">
+        <div class="mode-pick four">
           <button class="mode-btn" data-mode="wingman"><b>2v2 Bomb</b><small>Plant or defuse, first to 9 rounds</small></button>
-          <button class="mode-btn" data-mode="dm"><b>Deathmatch</b><small>2–4 players, everyone for themselves</small></button>
-          <button class="mode-btn" data-mode="br"><b>The Backrooms</b><small>2–4 players together: find the exit, no guns</small></button>
+          <button class="mode-btn" data-mode="dm"><b>Deathmatch</b><small>2–6 players, everyone for themselves</small></button>
+          <button class="mode-btn" data-mode="br"><b>The Backrooms</b><small>2–6 players together: find the exit, no guns</small></button>
+          <button class="mode-btn" data-mode="mg"><b>Minigames</b><small>2–6 players: party games with the floaties, no guns</small></button>
         </div>
         <div class="ffa-list team"><h3>Players <small>free-for-all</small></h3><ul id="list-ffa"></ul></div>
         <div class="teams">
@@ -234,6 +241,10 @@
             <label class="check night-toggle"><input type="checkbox" id="lobby-night"> <i data-icon="moon"></i> Night mode</label>
             <label class="field br-level br-stage hidden"><span>Level</span><select id="lobby-stage"><option value="0">Level 0: the yellow rooms</option><option value="1">Level 1: the garage</option><option value="2">Level 2: The Poolrooms</option></select></label>
             <label class="field br-level"><span>Difficulty</span><select id="lobby-level"><option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option></select></label>
+            <label class="field mg-opt"><span>Play</span><select id="lobby-mgrun"><option value="party">Party run: 5 random games</option><option value="single">One game</option></select></label>
+            <label class="field mg-opt mg-single"><span>Game</span><select id="lobby-mggame" class="mg-games"></select></label>
+            <label class="field mg-opt mg-single"><span>Rounds</span><select id="lobby-mgrounds"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></label>
+            <label class="check mg-opt"><input type="checkbox" id="lobby-mgteams"> Dodgeball in two teams (with 4 or 6 players)</label>
             <button id="btn-shuffle" class="ghost host-only">Shuffle teams</button>
             <button id="btn-start" class="primary host-only">Start match</button>
           </div>
@@ -245,14 +256,20 @@
     <section id="practice" class="screen hidden">
       <div class="panel">
         <h2>Practice</h2>
-        <div class="mode-pick four">
+        <div class="mode-pick five">
           <button class="pmode-btn mode-btn" data-pmode="range"><b>Practice range</b><small>Try guns on bot targets</small></button>
           <button class="pmode-btn mode-btn" data-pmode="match"><b>Bot match</b><small>2v2 bomb: you + a bot vs 2 bots</small></button>
           <button class="pmode-btn mode-btn" data-pmode="dm"><b>Bot deathmatch</b><small>Everyone for themselves</small></button>
           <button class="pmode-btn mode-btn" data-pmode="br"><b>The Backrooms</b><small>Find the exit before it finds you</small></button>
+          <button class="pmode-btn mode-btn" data-pmode="mg"><b>Minigames</b><small>Party games with the floaties, against bots</small></button>
         </div>
         <label class="field p-map"><span>Map</span><select id="p-map"></select></label>
         <p class="note p-br">A new random maze every time. No guns: find the exit door and get out. Something else is in there with you: walking is quiet, sprinting (Shift) is not. Watch out for the holes in the floor. Friends can join you from the pause menu.</p>
+        <p class="note p-mg">Dodgeball, Pool Ball, Keep Away and Hot Potato with the floaties. No guns. Points for 1st, 2nd and 3rd each round; most points wins. Friends can join from the pause menu (they play from the next round).</p>
+        <label class="field p-mg"><span>Play</span><select id="p-mgrun"><option value="party">Party run: 5 random games</option><option value="single">One game</option></select></label>
+        <label class="field p-mg p-mgsingle"><span>Game</span><select id="p-mggame" class="mg-games"></select></label>
+        <label class="field p-mg p-mgsingle"><span>Rounds</span><select id="p-mgrounds"><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></label>
+        <label class="check p-mg"><input type="checkbox" id="p-mgteams"> Dodgeball in two teams (with 4 or 6 players)</label>
         <label class="check p-range"><input type="checkbox" id="p-bots"> Bots on the range</label>
         <label class="field p-count"><span>Number of bots <output id="p-count-out"></output></span><input type="range" id="p-count" min="1" max="8" step="1"></label>
         <label class="field p-behavior"><span>What the bots do</span>
