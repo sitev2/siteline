@@ -49,6 +49,12 @@ const DRESS = {
     items: ['lamp', 'box', 'sign'], decals: ['crack', 'drift', 'stain'], drift: '#ddd2bb',
     backdrop: 'cliffs',
   },
+  // the sand bar (Volleyball): the open sea all round, sand drifting against the huts
+  beach: {
+    windowOn: ['building'], frame: '#f4f2ea', glass: '#2a3a46', door: '#2f6f8a',
+    items: ['lamp', 'box'], decals: ['drift', 'drift', 'stain'], drift: '#f0e0b6',
+    backdrop: 'sea',
+  },
   railyard: {
     windowOn: ['building', 'mass'], frame: '#d8d0c0', glass: '#28313a', door: '#3e4a56',
     items: ['lamp', 'pipe', 'sign', 'box', 'vent'], decals: ['oil', 'crack', 'stain', 'line'],
@@ -364,6 +370,12 @@ function backdrop(world, theme, kind, night, far) {
     around(12, 80, 140, (x, z) => { const h = (55 + r() * 60) * S, w = (45 + r() * 40) * S; M.geo(U_CONE(8), x, 0, z, r() * 3, fade('#7d8a99', x, z), w, h, w, fade('#f4f7fa', x, z, -0.1), 0.6); });
     around(40, 18, 55, (x, z) => { const h = (9 + r() * 8) * S; M.geo(U_CYL(6), x, 0, z, 0, fade('#4a3a2c', x, z), 0.4 * S, h * 0.3, 0.4 * S); M.geo(U_CONE(7), x, h * 0.2, z, 0, fade('#2f4a3a', x, z), h * 0.28, h * 0.85, h * 0.28, fade('#eef2f5', x, z), 0.55); }, 5);
     around(2, 25, 45, (x, z) => { M.geo(U_CYL(6), x, 0, z, 0, fade('#c84a3a', x, z), 0.35 * S, 35 * S, 0.35 * S); }, 1);   // radio masts
+  } else if (kind === 'sea') {
+    // the open sea all round the sand bar, a few rocky islands with green tops, sailing boats and a lighthouse
+    M.geo(new THREE.CylinderGeometry(R * 2.4, R * 2.4, 0.2, 48), cx, -0.2, cz, 0, fade('#2f9fb6', cx + R, cz, -0.25));
+    around(9, 70, 140, (x, z) => { const w = (14 + r() * 26) * S; M.geo(U_CONE(9), x, -1, z, r() * 3, fade('#9a9a86', x, z), w, (6 + r() * 14) * S, w * (0.6 + r() * 0.5), fade('#6f8f5a', x, z), 0.55); }, 20);
+    around(7, 22, 60, (x, z) => { M.geo(U_BOX, x, -0.2, z, r() * 3, fade('#f4f2ea', x, z), 2.4 * S, 0.7 * S, 0.9 * S); M.geo(U_CONE(3), x, 0.4 * S, z, r() * 3, fade('#ffffff', x, z), 0.9 * S, 3.4 * S, 0.12 * S); }, 3);   // sailing boats
+    around(1, 60, 80, (x, z) => { M.geo(U_CYL(10, 0.8), x, 0, z, 0, fade('#f0f0ea', x, z), 2 * S, 20 * S, 2 * S, fade('#c84a3a', x, z), 0.7); }, 3);   // a lighthouse
   } else if (kind === 'harbour') {
     around(26, 12, 40, (x, z, a) => {
       const w = (7 + r() * 6) * S, h = (8 + r() * 8) * S, d = (7 + r() * 4) * S;

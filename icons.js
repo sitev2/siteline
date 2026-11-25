@@ -48,6 +48,8 @@ const PATHS = {
   star: `<path ${F} d="M12 2l2.6 7.4L22 12l-7.4 2.6L12 22l-2.6-7.4L2 12l7.4-2.6z"/>`,
   // the Minigames: a floatie (a striped swim ring) and a trophy (the standings)
   ring: `<circle ${S} cx="12" cy="12" r="8.5"/><circle ${S} cx="12" cy="12" r="3.6"/><path ${L(2.4)} d="M12 3.5v4.9M12 15.6v4.9M3.5 12h4.9M15.6 12h4.9"/>`,
+  // a volleyball: a ball with its curved panel seams (Volleyball: who serves)
+  ball: `<circle ${S} cx="12" cy="12" r="8.5"/><path ${S} d="M12 3.5c-1.5 3.5-1.2 7 1 9.5M20.3 13.5c-3.6-.6-6.6.2-8.3 2.9M5.6 17.8c2.2-2.9 3.4-6.2 2.6-9.8"/>`,
   trophy: `<path ${S} d="M7 4h10v5a5 5 0 0 1-10 0z"/><path ${S} d="M7 6H4v1.5A3.5 3.5 0 0 0 7.5 11M17 6h3v1.5a3.5 3.5 0 0 1-3.5 3.5M12 14v3.5M8 20.5h8M9.5 17.5h5v3h-5z"/>`,
 };
 

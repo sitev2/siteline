@@ -3112,6 +3112,7 @@ export class Game {
       hint = !me.alive || !this.mgc ? ''
         : this.mgc.holdHint() ? this.mgc.holdHint()
         : u && u.kind === 'catch' ? `${press} to catch it!`
+        : this.mgc.s && this.mgc.s.g === 'volley' ? ''
         : this.mgc.canThrow() ? (touch ? 'Tap [[aim]] to throw it' : 'Click to throw it')
         : u && u.kind === 'ring' ? `${press} to pick it up` : '';
     } else if (this.pool) {
